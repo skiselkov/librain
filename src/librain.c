@@ -421,8 +421,8 @@ water_effects_init(const librain_glass_t *glass, size_t num)
 			    GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
 			    GL_CLAMP_TO_EDGE);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H, 0, GL_RGBA,
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H, 0, GL_RGB,
 			    GL_UNSIGNED_BYTE, NULL);
 
 			glBindFramebuffer(GL_FRAMEBUFFER,
