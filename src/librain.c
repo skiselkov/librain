@@ -229,10 +229,8 @@ rain_stage1_comp(glass_info_t *gi)
 
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "rand_seed"),
 	    rand_seed);
-	float precip_intens = pow(dr_getf(&drs.precip_rat), 1.1);
-	printf("intens: %f\n", precip_intens);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "precip_intens"),
-	    precip_intens);
+	    pow(dr_getf(&drs.precip_rat), 1.1));
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "thrust"),
 	    gi->thrust);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind"), gi->wind);
