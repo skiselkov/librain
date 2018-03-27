@@ -33,12 +33,14 @@ typedef struct {
 	vect2_t		thrust_point;
 	double		thrust_factor;
 	double		max_thrust;
-	double		max_tas;
 
 	vect2_t		gravity_point;
 	double		gravity_factor;
 
+	vect2_t		wind_point;
 	double		wind_factor;
+	double		wind_normal;
+	double		max_tas;
 } librain_glass_t;
 
 bool_t librain_init(const char *the_pluginpath, const librain_glass_t *glass,

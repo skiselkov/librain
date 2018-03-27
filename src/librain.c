@@ -82,6 +82,12 @@ typedef struct {
 
 	GLuint			ws_smudge_tex;
 	GLuint			ws_smudge_fbo;
+
+	vect2_t			gp;
+	vect2_t			tp;
+	vect2_t			wp;
+	float			thrust;
+	float			wind;
 } glass_info_t;
 
 static glass_info_t *glass_infos = NULL;
@@ -105,6 +111,43 @@ static struct {
 
 #define	RAIN_COMP_PHASE		xplm_Phase_Gauges
 #define	RAIN_COMP_BEFORE	0
+
+static void
+update_vectors(glass_info_t *gi)
+{
+	float rot_rate = dr_getf(&drs.rot_rate);
+	double wind_spd = KT2MPS(dr_getf(&drs.wind_spd));
+	double gs = dr_getf(&drs.gs);
+	vect2_t wind_comp = VECT2(0, wind_spd);
+	vect2_t gs_comp = VECT2(0, gs);
+	vect2_t total_wind;
+	vect2_t thrust_v;
+
+	gi->gp = vect2_scmul(gi->glass->gravity_point, WATER_DEPTH_TEX_W);
+	gi->tp = vect2_scmul(gi->glass->thrust_point, WATER_DEPTH_TEX_W);
+	gi->wp = vect2_scmul(gi->glass->wind_point, WATER_DEPTH_TEX_W);
+
+	wind_comp = vect2_rot(wind_comp,
+	    normalize_hdg(dr_getf(&drs.wind_dir)) - dr_getf(&drs.hdg));
+	wind_comp = vect2_scmul(wind_comp, gi->glass->wind_factor);
+
+	gs_comp = vect2_rot(gs_comp, dr_getf(&drs.beta));
+	total_wind = vect2_add(wind_comp, gs_comp);
+
+	total_wind = vect2_scmul(total_wind, 1.0 / gi->glass->max_tas);
+
+	thrust_v = vect2_scmul(VECT2(0,
+	    MAX(dr_getf(&drs.prop_thrust) / gi->glass->max_thrust, 0)),
+	    gi->glass->thrust_factor);
+
+	gi->wind = clamp(vect2_abs(total_wind), 0, 1);
+
+	gi->thrust = clamp(vect2_abs(thrust_v), 0, 1);
+	if (vect2_abs(total_wind) > 0.001)
+		gi->wp = vect2_rot(gi->wp, dir2hdg(total_wind));
+
+	gi->gp = vect2_rot(gi->gp, clamp(-2 * rot_rate, -30, 30));
+}
 
 static void
 update_viewport(void)
@@ -163,34 +206,10 @@ rain_stage1_comp(glass_info_t *gi)
 	float rand_seed = (crc64_rand() % 1000) / 1000.0;
 	float cur_t = dr_getf(&drs.sim_time);
 	float d_t = cur_t - gi->last_stage1_t;
-	vect2_t gp = vect2_scmul(gi->glass->gravity_point, WATER_DEPTH_TEX_W);
-	vect2_t tp = vect2_scmul(gi->glass->thrust_point, WATER_DEPTH_TEX_W);
-	float thrust;
-	float rot_rate = dr_getf(&drs.rot_rate);
-	vect2_t wind_comp = VECT2(0, KT2MPS(dr_getf(&drs.wind_spd)));
-	vect2_t gs_comp = VECT2(0, dr_getf(&drs.gs));
-	vect2_t total_wind;
 
 	if (gi->last_stage1_t == 0.0)
 		gi->last_stage1_t = cur_t;
 	d_t = cur_t - gi->last_stage1_t;
-
-	wind_comp = vect2_rot(wind_comp,
-	    normalize_hdg(dr_getf(&drs.wind_dir)) - dr_getf(&drs.hdg));
-	wind_comp = vect2_scmul(wind_comp, gi->glass->wind_factor);
-	gs_comp = vect2_rot(gs_comp, dr_getf(&drs.beta));
-
-	total_wind = vect2_add(wind_comp, gs_comp);
-	total_wind = vect2_scmul(total_wind, 1.0 / gi->glass->max_tas);
-	total_wind = vect2_add(total_wind, vect2_scmul(VECT2(0,
-	    MAX(dr_getf(&drs.prop_thrust) / gi->glass->max_thrust, 0)),
-	    gi->glass->thrust_factor));
-
-	thrust = clamp(vect2_abs(total_wind), 0, 1);
-	if (vect2_abs(total_wind) > 0.001)
-		tp = vect2_rot(tp, dir2hdg(total_wind));
-
-	gp = vect2_rot(gp, clamp(-2 * rot_rate, -30, 30));
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
@@ -210,14 +229,22 @@ rain_stage1_comp(glass_info_t *gi)
 
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "rand_seed"),
 	    rand_seed);
+	float precip_intens = pow(dr_getf(&drs.precip_rat), 1.1);
+	printf("intens: %f\n", precip_intens);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "precip_intens"),
-	    pow(dr_getf(&drs.precip_rat), 1.1));
-	glUniform1f(glGetUniformLocation(rain_stage1_prog, "thrust"), thrust);
+	    precip_intens);
+	glUniform1f(glGetUniformLocation(rain_stage1_prog, "thrust"),
+	    gi->thrust);
+	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind"), gi->wind);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "gravity"),
 	    (float)gi->glass->gravity_factor);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "d_t"), d_t);
-	glUniform2f(glGetUniformLocation(rain_stage1_prog, "gp"), gp.x, gp.y);
-	glUniform2f(glGetUniformLocation(rain_stage1_prog, "tp"), tp.x, tp.y);
+	glUniform2f(glGetUniformLocation(rain_stage1_prog, "gp"),
+	    gi->gp.x, gi->gp.y);
+	glUniform2f(glGetUniformLocation(rain_stage1_prog, "tp"),
+	    gi->tp.x, gi->tp.y);
+	glUniform2f(glGetUniformLocation(rain_stage1_prog, "wp"),
+	    gi->wp.x, gi->wp.y);
 
 	glBegin(GL_QUADS);
 	glVertex2f(0, 0);
@@ -253,6 +280,13 @@ rain_stage2_comp(glass_info_t *gi)
 	glUniform1i(glGetUniformLocation(rain_stage2_prog, "tex"), 0);
 	glUniform2f(glGetUniformLocation(rain_stage2_prog, "my_tex_sz"),
 	    WATER_NORM_TEX_W, WATER_NORM_TEX_H);
+	glUniform2f(glGetUniformLocation(rain_stage2_prog, "tp"),
+	    gi->tp.x, gi->tp.y);
+	glUniform1f(glGetUniformLocation(rain_stage2_prog, "thrust"),
+	    gi->thrust);
+	glUniform2f(glGetUniformLocation(rain_stage2_prog, "wp"),
+	    gi->wp.x, gi->wp.y);
+	glUniform1f(glGetUniformLocation(rain_stage2_prog, "wind"), gi->wind);
 
 	glBegin(GL_QUADS);
 	glVertex2f(0, 0);
@@ -279,6 +313,7 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
 
+		update_vectors(gi);
 		rain_stage1_comp(gi);
 		rain_stage2_comp(gi);
 		gi->water_depth_cur = !gi->water_depth_cur;
@@ -365,7 +400,7 @@ librain_draw_prepare(void)
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	for (int i = 12; i < 16; i++)
-		proj_matrix[i] /= 20;
+		proj_matrix[i] /= 100;
 	glLoadMatrixf(proj_matrix);
 }
 

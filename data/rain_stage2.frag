@@ -21,6 +21,8 @@
 
 uniform sampler2D	tex;
 uniform vec2		my_tex_sz;
+uniform vec2		tp;
+uniform float		thrust;
 
 const float max_depth = 3;
 
@@ -36,11 +38,15 @@ main()
 {
 	float depth_left, depth_right, depth_up, depth_down;
 	float d_lr, d_ud;
+	vec2 thrust_v = (gl_FragCoord.xy - tp);
 
-	depth_left = read_depth(vec2(gl_FragCoord.x - 1, gl_FragCoord.y));
-	depth_right = read_depth(vec2(gl_FragCoord.x + 1, gl_FragCoord.y));
-	depth_up = read_depth(vec2(gl_FragCoord.x, gl_FragCoord.y + 1));
-	depth_down = read_depth(vec2(gl_FragCoord.x, gl_FragCoord.y - 1));
+	thrust_v /= length(thrust_v);
+	thrust_v *= 10 * thrust + 1;
+
+	depth_left = read_depth(gl_FragCoord.xy + vec2(-1, 0) * thrust_v);
+	depth_right = read_depth(gl_FragCoord.xy + vec2(1, 0) * thrust_v);
+	depth_up = read_depth(gl_FragCoord.xy + vec2(0, 1) * thrust_v);
+	depth_down = read_depth(gl_FragCoord.xy + vec2(0, -1) * thrust_v);
 
 	d_lr = (atan(depth_left - depth_right) / (3.1415 / 2)) + 0.5;
 	d_ud = (atan(depth_up - depth_down) / (3.1415 / 2)) + 0.5;

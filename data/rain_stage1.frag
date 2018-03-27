@@ -22,11 +22,13 @@
 uniform	sampler2D	tex;
 uniform float		rand_seed;
 uniform float		precip_intens;
-uniform float		thrust;
 uniform float		d_t;
 uniform vec2		tp;		/* thrust origin point */
 uniform vec2		gp;		/* gravity origin point */
+uniform vec2		wp;		/* wind origin point */
+uniform float		thrust;
 uniform float		gravity;
+uniform float		wind;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com 
@@ -43,6 +45,7 @@ const float SQ2 = 1.41421356237309504880169 * 10000.0;	/* Square Root of Two */
 const float max_depth = 3.0;
 const float precip_fact = 0.25;
 const float gravity_factor = 0.05;
+const float precip_scale_fact = 0.02;
 
 float
 gold_noise(vec2 coordinate, float seed)
@@ -54,7 +57,8 @@ bool
 droplet_gen_check(vec2 pos)
 {
 	return (gold_noise(pos, rand_seed) > (1 - precip_fact *
-	    precip_intens * max(pow(1 - thrust, 6), 0.25) * d_t));
+	    precip_intens * max(pow(min(1 - thrust, 1 - wind), 6), 0.25) *
+	    precip_scale_fact));
 }
 
 float
@@ -70,20 +74,24 @@ main()
 	float old_depth, depth, prev_depth, new_depth;
 	vec2 tex_sz = textureSize2D(tex, 0);
 	vec2 prev_pos;
-	vec2 tp_dir, gp_dir, rand_dir;
+	vec2 tp_dir, gp_dir, wp_dir;
 	vec4 old_val;
 	float r = 0, g = 0, b = 0, a = 0;
 	float blowaway_fact;
+	bool water_added;
 
 	if (droplet_gen_check(gl_FragCoord.xy)) {
 		new_depth = max_depth;
+		water_added = true;
 	} else if (droplet_gen_check(gl_FragCoord.xy + vec2(1, 0)) ||
 	    droplet_gen_check(gl_FragCoord.xy + vec2(-1, 0)) ||
 	    droplet_gen_check(gl_FragCoord.xy + vec2(0, 1)) ||
 	    droplet_gen_check(gl_FragCoord.xy + vec2(0, -1))) {
 		new_depth = max_depth / 3;
+		water_added = true;
 	} else {
 		new_depth = 0.0;
+		water_added = false;
 	}
 
 	depth += new_depth;
@@ -97,24 +105,29 @@ main()
 	tp_dir = (gl_FragCoord.xy - tp);
 	tp_dir = tp_dir / length(tp_dir);
 
-	rand_dir = vec2(sin(fract(gl_FragCoord.x / tex_sz.x + rand_seed)),
-	    sin(fract(gl_FragCoord.y / tex_sz.y + rand_seed)));
+	wp_dir = (gl_FragCoord.xy - wp);
+	wp_dir = wp_dir / length(wp_dir);
 
 	prev_pos = gl_FragCoord.xy -
 	    ((gp_dir * (gravity_factor * (gravity + precip_intens)) +
-	    tp_dir * thrust) * tex_sz * d_t);
-	if (depth < 0.05)
-		prev_pos += rand_dir;
+	    tp_dir * thrust + wp_dir * wind) * tex_sz * d_t);
 	prev_depth = read_depth(prev_pos);
 
-	blowaway_fact = 0.6 - thrust * 0.05 + (0.012 - precip_intens * 0.012);
+	blowaway_fact = 0.6 - thrust * 0.05;
 
 	if (prev_depth > max_depth / 4)
 		depth += prev_depth * (blowaway_fact + 0.5);
 	else
 		depth += prev_depth * (blowaway_fact - 0.01);
 
+//	depth *= max(1.0 - 0.2 * ((d_t / (1.0 / 60.0)) - 1), 0.1);
+
+	if (!water_added) {
+		depth = clamp(depth, 0.0, old_depth + prev_depth -
+		    max_depth * 1 / 768.0);
+	}
 	depth = clamp(depth, 0.0, max_depth);
+
 	if (depth <= 1.0)
 		r = clamp(depth, 0.0, 1.0);
 	else if (depth > 1.0 && depth <= 2.0)
