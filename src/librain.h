@@ -49,7 +49,7 @@ void librain_fini(void);
 
 bool_t librain_reload_gl_progs(void);
 
-void librain_draw_prepare(void);
+void librain_draw_prepare(bool_t force);
 void librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids);
 void librain_draw_exec(void);
 void librain_draw_finish(void);

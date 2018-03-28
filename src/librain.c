@@ -43,6 +43,7 @@
 			(var) = (zero_val); \
 		} \
 	} while (0)
+#define	RAIN_DRAW_TIMEOUT	5	/* seconds */
 
 typedef enum {
 	PANEL_RENDER_TYPE_2D = 0,
@@ -62,6 +63,9 @@ static GLint	rain_stage1_prog = 0;
 static GLint	rain_stage2_prog = 0;
 static GLint	ws_rain_prog = 0;
 static GLint	ws_smudge_prog = 0;
+
+static GLint	saved_vp[4] = { -1, -1, -1, -1 };
+static bool_t	prepare_ran = B_TRUE;
 
 typedef struct {
 	const librain_glass_t	*glass;
@@ -191,6 +195,8 @@ grab_screenshot(void)
 void
 librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids)
 {
+	if (!prepare_ran)
+		return;
 	XPLMSetGraphicsState(0, 0, 0, 1, 1, 1, 1);
 	glColor3f(1, 1, 1);
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
@@ -381,12 +387,31 @@ draw_ws_effects(glass_info_t *gi)
 }
 
 void
-librain_draw_prepare(void)
+librain_draw_prepare(bool_t force)
 {
 	GLfloat acf_matrix[16], proj_matrix[16];
+	GLint vp[4];
+	int w, h;
+	double now = dr_getf(&drs.sim_time);
 
 	if (dr_getf(&drs.precip_rat) > 0)
-		last_rain_t = dr_getf(&drs.sim_time);
+		last_rain_t = now;
+
+	if (now - last_rain_t > RAIN_DRAW_TIMEOUT && !force) {
+		prepare_ran = B_FALSE;
+		return;
+	}
+	prepare_ran = B_TRUE;
+
+	update_viewport();
+	grab_screenshot();
+
+	glGetIntegerv(GL_VIEWPORT, vp);
+	XPLMGetScreenSize(&w, &h);
+	if (vp[3] != h) {
+		memcpy(saved_vp, vp, sizeof (saved_vp));
+		glViewport(vp[0], vp[1], vp[2], h);
+	}
 
 	VERIFY3S(dr_getvf32(&drs.acf_matrix, acf_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvf32(&drs.proj_matrix, proj_matrix, 0, 16), ==, 16);
@@ -405,16 +430,23 @@ librain_draw_prepare(void)
 void
 librain_draw_exec(void)
 {
-	update_viewport();
-	grab_screenshot();
-
-	for (size_t i = 0; i < num_glass_infos; i++)
-		draw_ws_effects(&glass_infos[i]);
+	if (dr_getf(&drs.sim_time) - last_rain_t <= RAIN_DRAW_TIMEOUT) {
+		for (size_t i = 0; i < num_glass_infos; i++)
+			draw_ws_effects(&glass_infos[i]);
+	}
 }
 
 void
 librain_draw_finish(void)
 {
+	if (!prepare_ran)
+		return;
+
+	if (saved_vp[0] != -1) {
+		glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
+		saved_vp[0] = saved_vp[1] = saved_vp[2] = saved_vp[3] = -1;
+	}
+
 	glMatrixMode(GL_MODELVIEW);
 	glPopMatrix();
 	glMatrixMode(GL_PROJECTION);
@@ -591,6 +623,7 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
 	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix");
 	fdr_find(&drs.acf_matrix, "sim/graphics/view/acf_matrix");
+	fdr_find(&drs.viewport, "sim/graphics/view/viewport");
 	fdr_find(&drs.precip_rat,
 	    "sim/weather/precipitation_on_aircraft_ratio");
 	fdr_find(&drs.prop_thrust, "sim/flightmodel/engine/POINT_thrust");
