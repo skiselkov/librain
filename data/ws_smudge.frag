@@ -61,12 +61,10 @@ main()
 			vec4 pixel = get_pixel(gl_FragCoord.xy +
 			    depth_rat_fact * vec2(x - 2, y - 2));
 
-			if (pixel.a != 0.0) {
+			if (pixel.a != 0.0)
 				out_pixel += kernel[int(y * 5 + x)] * pixel;
-			} else {
+			else
 				discard;
-				return;
-			}
 		}
 	}
 

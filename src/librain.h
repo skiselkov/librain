@@ -41,6 +41,15 @@ typedef struct {
 	double		wind_factor;
 	double		wind_normal;
 	double		max_tas;
+
+	float		therm_inertia;
+	float		heat_zones[16];		/* 4 x 4 matrix */
+	float		heat_tgt_temps[4];
+
+	float		cabin_temp;
+	float		hot_air_src[4];
+	float		hot_air_radius[2];
+	float		hot_air_temp[2];
 } librain_glass_t;
 
 bool_t librain_init(const char *the_pluginpath, const librain_glass_t *glass,

@@ -38,8 +38,7 @@ get_pixel(vec2 pos)
 void
 main()
 {
-	vec4 depth_val = texture2D(depth_tex, gl_TexCoord[0].st);
-	float depth = depth_val.r + depth_val.g + depth_val.b;
+	float depth = texture2D(depth_tex, gl_TexCoord[0].st).r;
 	vec2 displace = (texture2D(norm_tex,
 	    gl_TexCoord[0].st).xy - 0.5) * displace_lim * (max_depth - depth);
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
