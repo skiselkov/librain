@@ -48,7 +48,7 @@ const float precip_fact = 0.14;
 const float gravity_factor = 0.05;
 const float precip_scale_fact = 0.02;
 const float temp_scale_fact = 400.0;
-const float water_liquid_temp = 273 + 3;	/* 5 degrees C */
+const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
 const float water_frozen_temp = 273 - 3;	/* -3 degrees C */
 
 float
