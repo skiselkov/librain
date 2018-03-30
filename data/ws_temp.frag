@@ -84,7 +84,8 @@ main()
 	float inertia = inertia_in * (1 + depth);
 
 	/* Protect from runaway values */
-	glass_temp = clamp(glass_temp, 200, temp_scale_fact);
+	if (glass_temp < 200 || glass_temp > temp_scale_fact)
+		glass_temp = le_temp;
 
 	glass_temp = filter_in(glass_temp, le_temp,
 	    mix(inertia, inertia / 10, min(wind_fact + precip_intens, 1)));

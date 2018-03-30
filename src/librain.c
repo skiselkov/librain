@@ -49,6 +49,9 @@
 	} while (0)
 #define	RAIN_DRAW_TIMEOUT	15	/* seconds */
 
+#define	MIN_PRECIP_ICE_ADD	0.05	/* dimensionless */
+#define	PRECIP_ICE_TEMP_THRESH	4	/* Celsius */
+
 typedef enum {
 	PANEL_RENDER_TYPE_2D = 0,
 	PANEL_RENDER_TYPE_3D_UNLIT = 1,
@@ -74,6 +77,9 @@ static GLint	ws_temp_debug_prog = 0;
 
 static GLint	saved_vp[4] = { -1, -1, -1, -1 };
 static bool_t	prepare_ran = B_TRUE;
+static double	prev_win_ice = 0;
+static double	precip_intens = 0;
+static float	last_run_t = 0;
 
 typedef struct {
 	const librain_glass_t	*glass;
@@ -127,6 +133,7 @@ static struct {
 	dr_t	wind_spd;
 	dr_t	rot_rate;
 	dr_t	le_temp;
+	dr_t	window_ice;
 } drs;
 
 #define	RAIN_COMP_PHASE		xplm_Phase_Gauges
@@ -240,8 +247,12 @@ librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids)
 	XPLMSetGraphicsState(0, 0, 0, 1, 1, 1, 1);
 	glColor3f(1, 1, 1);
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	for (int i = 0; z_depth_group_ids[i] != NULL; i++)
-		obj8_draw_group(obj, z_depth_group_ids[i]);
+	if (z_depth_group_ids != NULL) {
+		for (int i = 0; z_depth_group_ids[i] != NULL; i++)
+			obj8_draw_group(obj, z_depth_group_ids[i]);
+	} else {
+		obj8_draw_group(obj, NULL);
+	}
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
@@ -516,6 +527,40 @@ draw_ws_effects(glass_info_t *gi)
 	glActiveTexture(GL_TEXTURE0);
 }
 
+static void
+compute_precip(double now)
+{
+	double d_t = now - last_run_t;
+	double cur_win_ice;
+
+	if (d_t <= 0)
+		return;
+
+	precip_intens = dr_getf(&drs.precip_rat);
+	cur_win_ice = dr_getf(&drs.window_ice);
+
+	/*
+	 * If the window is icing up, but X-Plane thinks there's no precip
+	 * to cause it, we attempt to derive a precip rate from the rate of
+	 * window ice accumulation.
+	 */
+	if (precip_intens < MIN_PRECIP_ICE_ADD &&
+	    dr_getf(&drs.le_temp) < PRECIP_ICE_TEMP_THRESH &&
+	    cur_win_ice > 0) {
+		double d_ice = (cur_win_ice - prev_win_ice) / d_t;
+		double d_precip;
+
+		if (d_ice > 0)
+			d_precip = wavg(0.025, 0.05, clamp(d_ice, 0, 1));
+		else
+			d_precip = wavg(0.02, 0, clamp(ABS(d_ice), 0, 1));
+		precip_intens += d_precip;
+	}
+
+	prev_win_ice = cur_win_ice;
+	last_run_t = now;
+}
+
 void
 librain_draw_prepare(bool_t force)
 {
@@ -524,7 +569,9 @@ librain_draw_prepare(bool_t force)
 	int w, h;
 	double now = dr_getf(&drs.sim_time);
 
-	if (dr_getf(&drs.precip_rat) > 0)
+	compute_precip(now);
+
+	if (precip_intens > 0)
 		last_rain_t = now;
 
 	if (now - last_rain_t > RAIN_DRAW_TIMEOUT && !force) {
@@ -586,8 +633,7 @@ librain_draw_finish(void)
 static void
 glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 {
-	float temp_tex[WS_TEMP_TEX_W * WS_TEMP_TEX_H];
-	float le_temp = dr_getf(&drs.le_temp);
+	GLfloat temp_tex[WS_TEMP_TEX_W * WS_TEMP_TEX_H];
 
 	gi->glass = glass;
 
@@ -596,8 +642,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 	glGenTextures(2, gi->ws_temp_tex);
 	glGenFramebuffers(2, gi->ws_temp_fbo);
-	for (int i = 0; i < WS_TEMP_TEX_W * WS_TEMP_TEX_H; i++)
-		temp_tex[i] = C2KELVIN(le_temp);
+	memset(temp_tex, 0, sizeof (temp_tex));
 	for (int i = 0; i < 2; i++) {
 		setup_texture(gi->ws_temp_tex[i], GL_R32F, WS_TEMP_TEX_W,
 		    WS_TEMP_TEX_H, GL_RED, GL_FLOAT, temp_tex);
@@ -753,6 +798,7 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 	fdr_find(&drs.wind_spd, "sim/weather/wind_speed_kt");
 	fdr_find(&drs.rot_rate, "sim/flightmodel/position/R");
 	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
+	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
 
 	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);

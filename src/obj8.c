@@ -334,7 +334,8 @@ obj8_draw_group(const obj8_t *obj, const char *groupname)
 {
 	for (obj8_geom_t *geom = list_head(&obj->geom); geom != NULL;
 	    geom = list_next(&obj->geom, geom)) {
-		if (strcmp(geom->group_id, groupname) == 0) {
+		if (groupname == NULL ||
+		    strcmp(geom->group_id, groupname) == 0) {
 			if (geom->double_sided) {
 				glCullFace(GL_FRONT);
 				geom_draw(geom);
