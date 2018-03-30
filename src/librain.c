@@ -571,10 +571,15 @@ librain_draw_prepare(bool_t force)
 
 	compute_precip(now);
 
-	if (precip_intens > 0)
+	if (precip_intens > 0 || dr_getf(&drs.le_temp) <= 4)
 		last_rain_t = now;
 
-	if (now - last_rain_t > RAIN_DRAW_TIMEOUT && !force) {
+	/*
+	 * FIXME: avoid running when we don't have ice on the
+	 * windshield, even if the outside air temp is below zero.
+	 */
+	if (now - last_rain_t > RAIN_DRAW_TIMEOUT && !force &&
+	    dr_getf(&drs.le_temp) > 4) {
 		prepare_ran = B_FALSE;
 		return;
 	}
