@@ -360,7 +360,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "rand_seed"),
 	    rand_seed);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "precip_intens"),
-	    pow(dr_getf(&drs.precip_rat), 1.1));
+	    pow(precip_intens, 1.1));
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "thrust"),
 	    gi->thrust);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind"), gi->wind);
@@ -421,6 +421,8 @@ rain_stage2_comp(glass_info_t *gi)
 	glUniform2f(glGetUniformLocation(rain_stage2_prog, "wp"),
 	    gi->wp.x, gi->wp.y);
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "wind"), gi->wind);
+	glUniform1f(glGetUniformLocation(rain_stage2_prog, "precip_intens"),
+	    precip_intens);
 
 	glBegin(GL_QUADS);
 	glVertex2f(0, 0);
@@ -590,9 +592,9 @@ librain_draw_prepare(bool_t force)
 
 	glGetIntegerv(GL_VIEWPORT, vp);
 	XPLMGetScreenSize(&w, &h);
-	if (vp[3] != h) {
+	if (vp[2] != w || vp[3] != h) {
 		memcpy(saved_vp, vp, sizeof (saved_vp));
-		glViewport(vp[0], vp[1], vp[2], h);
+		glViewport(vp[0], vp[1], w, h);
 	}
 
 	VERIFY3S(dr_getvf32(&drs.acf_matrix, acf_matrix, 0, 16), ==, 16);

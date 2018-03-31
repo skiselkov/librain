@@ -24,6 +24,7 @@ uniform sampler2D	temp_tex;
 uniform vec2		my_tex_sz;
 uniform vec2		tp;
 uniform float		thrust;
+uniform float		precip_intens;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com.
@@ -82,12 +83,13 @@ main()
 	depth_up = read_depth(gl_FragCoord.xy + vec2(0, 1) * thrust_v);
 	depth_down = read_depth(gl_FragCoord.xy + vec2(0, -1) * thrust_v);
 
-	d_lr = (atan(depth_left - depth_right) / (3.1415 / 2)) + 0.5;
-	d_lr = clamp(d_lr + ice_displace.x, 0, 1);
+	d_lr = ((atan(depth_left - depth_right) / (3.1415 / 2)) *
+	    (1 + ice_displace.x)) + 0.5;
+	d_lr = clamp(d_lr + precip_intens * ice_displace.x, 0, 1);
 
-	d_ud = (atan(depth_up - depth_down) / (3.1415 / 2)) + 0.5;
-	d_ud = clamp(d_ud + ice_displace.y, 0, 1);
+	d_ud = ((atan(depth_up - depth_down) / (3.1415 / 2)) *
+	    (1 + ice_displace.y)) + 0.5;
+	d_ud = clamp(d_ud + precip_intens * ice_displace.y, 0, 1);
 
-	gl_FragColor = vec4(d_lr + ice_displace.x, d_ud + ice_displace.y,
-	    0.0, 1.0);
+	gl_FragColor = vec4(d_lr, d_ud, 0.0, 1.0);
 }

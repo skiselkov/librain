@@ -59,11 +59,11 @@ gold_noise(vec2 coordinate, float seed)
 }
 
 bool
-droplet_gen_check(vec2 pos)
+droplet_gen_check(vec2 pos, float temp_flow_coeff)
 {
 	return (gold_noise(pos, rand_seed) >
-	    (1 - precip_fact * precip_intens * precip_scale_fact *
-	    max(pow(min(1 - thrust, 1 - wind), 6), 0.25)));
+	    (1 - (precip_fact * precip_intens * precip_scale_fact *
+	    max(pow(min(1 - thrust, 1 - wind), 6), 0.25))));
 }
 
 float
@@ -96,13 +96,15 @@ main()
 		    (water_liquid_temp - water_frozen_temp);
 	}
 
-	if (droplet_gen_check(gl_FragCoord.xy)) {
+	if (droplet_gen_check(gl_FragCoord.xy, temp_flow_coeff)) {
 		new_depth = max_depth;
 		water_added = true;
-	} else if (droplet_gen_check(gl_FragCoord.xy + vec2(1, 0)) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(-1, 0)) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(0, 1)) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(0, -1))) {
+	} else if (droplet_gen_check(gl_FragCoord.xy + vec2(1, 0),
+	    temp_flow_coeff) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(-1, 0), temp_flow_coeff) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(0, 1), temp_flow_coeff) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(0, -1),
+	    temp_flow_coeff)) {
 		new_depth = max_depth / 3;
 		water_added = true;
 	} else {
@@ -136,7 +138,7 @@ main()
 
 	if (!water_added) {
 		depth = clamp(depth, 0.0, old_depth + prev_depth -
-		    max_depth * 1 / 768.0);
+		    max_depth * mix(0.0001, 0.00001, temp_flow_coeff));
 	}
 
 	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);

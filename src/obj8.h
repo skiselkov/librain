@@ -23,6 +23,7 @@
 
 #include <GL/glew.h>
 
+#include <acfutils/dr.h>
 #include <acfutils/geom.h>
 #include <acfutils/list.h>
 
@@ -30,21 +31,61 @@
 extern "C" {
 #endif
 
+typedef enum {
+	OBJ8_CMD_GROUP,
+	OBJ8_CMD_TRIS,
+	OBJ8_CMD_ANIM_HIDE_SHOW,
+	OBJ8_CMD_ANIM_TRANS,
+	OBJ8_CMD_ANIM_ROTATE,
+	OBJ8_NUM_CMDS
+} obj8_cmd_type_t;
+
 typedef struct {
+	unsigned	vtx_off;	/* offset into index table */
 	unsigned	n_vtx;		/* number of vertices in geometry */
-	GLfloat		*vtx_pos;	/* three GLfloats per vertex */
-	GLfloat		*vtx_norm;	/* three GLfloats per vertex */
-	GLfloat		*vtx_tex;	/* two GLfloats per vertex */
-	GLuint		vtx_pos_buf;
-	GLuint		vtx_norm_buf;
-	GLuint		vtx_tex_buf;
 	char		group_id[32];	/* Contents of X-GROUP-ID attribute */
 	bool_t		double_sided;
 	list_node_t	node;
 } obj8_geom_t;
 
+typedef struct obj8_cmd_s {
+	obj8_cmd_type_t		type;
+	struct obj8_cmd_s	*parent;
+	dr_t			dr;
+	int			dr_offset;
+	bool_t			null_dr;
+	union {
+		struct {
+			list_t	cmds;
+		} group;
+		struct {
+			double	val[2];
+			bool_t	set_val;
+		} hide_show;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			vect2_t	*pts;
+			vect3_t	axis;
+		} rotate;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			double	*values;
+			vect3_t	*pos;
+		} trans;
+		obj8_geom_t	tris;
+	};
+	list_node_t	list_node;
+} obj8_cmd_t;
+
 typedef struct {
-	list_t		geom;
+	void		*vtx_table;
+	GLuint		vtx_buf;
+	void		*idx_table;
+	GLuint		idx_buf;
+	vect3_t		pos_offset;
+	obj8_cmd_t	*top;
 } obj8_t;
 
 obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);

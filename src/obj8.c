@@ -22,11 +22,15 @@
 #include <errno.h>
 
 #include <acfutils/assert.h>
-#include <acfutils/log.h>
 #include <acfutils/helpers.h>
+#include <acfutils/log.h>
+#include <acfutils/math.h>
+#include <acfutils/perf.h>
 #include <acfutils/safe_alloc.h>
 
 #include "obj8.h"
+
+#define	ANIM_ALLOC_STEP	8
 
 /*
  * Apparently these are the standard vertex attribute indices:
@@ -51,30 +55,224 @@ enum {
 };
 
 typedef struct {
-	vect3_t		pos;
-	vect3_t		norm;
-	vect2_t		tex;
+	GLfloat		x;
+	GLfloat		y;
+} vec2_32f_t;
+
+typedef struct {
+	GLfloat		x;
+	GLfloat		y;
+	GLfloat		z;
+} vec3_32f_t;
+
+typedef struct {
+	vec3_32f_t	pos;
+	vec3_32f_t	norm;
+	vec2_32f_t	tex;
 } obj8_vtx_t;
+
+static void
+obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
+    unsigned off, unsigned len)
+{
+	geom->vtx_off = off;
+	geom->n_vtx = len;
+	strlcpy(geom->group_id, group_id, sizeof (geom->group_id));
+	geom->double_sided = double_sided;
+}
+
+static obj8_cmd_t *
+obj8_cmd_alloc(obj8_cmd_type_t type, obj8_cmd_t *parent)
+{
+	obj8_cmd_t *cmd = safe_calloc(1, sizeof (*cmd));
+
+	cmd->type = type;
+	cmd->parent = parent;
+	if (parent != NULL) {
+		ASSERT3U(parent->type, ==, OBJ8_CMD_GROUP);
+		list_insert_tail(&parent->group.cmds, cmd);
+	} else {
+		ASSERT3U(type, ==, OBJ8_CMD_GROUP);
+	}
+	if (type == OBJ8_CMD_GROUP) {
+		list_create(&cmd->group.cmds, sizeof (obj8_cmd_t),
+		    offsetof(obj8_cmd_t, list_node));
+	}
+
+	return (cmd);
+}
+
+static bool_t
+find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+{
+	char *bracket;
+
+	if (dr_find(dr, "%s", dr_name)) {
+		*offset = -1;
+		return (B_TRUE);
+	}
+
+	bracket = strrchr(dr_name, '[');
+	if (bracket != NULL) {
+		int cap;
+
+		*bracket = 0;
+		if (!dr_find(dr, "%s", dr_name))
+			return (B_FALSE);
+		cap = dr_getvi(dr, NULL, 0, 0);
+		if (cap == 0)
+			return (B_FALSE);
+		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
+		return (B_TRUE);
+	}
+
+	return (B_FALSE);
+}
+
+static double
+cmd_dr_read(obj8_cmd_t *cmd)
+{
+	double v = 0;
+
+	if (!cmd->null_dr) {
+		if (cmd->dr_offset > 0)
+			dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
+		else
+			v = dr_getf(&cmd->dr);
+	}
+
+	return (v);
+}
+
+static bool_t
+parse_hide_show(bool_t set_val, const char *fmt, const char *line,
+    const char *filename, int linenr, obj8_cmd_t *parent)
+{
+	char dr_name[256] = { 0 };
+	obj8_cmd_t *cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_HIDE_SHOW, parent);
+	int n = sscanf(line, fmt, &cmd->hide_show.val[0],
+	    &cmd->hide_show.val[1], dr_name);
+
+	if (n != 2 && n != 3) {
+		logMsg("%s:%d: parsing of ANIM_{hide,show} line failed",
+		    filename, linenr);
+		return (B_FALSE);
+	}
+	cmd->hide_show.set_val = set_val;
+
+	if (!find_dr_with_offset(dr_name, &cmd->dr, &cmd->dr_offset))
+		cmd->null_dr = B_TRUE;
+
+	return (B_TRUE);
+}
+
+static bool_t
+anim_group_check(obj8_cmd_t *cmd, obj8_cmd_type_t type, const char *name,
+    const char *filename, int linenr)
+{
+	if (cmd == NULL) {
+		logMsg("%s:%d: failed to parse ANIM_%s_key, NOT inside "
+		    "existing animation group", filename, linenr, name);
+		return (B_FALSE);
+	}
+	if (cmd->type != type) {
+		logMsg("%s:%d: failed to parse ANIM_%s_key, NOT inside "
+		    "ANIM_%s_begin anim group", filename, linenr, name, name);
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
+}
+
+static bool_t
+parse_trans_key(const char *line, obj8_cmd_t *cmd, const char *filename,
+    int linenr)
+{
+	size_t n;
+
+	if (!anim_group_check(cmd, OBJ8_CMD_ANIM_TRANS, "trans",
+	    filename, linenr))
+		return (B_FALSE);
+
+	if (cmd->trans.n_pts_cap == cmd->trans.n_pts) {
+		int new_cap = cmd->trans.n_pts_cap + ANIM_ALLOC_STEP;
+
+		cmd->trans.values = realloc(cmd->trans.values,
+		    new_cap * sizeof (*cmd->trans.values));
+		cmd->trans.pos = realloc(cmd->trans.pos,
+		    new_cap * sizeof (*cmd->trans.pos));
+		cmd->trans.n_pts_cap = new_cap;
+	}
+	n = cmd->trans.n_pts;
+	cmd->trans.n_pts++;
+	if (sscanf(line, "ANIM_trans_key %lf %lf %lf %lf",
+	    &cmd->trans.values[n], &cmd->trans.pos[n].x,
+	    &cmd->trans.pos[n].y, &cmd->trans.pos[n].z) != 4) {
+		logMsg("%s:%d: failed to parse ANIM_trans_key",
+		    filename, linenr);
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
+}
+
+static bool_t
+parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
+    int linenr)
+{
+	size_t n;
+
+	if (!anim_group_check(cmd, OBJ8_CMD_ANIM_ROTATE, "rotate",
+	    filename, linenr))
+		return (B_FALSE);
+
+	if (cmd->rotate.n_pts_cap == cmd->rotate.n_pts) {
+		int new_cap = cmd->rotate.n_pts_cap + ANIM_ALLOC_STEP;
+
+		cmd->rotate.pts = realloc(cmd->rotate.pts,
+		    new_cap * sizeof (*cmd->rotate.pts));
+		cmd->rotate.n_pts_cap = new_cap;
+	}
+	n = cmd->rotate.n_pts;
+	cmd->rotate.n_pts++;
+	if (sscanf(line, "ANIM_rotate_key %lf %lf",
+	    &cmd->rotate.pts[n].x, &cmd->rotate.pts[n].y) != 2) {
+		logMsg("%s:%d: failed to parse ANIM_rotate_key",
+		    filename, linenr);
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
+}
 
 static obj8_t *
 obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 {
-	obj8_t		*obj = safe_calloc(1, sizeof (*obj));
+	obj8_t		*obj;
 	obj8_vtx_t	*vtx_table = NULL;
-	unsigned	*idx_table = NULL;
-	unsigned	vtx_cap = 0;
-	unsigned	idx_cap = 0;
+	GLuint		*idx_table = NULL;
+	GLuint		vtx_cap = 0;
+	GLuint		idx_cap = 0;
 	char		*line = NULL;
 	size_t		cap = 0;
 	unsigned	cur_vtx = 0;
 	unsigned	cur_idx = 0;
 	char		group_id[32] = { 0 };
 	bool_t		double_sided = B_FALSE;
+	dr_t		cgY_orig, cgZ_orig;
+	obj8_cmd_t	*cur_cmd = NULL;
+	obj8_cmd_t	*cur_anim = NULL;
 
+	fdr_find(&cgY_orig, "sim/aircraft/weight/acf_cgY_original");
+	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
+
+	/* Make sure outside GL errors don't confuse us */
 	(void) glGetError();
 
-	list_create(&obj->geom, sizeof (obj8_geom_t),
-	    offsetof(obj8_geom_t, node));
+	obj = safe_calloc(1, sizeof (*obj));
+	obj->top = cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, NULL);
+	obj->pos_offset = vect3_add(pos_offset, VECT3(0,
+	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))));
 
 	for (int linenr = 1; getline(&line, &cap, fp) > 0; linenr++) {
 		strip_space(line);
@@ -87,7 +285,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				goto errout;
 			}
 			vtx = &vtx_table[cur_vtx];
-			if (sscanf(line, "VT %lf %lf %lf %lf %lf %lf %lf %lf",
+			if (sscanf(line, "VT %f %f %f %f %f %f %f %f",
 			    &vtx->pos.x, &vtx->pos.y, &vtx->pos.z,
 			    &vtx->norm.x, &vtx->norm.y, &vtx->norm.z,
 			    &vtx->tex.x, &vtx->tex.y) != 8) {
@@ -139,7 +337,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			}
 			cur_idx++;
 		} else if (strncmp(line, "TRIS", 4) == 0) {
-			obj8_geom_t *geom;
+			obj8_cmd_t *cmd;
 			unsigned off, len;
 
 			if (sscanf(line, "TRIS %u %u", &off, &len) != 2) {
@@ -152,69 +350,134 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				    filename, linenr);
 				goto errout;
 			}
-			geom = safe_calloc(1, sizeof (*geom));
-			geom->n_vtx = len;
-			geom->vtx_pos = safe_calloc(len * 3,
-			    sizeof (*geom->vtx_pos));
-			geom->vtx_norm = safe_calloc(len * 3,
-			    sizeof (*geom->vtx_norm));
-			geom->vtx_tex = safe_calloc(len * 2,
-			    sizeof (*geom->vtx_tex));
-			strncpy(geom->group_id, group_id,
-			    sizeof (geom->group_id));
-			geom->double_sided = double_sided;
-
-			for (unsigned i = 0; i < len; i++) {
-				geom->vtx_pos[i * 3 + 0] = pos_offset.x +
-				    vtx_table[idx_table[off + i]].pos.x;
-				geom->vtx_pos[i * 3 + 1] = pos_offset.y +
-				    vtx_table[idx_table[off + i]].pos.y;
-				geom->vtx_pos[i * 3 + 2] = pos_offset.z +
-				    vtx_table[idx_table[off + i]].pos.z;
-
-				geom->vtx_norm[i * 3 + 0] =
-				    vtx_table[idx_table[off + i]].norm.x;
-				geom->vtx_norm[i * 3 + 1] =
-				    vtx_table[idx_table[off + i]].norm.y;
-				geom->vtx_norm[i * 3 + 2] =
-				    vtx_table[idx_table[off + i]].norm.z;
-
-				geom->vtx_tex[i * 2 + 0] =
-				    vtx_table[idx_table[off + i]].tex.x;
-				geom->vtx_tex[i * 2 + 1] =
-				    vtx_table[idx_table[off + i]].tex.y;
+			cmd = obj8_cmd_alloc(OBJ8_CMD_TRIS, cur_cmd);
+			obj8_geom_init(&cmd->tris, group_id, double_sided,
+			    off, len);
+		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
+			cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, cur_cmd);
+		} else if (strncmp(line, "ANIM_end", 10) == 0) {
+			if (cur_cmd->parent == NULL) {
+				logMsg("%s:%d: invalid ANIM_end, not inside "
+				    "an animation group.", filename, linenr);
+				goto errout;
 			}
+			cur_cmd = cur_cmd->parent;
+		} else if (strncmp(line, "ANIM_show", 9) == 0) {
+			if (!parse_hide_show(B_TRUE, "ANIM_show %lf %lf %255s",
+			    line, filename, linenr, cur_cmd))
+				goto errout;
+		} else if (strncmp(line, "ANIM_hide", 9) == 0) {
+			if (!parse_hide_show(B_FALSE, "ANIM_hide %lf %lf %255s",
+			    line, filename, linenr, cur_cmd))
+				goto errout;
+		} else if (strncmp(line, "ANIM_trans_begin", 16) == 0) {
+			char dr_name[256];
+			obj8_cmd_t *cmd;
 
-			glGenBuffers(1, &geom->vtx_pos_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBindBuffer(GL_ARRAY_BUFFER, geom->vtx_pos_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBufferData(GL_ARRAY_BUFFER,
-			    3 * len * sizeof (GLfloat), geom->vtx_pos,
-			    GL_STATIC_DRAW);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
+			if (cur_anim != NULL) {
+				logMsg("%s:%d: failed to parse "
+				    "ANIM_trans_begin, inside existing "
+				    "anim group", filename, linenr);
+				goto errout;
+			}
+			if (sscanf(line, "ANIM_trans_begin %255s", dr_name) !=
+			    1) {
+				logMsg("%s:%d: failed to parse "
+				    "ANIM_trans_begin", filename, linenr);
+				goto errout;
+			}
+			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
+			if (!find_dr_with_offset(dr_name, &cmd->dr,
+			    &cmd->dr_offset)) {
+				cmd->null_dr = B_TRUE;
+			}
+			cur_anim = cmd;
+		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
+			char dr_name[256];
+			obj8_cmd_t *cmd;
 
-			glGenBuffers(1, &geom->vtx_norm_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBindBuffer(GL_ARRAY_BUFFER, geom->vtx_norm_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBufferData(GL_ARRAY_BUFFER,
-			    3 * len * sizeof (GLfloat), geom->vtx_norm,
-			    GL_STATIC_DRAW);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
+			if (cur_anim != NULL) {
+				logMsg("%s:%d: failed to parse "
+				    "ANIM_rotate_begin, inside existing "
+				    "anim group", filename, linenr);
+				goto errout;
+			}
+			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_ROTATE, cur_cmd);
+			if (sscanf(line, "ANIM_rotate_begin %lf %lf %lf %255s",
+			    &cmd->rotate.axis.x, &cmd->rotate.axis.y,
+			    &cmd->rotate.axis.z, dr_name) != 4) {
+				logMsg("%s:%d: failed to parse "
+				    "ANIM_rotate_begin", filename, linenr);
+				goto errout;
+			}
+			if (!find_dr_with_offset(dr_name, &cmd->dr,
+			    &cmd->dr_offset)) {
+				cmd->null_dr = B_TRUE;
+			}
+			cur_anim = cmd;
+		} else if (strncmp(line, "ANIM_trans_end", 14) == 0 ||
+		    strncmp(line, "ANIM_rotate_end", 15) == 0) {
+			if (cur_anim == NULL) {
+				logMsg("%s:%d: failed to parse "
+				    "ANIM_{rotate,trans}_end, NOT inside "
+				    "existing anim group", filename, linenr);
+				goto errout;
+			}
+			cur_anim = NULL;
+		} else if (strncmp(line, "ANIM_trans_key", 14) == 0) {
+			if (!parse_trans_key(line, cur_anim, filename, linenr))
+				goto errout;
+		} else if (strncmp(line, "ANIM_rotate_key", 15) == 0) {
+			if (!parse_rotate_key(line, cur_anim, filename, linenr))
+				goto errout;
+		} else if (strncmp(line, "ANIM_trans", 10) == 0) {
+			char dr_name[256] = { 0 };
+			obj8_cmd_t *cmd;
 
-			glGenBuffers(1, &geom->vtx_tex_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBindBuffer(GL_ARRAY_BUFFER, geom->vtx_tex_buf);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
-			glBufferData(GL_ARRAY_BUFFER,
-			    2 * len * sizeof (GLfloat), geom->vtx_tex,
-			    GL_STATIC_DRAW);
-			ASSERT3U(glGetError(), ==, GL_NO_ERROR);
+			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
+			cmd->trans.n_pts = 2;
+			cmd->trans.n_pts_cap = 2;
+			cmd->trans.values =
+			    calloc(sizeof (*cmd->trans.values), 2);
+			cmd->trans.pos = calloc(sizeof (*cmd->trans.pos), 2);
+			if (sscanf(line, "ANIM_trans %lf %lf %lf %lf %lf %lf "
+			    "%lf %lf %255s",
+			    &cmd->trans.pos[0].x, &cmd->trans.pos[0].y,
+			    &cmd->trans.pos[0].z, &cmd->trans.pos[1].x,
+			    &cmd->trans.pos[1].y, &cmd->trans.pos[1].z,
+			    &cmd->trans.values[0], &cmd->trans.values[1],
+			    dr_name) != 9) {
+				logMsg("%s:%d: failed to parse ANIM_trans",
+				    filename, linenr);
+				goto errout;
+			}
+			if (!find_dr_with_offset(dr_name, &cmd->dr,
+			    &cmd->dr_offset)) {
+				cmd->null_dr = B_TRUE;
+			}
+		} else if (strncmp(line, "ANIM_rotate", 11) == 0) {
+			char dr_name[256] = { 0 };
+			obj8_cmd_t *cmd;
 
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-			list_insert_tail(&obj->geom, geom);
+			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_ROTATE, cur_cmd);
+			cmd->rotate.n_pts = 2;
+			cmd->rotate.n_pts_cap = 2;
+			cmd->rotate.pts = calloc(sizeof (*cmd->rotate.pts), 2);
+			if (sscanf(line, "ANIM_rotate %lf %lf %lf %lf %lf "
+			    "%lf %lf %255s",
+			    &cmd->rotate.axis.x, &cmd->rotate.axis.y,
+			    &cmd->rotate.axis.z,
+			    &cmd->rotate.pts[0].y, &cmd->rotate.pts[1].y,
+			    &cmd->rotate.pts[0].x, &cmd->rotate.pts[1].x,
+			    dr_name) != 8) {
+				logMsg("%s:%d: failed to parse ANIM_trans",
+				    filename, linenr);
+				goto errout;
+			}
+			if (!find_dr_with_offset(dr_name, &cmd->dr,
+			    &cmd->dr_offset)) {
+				cmd->null_dr = B_TRUE;
+			}
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -241,8 +504,21 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 		}
 	}
 
-	free(vtx_table);
-	free(idx_table);
+	obj->vtx_table = vtx_table;
+	obj->idx_table = idx_table;
+
+	glGenBuffers(1, &obj->vtx_buf);
+	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+	glBufferData(GL_ARRAY_BUFFER, vtx_cap * sizeof (*vtx_table),
+	    obj->vtx_table, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glGenBuffers(1, &obj->idx_buf);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_cap * sizeof (*idx_table),
+	    obj->idx_table, GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
 	free(line);
 
 	return (obj);
@@ -271,79 +547,183 @@ obj8_parse(const char *filename, vect3_t pos_offset)
 	return (obj);
 }
 
+static void
+obj8_cmd_free(obj8_cmd_t *cmd)
+{
+	switch (cmd->type) {
+	case OBJ8_CMD_GROUP: {
+		obj8_cmd_t *subcmd;
+
+		while ((subcmd = list_remove_head(&cmd->group.cmds)) != NULL)
+			obj8_cmd_free(subcmd);
+		list_destroy(&cmd->group.cmds);
+		break;
+	}
+	case OBJ8_CMD_TRIS:
+	case OBJ8_CMD_ANIM_HIDE_SHOW:
+		break;
+	case OBJ8_CMD_ANIM_TRANS:
+		free(cmd->trans.values);
+		free(cmd->trans.pos);
+		break;
+	case OBJ8_CMD_ANIM_ROTATE:
+		free(cmd->rotate.pts);
+		break;
+	default:
+		VERIFY(0);
+	}
+	free(cmd);
+}
+
 void
 obj8_free(obj8_t *obj)
 {
-	obj8_geom_t *geom;
+	obj8_cmd_free(obj->top);
 
-	while ((geom = list_remove_head(&obj->geom)) != NULL) {
-		free(geom->vtx_pos);
-		free(geom->vtx_norm);
-		free(geom->vtx_tex);
-		if (geom->vtx_pos_buf != 0)
-			glDeleteBuffers(1, &geom->vtx_pos_buf);
-		if (geom->vtx_norm_buf != 0)
-			glDeleteBuffers(1, &geom->vtx_norm_buf);
-		if (geom->vtx_tex_buf != 0)
-			glDeleteBuffers(1, &geom->vtx_tex_buf);
-		free(geom);
-	}
-	list_destroy(&obj->geom);
+	if (obj->vtx_buf != 0)
+		glDeleteBuffers(1, &obj->vtx_buf);
+	free(obj->vtx_table);
+	if (obj->idx_buf != 0)
+		glDeleteBuffers(1, &obj->idx_buf);
+	free(obj->idx_table);
 
 	free(obj);
 }
 
 static void
-geom_buf_impl(GLuint attr_idx, GLuint buf, GLuint size, GLuint stride)
+geom_draw(const obj8_t *obj, const obj8_geom_t *geom)
 {
-	glBindBuffer(GL_ARRAY_BUFFER, buf);
-	glEnableVertexAttribArray(attr_idx);
-	glVertexAttribPointer(attr_idx, size, GL_FLOAT, GL_FALSE, stride, NULL);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+
+	glVertexAttribPointer(VTX_ATTRIB_POS, 3, GL_FLOAT, GL_FALSE,
+	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
+	glVertexAttribPointer(VTX_ATTRIB_NORM, 3, GL_FLOAT, GL_FALSE,
+	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, norm)));
+	glVertexAttribPointer(VTX_ATTRIB_TEX0, 2, GL_FLOAT, GL_FALSE,
+	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, tex)));
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
+
+	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
+	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
 
-static void
-geom_buf_pos(const obj8_geom_t *geom)
+void
+obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 {
-	geom_buf_impl(VTX_ATTRIB_POS, geom->vtx_pos_buf, 3, 0);
-}
+	bool_t do_show = B_TRUE;
 
-static void
-geom_buf_norm(const obj8_geom_t *geom)
-{
-	geom_buf_impl(VTX_ATTRIB_NORM, geom->vtx_norm_buf, 3, 0);
-}
+	UNUSED(obj);
+	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
 
-static void
-geom_buf_tex0(const obj8_geom_t *geom)
-{
-	geom_buf_impl(VTX_ATTRIB_TEX0, geom->vtx_tex_buf, 2, 0);
-}
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
 
-static void
-geom_draw(const obj8_geom_t *geom)
-{
-	geom_buf_pos(geom);
-	geom_buf_norm(geom);
-	geom_buf_tex0(geom);
-	glDrawArrays(GL_TRIANGLES, 0, geom->n_vtx);
+	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
+	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
+		switch (subcmd->type) {
+		case OBJ8_CMD_GROUP:
+			if (!do_show)
+				break;
+			obj8_draw_group_cmd(obj, subcmd, groupname);
+			break;
+		case OBJ8_CMD_TRIS:
+			if (!do_show)
+				break;
+			if (groupname == NULL ||
+			    strcmp(subcmd->tris.group_id, groupname) == 0) {
+				if (subcmd->tris.double_sided) {
+					glCullFace(GL_FRONT);
+					geom_draw(obj, &subcmd->tris);
+					glCullFace(GL_BACK);
+				}
+				geom_draw(obj, &subcmd->tris);
+			}
+			break;
+		case OBJ8_CMD_ANIM_HIDE_SHOW: {
+			double val = cmd_dr_read(subcmd);
+
+			if (subcmd->hide_show.val[0] <= val &&
+			    subcmd->hide_show.val[1] >= val)
+				do_show = subcmd->hide_show.set_val;
+			break;
+		}
+		case OBJ8_CMD_ANIM_ROTATE: {
+			double val = cmd_dr_read(subcmd);
+			double angle = 0;
+
+			for (size_t i = 0; i + 1 < subcmd->rotate.n_pts; i++) {
+				double v1 = MIN(subcmd->rotate.pts[i].x,
+				    subcmd->rotate.pts[i + 1].x);
+				double v2 = MAX(subcmd->rotate.pts[i].x,
+				    subcmd->rotate.pts[i + 1].x);
+				if (v1 <= val && val <= v2) {
+					double rat = (val - v1) / (v2 - v1);
+
+					angle = wavg(subcmd->rotate.pts[i].y,
+					    subcmd->rotate.pts[i + 1].y, rat);
+					break;
+				}
+			}
+
+			glRotated(angle, subcmd->rotate.axis.x,
+			    subcmd->rotate.axis.y, subcmd->rotate.axis.z);
+			break;
+		}
+		case OBJ8_CMD_ANIM_TRANS: {
+			double val = cmd_dr_read(subcmd);
+			vect3_t xlate = ZERO_VECT3;
+
+			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
+				double v1 = MIN(subcmd->trans.values[i],
+				    subcmd->trans.values[i + 1]);
+				double v2 = MAX(subcmd->trans.values[i],
+				    subcmd->trans.values[i + 1]);
+				if (v1 <= val && val <= v2) {
+					double rat = (v2 - v1 != 0.0 ?
+					    (val - v1) / (v2 - v1) : 0.0);
+
+					xlate = VECT3(
+					    wavg(subcmd->trans.pos[i].x,
+					    subcmd->trans.pos[i + 1].x, rat),
+					    wavg(subcmd->trans.pos[i].y,
+					    subcmd->trans.pos[i + 1].y, rat),
+					    wavg(subcmd->trans.pos[i].z,
+					    subcmd->trans.pos[i + 1].z, rat));
+					break;
+				}
+			}
+
+			glTranslated(xlate.x, xlate.y, xlate.z);
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
 }
 
 void
 obj8_draw_group(const obj8_t *obj, const char *groupname)
 {
-	for (obj8_geom_t *geom = list_head(&obj->geom); geom != NULL;
-	    geom = list_next(&obj->geom, geom)) {
-		if (groupname == NULL ||
-		    strcmp(geom->group_id, groupname) == 0) {
-			if (geom->double_sided) {
-				glCullFace(GL_FRONT);
-				geom_draw(geom);
-				glCullFace(GL_BACK);
-			}
-			geom_draw(geom);
-		}
-	}
+	glEnableVertexAttribArray(VTX_ATTRIB_POS);
+	glEnableVertexAttribArray(VTX_ATTRIB_NORM);
+	glEnableVertexAttribArray(VTX_ATTRIB_TEX0);
+
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glTranslatef(obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z);
+
+	obj8_draw_group_cmd(obj, obj->top, groupname);
+
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	glDisableVertexAttribArray(VTX_ATTRIB_POS);
 	glDisableVertexAttribArray(VTX_ATTRIB_NORM);
 	glDisableVertexAttribArray(VTX_ATTRIB_TEX0);
