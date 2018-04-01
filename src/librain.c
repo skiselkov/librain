@@ -302,7 +302,7 @@ ws_temp_comp(glass_info_t *gi)
 	glUniform1fv(glGetUniformLocation(ws_temp_prog, "heat_tgt_temps"),
 	    4, gi->glass->heat_tgt_temps);
 	glUniform1f(glGetUniformLocation(ws_temp_prog, "precip_intens"),
-	    dr_getf(&drs.precip_rat));
+	    precip_intens * gi->glass->slant_factor);
 	glUniform2fv(glGetUniformLocation(ws_temp_prog, "hot_air_src"),
 	    4, gi->glass->hot_air_src);
 	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_radius"),
@@ -360,7 +360,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "rand_seed"),
 	    rand_seed);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "precip_intens"),
-	    pow(precip_intens, 1.1));
+	    precip_intens * gi->glass->slant_factor);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "thrust"),
 	    gi->thrust);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind"), gi->wind);
@@ -422,7 +422,9 @@ rain_stage2_comp(glass_info_t *gi)
 	    gi->wp.x, gi->wp.y);
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "wind"), gi->wind);
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "precip_intens"),
-	    precip_intens);
+	    precip_intens * gi->glass->slant_factor);
+	glUniform1f(glGetUniformLocation(rain_stage2_prog, "window_ice"),
+	    dr_getf(&drs.window_ice));
 
 	glBegin(GL_QUADS);
 	glVertex2f(0, 0);

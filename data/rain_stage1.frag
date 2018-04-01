@@ -44,7 +44,7 @@ const float PHI = 1.61803398874989484820459 * 00000.1;	/* Golden Ratio */
 const float PI  = 3.14159265358979323846264 * 00000.1;	/* PI */
 const float SQ2 = 1.41421356237309504880169 * 10000.0;	/* Square Root of Two */
 const float max_depth = 3.0;
-const float precip_fact = 0.14;
+const float precip_fact = 0.1;
 const float gravity_factor = 0.05;
 const float precip_scale_fact = 0.02;
 const float temp_scale_fact = 400.0;
@@ -63,7 +63,7 @@ droplet_gen_check(vec2 pos, float temp_flow_coeff)
 {
 	return (gold_noise(pos, rand_seed) >
 	    (1 - (precip_fact * precip_intens * precip_scale_fact *
-	    max(pow(min(1 - thrust, 1 - wind), 6), 0.25))));
+	    max(pow(min(1 - thrust, 1 - wind), 1), 0.35))));
 }
 
 float
@@ -114,9 +114,10 @@ main()
 
 	depth += new_depth;
 
-	old_depth = read_depth(gl_FragCoord.xy);
-	depth += old_depth * (0.39 + 0.05 * (1 - temp_flow_coeff) *
+	old_depth = read_depth(gl_FragCoord.xy) *
+	    (0.39 + 0.05 * (1 - temp_flow_coeff) *
 	    mix(0.01, 1, max(thrust, wind)));
+	depth += old_depth;
 
 	gp_dir = (gl_FragCoord.xy - gp);
 	gp_dir = gp_dir / length(gp_dir);
@@ -128,8 +129,9 @@ main()
 	wp_dir = wp_dir / length(wp_dir);
 
 	prev_pos = gl_FragCoord.xy -
-	    ((gp_dir * (gravity_factor * (gravity + precip_intens)) +
-	    tp_dir * thrust + wp_dir * wind) * tex_sz * d_t * temp_flow_coeff);
+	    ((gp_dir * (gravity_factor * gravity * pow(precip_intens, 2)) +
+	    tp_dir * pow(thrust, 1.25) + wp_dir * pow(wind, 1.5)) *
+	    tex_sz * d_t * temp_flow_coeff);
 	prev_depth = read_depth(prev_pos);
 
 	blowaway_fact = 0.6 - thrust * 0.1;
@@ -137,8 +139,9 @@ main()
 	depth += prev_depth * blowaway_fact;
 
 	if (!water_added) {
-		depth = clamp(depth, 0.0, old_depth + prev_depth -
-		    max_depth * mix(0.0001, 0.00001, temp_flow_coeff));
+		depth = clamp(depth, 0.0,
+		    min(old_depth + prev_depth, max_depth) -
+		    max_depth * mix(1, 0.000001, temp_flow_coeff));
 	}
 
 	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);

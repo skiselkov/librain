@@ -25,6 +25,7 @@ uniform vec2		my_tex_sz;
 uniform vec2		tp;
 uniform float		thrust;
 uniform float		precip_intens;
+uniform float		window_ice;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com.
@@ -66,6 +67,7 @@ main()
 	    temp_scale_fact;
 	vec2 thrust_v = (gl_FragCoord.xy - tp);
 	vec2 ice_displace = vec2(0, 0);
+	float window_ice_fact = sqrt(min(window_ice, 1));
 
 	if (temp < water_liquid_temp) {
 		float fact = min((temp - water_liquid_temp) /
@@ -85,11 +87,11 @@ main()
 
 	d_lr = ((atan(depth_left - depth_right) / (3.1415 / 2)) *
 	    (1 + ice_displace.x)) + 0.5;
-	d_lr = clamp(d_lr + precip_intens * ice_displace.x, 0, 1);
+	d_lr = clamp(d_lr + window_ice_fact * ice_displace.x, 0, 1);
 
 	d_ud = ((atan(depth_up - depth_down) / (3.1415 / 2)) *
 	    (1 + ice_displace.y)) + 0.5;
-	d_ud = clamp(d_ud + precip_intens * ice_displace.y, 0, 1);
+	d_ud = clamp(d_ud + window_ice_fact * ice_displace.y, 0, 1);
 
 	gl_FragColor = vec4(d_lr, d_ud, 0.0, 1.0);
 }

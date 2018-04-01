@@ -30,6 +30,8 @@ typedef struct {
 	const obj8_t	*obj;
 	const char	**group_ids;
 
+	double		slant_factor;
+
 	vect2_t		thrust_point;
 	double		thrust_factor;
 	double		max_thrust;
