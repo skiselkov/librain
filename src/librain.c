@@ -140,17 +140,32 @@ static struct {
 #define	RAIN_COMP_BEFORE	0
 
 static void
-setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data)
+setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
+    GLsizei height, GLenum format, GLenum type, const GLvoid *data,
+    GLint mag_filter, GLint min_filter)
 {
 	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	if (mag_filter != 0) {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+		    mag_filter);
+	}
+	if (min_filter != 0) {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+		    min_filter);
+	}
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0, format,
 	    type, data);
+}
+
+static void
+setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
+    GLsizei height, GLenum format, GLenum type, const GLvoid *data)
+{
+	setup_texture_filter(tex, int_fmt, width,
+	    height, format, type, data, GL_LINEAR, GL_LINEAR);
 }
 
 static void
@@ -435,6 +450,9 @@ rain_stage2_comp(glass_info_t *gi)
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
+	XPLMBindTexture2d(gi->water_norm_tex, GL_TEXTURE_2D);
+	glGenerateMipmap(GL_TEXTURE_2D);
+
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
 
@@ -677,8 +695,10 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 	glGenTextures(1, &gi->water_norm_tex);
 	glGenFramebuffers(1, &gi->water_norm_fbo);
-	setup_texture(gi->water_norm_tex, GL_RG, WATER_NORM_TEX_W,
-	    WATER_NORM_TEX_H, GL_RG, GL_UNSIGNED_BYTE, NULL);
+
+	setup_texture_filter(gi->water_norm_tex, GL_RG,
+	    WATER_NORM_TEX_W, WATER_NORM_TEX_H, GL_RG, GL_UNSIGNED_BYTE,
+	    NULL, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex);
 
 	/*

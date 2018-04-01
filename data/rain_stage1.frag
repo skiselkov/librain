@@ -49,7 +49,7 @@ const float gravity_factor = 0.05;
 const float precip_scale_fact = 0.02;
 const float temp_scale_fact = 400.0;
 const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
-const float water_frozen_temp = 273 - 3;	/* -3 degrees C */
+const float water_frozen_temp = 273 - 2;	/* -3 degrees C */
 
 float
 gold_noise(vec2 coordinate, float seed)
@@ -141,7 +141,7 @@ main()
 	if (!water_added) {
 		depth = clamp(depth, 0.0,
 		    min(old_depth + prev_depth, max_depth) -
-		    max_depth * mix(1, 0.000001, temp_flow_coeff));
+		    max_depth * mix(0.0000001, 0.0001, temp_flow_coeff));
 	}
 
 	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
