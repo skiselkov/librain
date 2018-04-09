@@ -38,8 +38,6 @@ uniform float		wind;
  *  - works with all chipsets (including low precision)
  */
 
-precision lowp float;
-
 const float PHI = 1.61803398874989484820459 * 00000.1;	/* Golden Ratio */
 const float PI  = 3.14159265358979323846264 * 00000.1;	/* PI */
 const float SQ2 = 1.41421356237309504880169 * 10000.0;	/* Square Root of Two */
@@ -141,7 +139,7 @@ main()
 	if (!water_added) {
 		depth = clamp(depth, 0.0,
 		    min(old_depth + prev_depth, max_depth) -
-		    max_depth * mix(0.0000001, 0.0001, temp_flow_coeff));
+		    max_depth * mix(0.00001, 0.0001, temp_flow_coeff));
 	}
 
 	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
