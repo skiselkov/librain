@@ -27,6 +27,7 @@
 #include <acfutils/math.h>
 #include <acfutils/perf.h>
 #include <acfutils/safe_alloc.h>
+#include <acfutils/shader.h>
 
 #include "obj8.h"
 
@@ -73,12 +74,21 @@ typedef struct {
 
 static void
 obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
-    unsigned off, unsigned len)
+    unsigned off, unsigned len, GLuint vtx_cap, const GLuint *idx_table,
+    GLuint idx_cap)
 {
 	geom->vtx_off = off;
 	geom->n_vtx = len;
 	strlcpy(geom->group_id, group_id, sizeof (geom->group_id));
 	geom->double_sided = double_sided;
+
+	for (GLuint x = geom->vtx_off; x < geom->vtx_off + geom->n_vtx; x++) {
+		GLuint idx;
+
+		ASSERT3U(x, <, idx_cap);
+		idx = idx_table[x];
+		ASSERT3U(idx, <, vtx_cap);
+	}
 }
 
 static obj8_cmd_t *
@@ -352,7 +362,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			}
 			cmd = obj8_cmd_alloc(OBJ8_CMD_TRIS, cur_cmd);
 			obj8_geom_init(&cmd->tris, group_id, double_sided,
-			    off, len);
+			    off, len, vtx_cap, idx_table, idx_cap);
 		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
 			cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, cur_cmd);
 		} else if (strncmp(line, "ANIM_end", 10) == 0) {
@@ -709,6 +719,8 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 void
 obj8_draw_group(const obj8_t *obj, const char *groupname)
 {
+	glutils_disable_all_client_state();
+
 	glEnableVertexAttribArray(VTX_ATTRIB_POS);
 	glEnableVertexAttribArray(VTX_ATTRIB_NORM);
 	glEnableVertexAttribArray(VTX_ATTRIB_TEX0);
