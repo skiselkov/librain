@@ -27,6 +27,7 @@
 #include <acfutils/assert.h>
 #include <acfutils/crc64.h>
 #include <acfutils/dr.h>
+#include <acfutils/glutils.h>
 #include <acfutils/math.h>
 #include <acfutils/perf.h>
 #include <acfutils/png.h>
@@ -91,11 +92,13 @@ typedef struct {
 	int			water_depth_cur;
 	GLuint			water_depth_tex[2];
 	GLuint			water_depth_fbo[2];
+	glutils_quads_t		water_depth_quads;
 
 #define	WATER_NORM_TEX_W	1024
 #define	WATER_NORM_TEX_H	1024
 	GLuint			water_norm_tex;
 	GLuint			water_norm_fbo;
+	glutils_quads_t		water_norm_quads;
 
 #define	WS_TEMP_TEX_W		256
 #define	WS_TEMP_TEX_H		256
@@ -104,6 +107,7 @@ typedef struct {
 	GLuint			ws_temp_tex[2];
 	GLuint			ws_temp_fbo[2];
 	int			ws_temp_cur;
+	glutils_quads_t		ws_temp_quads;
 
 	GLuint			ws_smudge_tex;
 	GLuint			ws_smudge_fbo;
@@ -325,12 +329,7 @@ ws_temp_comp(glass_info_t *gi)
 	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_temp"),
 	    2, gi->glass->hot_air_temp);
 
-	glBegin(GL_QUADS);
-	glVertex2f(0, 0);
-	glVertex2f(0, WS_TEMP_TEX_H);
-	glVertex2f(WS_TEMP_TEX_W, WS_TEMP_TEX_H);
-	glVertex2f(WS_TEMP_TEX_W, 0);
-	glEnd();
+	glutils_draw_2D_quads(&gi->ws_temp_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -389,12 +388,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glUniform2f(glGetUniformLocation(rain_stage1_prog, "wp"),
 	    gi->wp.x, gi->wp.y);
 
-	glBegin(GL_QUADS);
-	glVertex2f(0, 0);
-	glVertex2f(0, WATER_DEPTH_TEX_H);
-	glVertex2f(WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H);
-	glVertex2f(WATER_DEPTH_TEX_W, 0);
-	glEnd();
+	glutils_draw_2D_quads(&gi->water_depth_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -441,12 +435,7 @@ rain_stage2_comp(glass_info_t *gi)
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "window_ice"),
 	    dr_getf(&drs.window_ice));
 
-	glBegin(GL_QUADS);
-	glVertex2f(0, 0);
-	glVertex2f(0, WATER_NORM_TEX_H);
-	glVertex2f(WATER_NORM_TEX_W, WATER_NORM_TEX_H);
-	glVertex2f(WATER_NORM_TEX_W, 0);
-	glEnd();
+	glutils_draw_2D_quads(&gi->water_norm_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -467,6 +456,7 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
 		return (1);
 
+	glutils_disable_all_client_state();
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
 
@@ -484,6 +474,8 @@ static void
 draw_ws_effects(glass_info_t *gi)
 {
 	GLint old_fbo;
+
+	glutils_disable_all_client_state();
 
 	/*
 	 * Pre-stage: render the actual image to a side buffer, but without
@@ -661,6 +653,20 @@ static void
 glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 {
 	GLfloat temp_tex[WS_TEMP_TEX_W * WS_TEMP_TEX_H];
+	vect2_t ws_temp_pos[] = {
+	    VECT2(0, 0), VECT2(0, WS_TEMP_TEX_H),
+	    VECT2(WS_TEMP_TEX_W, WS_TEMP_TEX_H), VECT2(WS_TEMP_TEX_W, 0)
+	};
+	vect2_t water_depth_pos[] = {
+	    VECT2(0, 0), VECT2(0, WATER_DEPTH_TEX_H),
+	    VECT2(WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H),
+	    VECT2(WATER_DEPTH_TEX_W, 0)
+	};
+	vect2_t water_norm_pos[] = {
+	    VECT2(0, 0), VECT2(0, WATER_NORM_TEX_H),
+	    VECT2(WATER_NORM_TEX_W, WATER_NORM_TEX_H),
+	    VECT2(WATER_NORM_TEX_W, 0)
+	};
 
 	gi->glass = glass;
 
@@ -676,6 +682,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		setup_color_fbo_for_tex(gi->ws_temp_fbo[i],
 		    gi->ws_temp_tex[i]);
 	}
+	glutils_init_2D_quads(&gi->ws_temp_quads, ws_temp_pos, NULL, 4);
 
 	/*
 	 * Stage 1: computing water depth.
@@ -689,6 +696,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
 		    gi->water_depth_tex[i]);
 	}
+	glutils_init_2D_quads(&gi->water_depth_quads, water_depth_pos, NULL, 4);
 
 	/*
 	 * Stage 2: computing normals.
@@ -700,6 +708,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    WATER_NORM_TEX_W, WATER_NORM_TEX_H, GL_RG, GL_UNSIGNED_BYTE,
 	    NULL, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex);
+	glutils_init_2D_quads(&gi->water_norm_quads, water_norm_pos, NULL, 4);
 
 	/*
 	 * Final render pre-stage: capture the full res displacement,
@@ -737,20 +746,23 @@ water_effects_fini(void)
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
 
+		DESTROY_OP(gi->ws_temp_fbo[0], 0,
+		    glDeleteFramebuffers(2, gi->ws_temp_fbo));
+		DESTROY_OP(gi->ws_temp_tex[0], 0,
+		    glDeleteTextures(2, gi->ws_temp_tex));
+		glutils_destroy_quads(&gi->ws_temp_quads);
+
 		DESTROY_OP(gi->water_depth_fbo[0], 0,
 		    glDeleteFramebuffers(2, gi->water_depth_fbo));
 		DESTROY_OP(gi->water_depth_tex[0], 0,
 		    glDeleteTextures(2, gi->water_depth_tex));
+		glutils_destroy_quads(&gi->water_depth_quads);
 
 		DESTROY_OP(gi->water_norm_fbo, 0,
 		    glDeleteFramebuffers(1, &gi->water_norm_fbo));
 		DESTROY_OP(gi->water_norm_tex, 0,
 		    glDeleteTextures(1, &gi->water_norm_tex));
-
-		DESTROY_OP(gi->ws_temp_fbo[0], 0,
-		    glDeleteFramebuffers(2, gi->ws_temp_fbo));
-		DESTROY_OP(gi->ws_temp_tex[0], 0,
-		    glDeleteTextures(2, gi->ws_temp_tex));
+		glutils_destroy_quads(&gi->water_norm_quads);
 
 		DESTROY_OP(gi->ws_smudge_fbo, 0,
 		    glDeleteFramebuffers(1, &gi->ws_smudge_fbo));

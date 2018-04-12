@@ -23,11 +23,11 @@
 
 #include <acfutils/assert.h>
 #include <acfutils/helpers.h>
+#include <acfutils/glutils.h>
 #include <acfutils/log.h>
 #include <acfutils/math.h>
 #include <acfutils/perf.h>
 #include <acfutils/safe_alloc.h>
-#include <acfutils/shader.h>
 
 #include "obj8.h"
 
