@@ -329,7 +329,7 @@ ws_temp_comp(glass_info_t *gi)
 	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_temp"),
 	    2, gi->glass->hot_air_temp);
 
-	glutils_draw_2D_quads(&gi->ws_temp_quads);
+	glutils_draw_quads(&gi->ws_temp_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -388,7 +388,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glUniform2f(glGetUniformLocation(rain_stage1_prog, "wp"),
 	    gi->wp.x, gi->wp.y);
 
-	glutils_draw_2D_quads(&gi->water_depth_quads);
+	glutils_draw_quads(&gi->water_depth_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -435,7 +435,7 @@ rain_stage2_comp(glass_info_t *gi)
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "window_ice"),
 	    dr_getf(&drs.window_ice));
 
-	glutils_draw_2D_quads(&gi->water_norm_quads);
+	glutils_draw_quads(&gi->water_norm_quads);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
