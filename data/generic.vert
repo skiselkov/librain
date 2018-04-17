@@ -22,7 +22,7 @@ uniform mat4 pvm;
 
 attribute vec3	vtx_pos;
 attribute vec3	vtx_norm;
-attribute vec2	vtx_tex;
+attribute vec2	vtx_tex0;
 
 varying vec3	tex_norm;
 varying vec2	tex_coord;
@@ -31,6 +31,6 @@ void
 main()
 {
 	tex_norm = vtx_norm;
-	tex_coord = vtx_tex;
+	tex_coord = vtx_tex0;
 	gl_Position = pvm * vec4(vtx_pos, 1.0);
 }

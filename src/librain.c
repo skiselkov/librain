@@ -809,7 +809,7 @@ reload_gl_prog(GLint *prog, const char *progname, const char *vert_shader,
 	path_frag = mkpathname(pluginpath, "data", "librain", frag_shader,
 	    NULL);
 	*prog = shader_prog_from_file(progname, path_vert, path_frag,
-	    OBJ8_ATTR_BINDINGS, NULL);
+	    DEFAULT_VTX_ATTRIB_BINDINGS, NULL);
 	lacf_free(path_vert);
 	lacf_free(path_frag);
 

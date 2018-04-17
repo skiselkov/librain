@@ -22,7 +22,6 @@
 #include <stdio.h>
 
 #include <GL/glew.h>
-
 #include <cglm/cglm.h>
 
 #include <acfutils/dr.h>
@@ -32,8 +31,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define	OBJ8_ATTR_BINDINGS	"vtx_pos", 0, "vtx_norm", 2, "vtx_tex", 8
 
 typedef enum {
 	OBJ8_CMD_GROUP,
