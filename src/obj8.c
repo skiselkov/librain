@@ -601,9 +601,13 @@ obj8_free(obj8_t *obj)
 }
 
 static void
-geom_draw(const obj8_t *obj, const obj8_geom_t *geom)
+geom_draw(const obj8_t *obj, const obj8_geom_t *geom, GLuint prog,
+    const mat4 pvm)
 {
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+
+	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"), 1, GL_FALSE,
+	    (void *)pvm);
 
 	glVertexAttribPointer(VTX_ATTRIB_POS, 3, GL_FLOAT, GL_FALSE,
 	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
@@ -619,15 +623,15 @@ geom_draw(const obj8_t *obj, const obj8_geom_t *geom)
 }
 
 void
-obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
+obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
+    GLuint prog, const mat4 pvm_in)
 {
 	bool_t do_show = B_TRUE;
+	ALIGN16(mat4 pvm);
 
 	UNUSED(obj);
 	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
-
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
+	memcpy(pvm, pvm_in, sizeof (pvm));
 
 	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
@@ -635,7 +639,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 		case OBJ8_CMD_GROUP:
 			if (!do_show)
 				break;
-			obj8_draw_group_cmd(obj, subcmd, groupname);
+			obj8_draw_group_cmd(obj, subcmd, groupname, prog, pvm);
 			break;
 		case OBJ8_CMD_TRIS:
 			if (!do_show)
@@ -644,10 +648,11 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
 				if (subcmd->tris.double_sided) {
 					glCullFace(GL_FRONT);
-					geom_draw(obj, &subcmd->tris);
+					geom_draw(obj, &subcmd->tris, prog,
+					    pvm);
 					glCullFace(GL_BACK);
 				}
-				geom_draw(obj, &subcmd->tris);
+				geom_draw(obj, &subcmd->tris, prog, pvm);
 			}
 			break;
 		case OBJ8_CMD_ANIM_HIDE_SHOW: {
@@ -661,6 +666,8 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 		case OBJ8_CMD_ANIM_ROTATE: {
 			double val = cmd_dr_read(subcmd);
 			double angle = 0;
+			ALIGN16(vec3 axis) = { subcmd->rotate.axis.x,
+			    subcmd->rotate.axis.y, subcmd->rotate.axis.z };
 
 			for (size_t i = 0; i + 1 < subcmd->rotate.n_pts; i++) {
 				double v1 = MIN(subcmd->rotate.pts[i].x,
@@ -676,13 +683,12 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 				}
 			}
 
-			glRotated(angle, subcmd->rotate.axis.x,
-			    subcmd->rotate.axis.y, subcmd->rotate.axis.z);
+			glm_rotate(pvm, DEG2RAD(angle), axis);
 			break;
 		}
 		case OBJ8_CMD_ANIM_TRANS: {
 			double val = cmd_dr_read(subcmd);
-			vect3_t xlate = ZERO_VECT3;
+			ALIGN16(vec3 xlate) = {0, 0, 0};
 
 			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
 				double v1 = MIN(subcmd->trans.values[i],
@@ -693,49 +699,48 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname)
 					double rat = (v2 - v1 != 0.0 ?
 					    (val - v1) / (v2 - v1) : 0.0);
 
-					xlate = VECT3(
-					    wavg(subcmd->trans.pos[i].x,
-					    subcmd->trans.pos[i + 1].x, rat),
-					    wavg(subcmd->trans.pos[i].y,
-					    subcmd->trans.pos[i + 1].y, rat),
-					    wavg(subcmd->trans.pos[i].z,
-					    subcmd->trans.pos[i + 1].z, rat));
+					xlate[0] = wavg(subcmd->trans.pos[i].x,
+					    subcmd->trans.pos[i + 1].x, rat);
+					xlate[1] = wavg(subcmd->trans.pos[i].y,
+					    subcmd->trans.pos[i + 1].y, rat);
+					xlate[2] = wavg(subcmd->trans.pos[i].z,
+					    subcmd->trans.pos[i + 1].z, rat);
 					break;
 				}
 			}
 
-			glTranslated(xlate.x, xlate.y, xlate.z);
+			glm_translate(pvm, xlate);
 			break;
 		}
 		default:
 			break;
 		}
 	}
-
-	glMatrixMode(GL_MODELVIEW);
-	glPopMatrix();
 }
 
 void
-obj8_draw_group(const obj8_t *obj, const char *groupname)
+obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
+    const mat4 pvm_in)
 {
-	glutils_disable_all_client_state();
+	ALIGN16(mat4 pvm);
+	ALIGN16(vec3 xlate) =
+	    { obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z };
+
+	memcpy(pvm, pvm_in, sizeof (pvm));
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
 
 	glEnableVertexAttribArray(VTX_ATTRIB_POS);
 	glEnableVertexAttribArray(VTX_ATTRIB_NORM);
 	glEnableVertexAttribArray(VTX_ATTRIB_TEX0);
 
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glTranslatef(obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z);
-
-	obj8_draw_group_cmd(obj, obj->top, groupname);
-
-	glMatrixMode(GL_MODELVIEW);
-	glPopMatrix();
+	glm_translate(pvm, xlate);
+	obj8_draw_group_cmd(obj, obj->top, groupname, prog, pvm);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
 	glDisableVertexAttribArray(VTX_ATTRIB_POS);
 	glDisableVertexAttribArray(VTX_ATTRIB_NORM);
 	glDisableVertexAttribArray(VTX_ATTRIB_TEX0);

@@ -67,6 +67,7 @@ static GLuint	screenshot_fbo = 0;
 static GLint	old_vp[4] = { -1, -1, -1, -1 };
 static float	last_rain_t = 0;
 
+static GLint	z_depth_prog = 0;
 static GLint	ws_temp_prog = 0;
 static GLint	rain_stage1_prog = 0;
 static GLint	rain_stage2_prog = 0;
@@ -81,6 +82,11 @@ static bool_t	prepare_ran = B_TRUE;
 static double	prev_win_ice = 0;
 static double	precip_intens = 0;
 static float	last_run_t = 0;
+
+ALIGN16(static mat4 glob_pvm) = GLM_MAT4_IDENTITY;
+ALIGN16(static mat4 water_depth_pvm) = GLM_MAT4_IDENTITY;
+ALIGN16(static mat4 water_norm_pvm) = GLM_MAT4_IDENTITY;
+ALIGN16(static mat4 ws_temp_pvm) = GLM_MAT4_IDENTITY;
 
 typedef struct {
 	const librain_glass_t	*glass;
@@ -263,15 +269,17 @@ librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids)
 {
 	if (!prepare_ran)
 		return;
-	XPLMSetGraphicsState(0, 0, 0, 1, 1, 1, 1);
-	glColor3f(1, 1, 1);
+
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glUseProgram(z_depth_prog);
 	if (z_depth_group_ids != NULL) {
 		for (int i = 0; z_depth_group_ids[i] != NULL; i++)
-			obj8_draw_group(obj, z_depth_group_ids[i]);
+			obj8_draw_group(obj, z_depth_group_ids[i],
+			    z_depth_prog, glob_pvm);
 	} else {
-		obj8_draw_group(obj, NULL);
+		obj8_draw_group(obj, NULL, z_depth_prog, glob_pvm);
 	}
+	glUseProgram(0);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
@@ -295,6 +303,9 @@ ws_temp_comp(glass_info_t *gi)
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	glUseProgram(ws_temp_prog);
+
+	glUniformMatrix4fv(glGetUniformLocation(ws_temp_prog, "pvm"),
+	    1, GL_FALSE, (void *)ws_temp_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(gi->ws_temp_tex[gi->ws_temp_cur], GL_TEXTURE_2D);
@@ -353,14 +364,15 @@ rain_stage1_comp(glass_info_t *gi)
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
-	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
-
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,
 	    gi->water_depth_fbo[!gi->water_depth_cur]);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(rain_stage1_prog);
+
+	glUniformMatrix4fv(glGetUniformLocation(rain_stage1_prog, "pvm"),
+	    1, GL_FALSE, (void *)water_depth_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(gi->water_depth_tex[gi->water_depth_cur],
@@ -411,6 +423,9 @@ rain_stage2_comp(glass_info_t *gi)
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(rain_stage2_prog);
+
+	glUniformMatrix4fv(glGetUniformLocation(rain_stage2_prog, "pvm"),
+	    1, GL_FALSE, (void *)water_norm_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(gi->water_depth_tex[!gi->water_depth_cur],
@@ -474,6 +489,7 @@ static void
 draw_ws_effects(glass_info_t *gi)
 {
 	GLint old_fbo;
+	GLuint prog;
 
 	glutils_disable_all_client_state();
 
@@ -502,8 +518,10 @@ draw_ws_effects(glass_info_t *gi)
 	    GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_rain_prog, "depth_tex"), 2);
 
-	for (int i = 0; gi->glass->group_ids[i] != NULL; i++)
-		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i]);
+	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
+		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
+		    ws_rain_prog, glob_pvm);
+	}
 
 	/*
 	 * Final stage: render the prepped displaced texture and apply
@@ -512,7 +530,8 @@ draw_ws_effects(glass_info_t *gi)
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 #if	!defined(WS_TEMP_DEBUG)
-	glUseProgram(ws_smudge_prog);
+	prog = ws_smudge_prog;
+	glUseProgram(prog);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(screenshot_tex, GL_TEXTURE_2D);
@@ -527,15 +546,18 @@ draw_ws_effects(glass_info_t *gi)
 	    GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_smudge_prog, "depth_tex"), 2);
 #else	/* defined(WS_TEMP_DEBUG) */
-	glUseProgram(ws_temp_debug_prog);
+	prog = ws_temp_debug_prog;
+	glUseProgram(prog);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(gi->ws_temp_tex[gi->ws_temp_cur], GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_temp_debug_prog, "src"), 0);
 #endif	/* defined(WS_TEMP_DEBUG) */
 
-	for (int i = 0; gi->glass->group_ids[i] != NULL; i++)
-		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i]);
+	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
+		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
+		    prog, glob_pvm);
+	}
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -578,7 +600,8 @@ compute_precip(double now)
 void
 librain_draw_prepare(bool_t force)
 {
-	GLfloat acf_matrix[16], proj_matrix[16];
+	ALIGN16(mat4 mv_matrix);
+	ALIGN16(mat4 proj_matrix);
 	GLint vp[4];
 	int w, h;
 	double now = dr_getf(&drs.sim_time);
@@ -609,18 +632,15 @@ librain_draw_prepare(bool_t force)
 		glViewport(vp[0], vp[1], w, h);
 	}
 
-	VERIFY3S(dr_getvf32(&drs.acf_matrix, acf_matrix, 0, 16), ==, 16);
-	VERIFY3S(dr_getvf32(&drs.proj_matrix, proj_matrix, 0, 16), ==, 16);
+	VERIFY3S(dr_getvf32(&drs.acf_matrix, (void *)mv_matrix, 0, 16),
+	    ==, 16);
+	VERIFY3S(dr_getvf32(&drs.proj_matrix, (void *)proj_matrix, 0, 16),
+	    ==, 16);
 
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glLoadMatrixf(acf_matrix);
+	for (int i = 0; i < 4; i++)
+		proj_matrix[3][i] /= 100;
 
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	for (int i = 12; i < 16; i++)
-		proj_matrix[i] /= 100;
-	glLoadMatrixf(proj_matrix);
+	glm_mat4_mul(proj_matrix, mv_matrix, glob_pvm);
 }
 
 void
@@ -642,11 +662,6 @@ librain_draw_finish(void)
 		glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 		saved_vp[0] = saved_vp[1] = saved_vp[2] = saved_vp[3] = -1;
 	}
-
-	glMatrixMode(GL_MODELVIEW);
-	glPopMatrix();
-	glMatrixMode(GL_PROJECTION);
-	glPopMatrix();
 }
 
 static void
@@ -663,7 +678,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    VECT2(WATER_DEPTH_TEX_W, 0)
 	};
 	vect2_t water_norm_pos[] = {
-	    VECT2(0, 0), VECT2(0, WATER_NORM_TEX_H),
+	    VECT2(0, 0), VECT2(0, WATER_NORM_TEX_W),
 	    VECT2(WATER_NORM_TEX_W, WATER_NORM_TEX_H),
 	    VECT2(WATER_NORM_TEX_W, 0)
 	};
@@ -739,6 +754,7 @@ water_effects_fini(void)
 	DESTROY_OP(rain_stage2_prog, 0, glDeleteProgram(rain_stage2_prog));
 	DESTROY_OP(ws_rain_prog, 0, glDeleteProgram(ws_rain_prog));
 	DESTROY_OP(ws_smudge_prog, 0, glDeleteProgram(ws_smudge_prog));
+	DESTROY_OP(z_depth_prog, 0, glDeleteProgram(z_depth_prog));
 #ifdef	WS_TEMP_DEBUG
 	DESTROY_OP(ws_temp_debug_prog, 0, glDeleteProgram(ws_temp_debug_prog));
 #endif
@@ -781,15 +797,19 @@ reload_gl_prog(GLint *prog, const char *progname, const char *vert_shader,
 {
 	char *path_vert = NULL, *path_frag = NULL;
 
+	ASSERT(vert_shader != NULL);
+	ASSERT(frag_shader != NULL);
+
 	if (*prog != 0) {
 		glDeleteProgram(*prog);
 		*prog = 0;
 	}
-	if (vert_shader != NULL)
-		path_vert = mkpathname(pluginpath, "data", vert_shader, NULL);
-	if (frag_shader != NULL)
-		path_frag = mkpathname(pluginpath, "data", frag_shader, NULL);
-	*prog = shader_prog_from_file(progname, path_vert, path_frag);
+	path_vert = mkpathname(pluginpath, "data", "librain", vert_shader,
+	    NULL);
+	path_frag = mkpathname(pluginpath, "data", "librain", frag_shader,
+	    NULL);
+	*prog = shader_prog_from_file(progname, path_vert, path_frag,
+	    OBJ8_ATTR_BINDINGS, NULL);
 	lacf_free(path_vert);
 	lacf_free(path_frag);
 
@@ -800,18 +820,20 @@ bool_t
 librain_reload_gl_progs(void)
 {
 	return (reload_gl_prog(&ws_temp_prog, "ws_temp",
-	    NULL, "ws_temp.frag") &&
+	    "generic.vert", "ws_temp.frag") &&
 	    reload_gl_prog(&rain_stage1_prog, "rain_stage1",
-	    NULL, "rain_stage1.frag") &&
+	    "generic.vert", "rain_stage1.frag") &&
 	    reload_gl_prog(&rain_stage2_prog, "rain_stage2",
-	    NULL, "rain_stage2.frag") &&
+	    "generic.vert", "rain_stage2.frag") &&
 	    reload_gl_prog(&ws_rain_prog, "ws_rain_prog",
-	    "ws_rain.vert", "ws_rain.frag") &&
+	    "generic.vert", "ws_rain.frag") &&
 	    reload_gl_prog(&ws_smudge_prog, "ws_smudge_prog",
-	    "ws_smudge.vert", "ws_smudge.frag")
+	    "generic.vert", "ws_smudge.frag") &&
+	    reload_gl_prog(&z_depth_prog, "z_depth_prog",
+	    "generic.vert", "nil.frag")
 #ifdef	WS_TEMP_DEBUG
 	    && reload_gl_prog(&ws_temp_debug_prog, "ws_temp_debug_prog",
-	    "ws_rain.vert", "ws_temp_debug.frag")
+	    "generic.vert", "ws_temp_debug.frag")
 #endif
 	    );
 }
@@ -819,6 +841,7 @@ librain_reload_gl_progs(void)
 bool_t
 librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t num)
 {
+
 	ASSERT(!inited);
 	inited = B_TRUE;
 
@@ -868,6 +891,12 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 
 	if (!librain_reload_gl_progs())
 		goto errout;
+
+	glm_ortho(0, WATER_DEPTH_TEX_W, 0, WATER_DEPTH_TEX_H,
+	    0, 1, water_depth_pvm);
+	glm_ortho(0, WATER_NORM_TEX_W, 0, WATER_NORM_TEX_H,
+	    0, 1, water_norm_pvm);
+	glm_ortho(0, WS_TEMP_TEX_W, 0, WS_TEMP_TEX_H, 0, 1, ws_temp_pvm);
 
 	return (B_TRUE);
 errout:

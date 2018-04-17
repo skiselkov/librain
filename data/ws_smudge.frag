@@ -23,6 +23,8 @@ uniform	sampler2D	depth_tex;
 uniform	sampler2D	screenshot_tex;
 uniform	sampler2D	ws_tex;
 
+varying vec2		tex_coord;
+
 const float		max_depth = 3.0;
 const float		kernel[25] = float[25](
 	0.01, 0.02, 0.04, 0.02, 0.01,
@@ -50,7 +52,7 @@ get_pixel(vec2 pos)
 void
 main()
 {
-	vec4 depth_val = texture2D(depth_tex, gl_TexCoord[0].st);
+	vec4 depth_val = texture2D(depth_tex, tex_coord);
 	float depth = depth_val.r + depth_val.g + depth_val.b;
 	float depth_rat = depth / max_depth;
 	float depth_rat_fact = 10 * pow(depth_rat, 1.2);

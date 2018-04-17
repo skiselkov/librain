@@ -18,9 +18,19 @@
 
 #version 120
 
+uniform mat4 pvm;
+
+attribute vec3	vtx_pos;
+attribute vec3	vtx_norm;
+attribute vec2	vtx_tex;
+
+varying vec3	tex_norm;
+varying vec2	tex_coord;
+
 void
 main()
 {
-	gl_Position = ftransform();
-	gl_TexCoord[0] =  gl_MultiTexCoord0;
+	tex_norm = vtx_norm;
+	tex_coord = vtx_tex;
+	gl_Position = pvm * vec4(vtx_pos, 1.0);
 }

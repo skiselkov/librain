@@ -23,6 +23,8 @@
 
 #include <GL/glew.h>
 
+#include <cglm/cglm.h>
+
 #include <acfutils/dr.h>
 #include <acfutils/geom.h>
 #include <acfutils/list.h>
@@ -30,6 +32,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define	OBJ8_ATTR_BINDINGS	"vtx_pos", 0, "vtx_norm", 2, "vtx_tex", 8
 
 typedef enum {
 	OBJ8_CMD_GROUP,
@@ -90,7 +94,8 @@ typedef struct {
 
 obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
 void obj8_free(obj8_t *obj);
-void obj8_draw_group(const obj8_t *obj, const char *groupname);
+void obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
+    const mat4 mvp);
 
 #ifdef __cplusplus
 }

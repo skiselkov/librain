@@ -23,6 +23,8 @@ uniform	sampler2D	depth_tex;
 uniform	sampler2D	norm_tex;
 uniform	sampler2D	screenshot_tex;
 
+varying vec2		tex_coord;
+
 const float		displace_lim = 200.0;
 const float		darkening_fact = 300.0;
 const float		max_depth = 3.0;
@@ -38,9 +40,9 @@ get_pixel(vec2 pos)
 void
 main()
 {
-	float depth = texture2D(depth_tex, gl_TexCoord[0].st).r;
-	vec2 displace = (texture2D(norm_tex,
-	    gl_TexCoord[0].st).xy - 0.5) * displace_lim * (max_depth - depth);
+	float depth = texture2D(depth_tex, tex_coord).r;
+	vec2 displace = (texture2D(norm_tex, tex_coord).xy - 0.5) *
+	    displace_lim * (max_depth - depth);
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
 
 	bg_pixel *= (1 - pow(length(displace) / darkening_fact, 1.8));

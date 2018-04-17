@@ -21,10 +21,12 @@
 
 uniform	sampler2D	src;
 
+varying vec2		tex_coord;
+
 void
 main()
 {
-	float glass_temp = texture2D(src, gl_TexCoord[0].st).r * 400.0;
+	float glass_temp = texture2D(src, tex_coord).r * 400.0;
 
 	gl_FragColor = vec4(
 	    clamp((glass_temp - 300) / 50.0, 0, 1),
