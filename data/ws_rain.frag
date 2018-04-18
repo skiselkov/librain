@@ -26,7 +26,7 @@ uniform	sampler2D	screenshot_tex;
 varying vec2		tex_coord;
 
 const float		displace_lim = 200.0;
-const float		darkening_fact = 300.0;
+const float		darkening_fact = 450.0;
 const float		max_depth = 3.0;
 
 vec4

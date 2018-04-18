@@ -132,14 +132,14 @@ main()
 	    tex_sz * d_t * temp_flow_coeff);
 	prev_depth = read_depth(prev_pos);
 
-	blowaway_fact = 0.6 - thrust * 0.1;
+	blowaway_fact = 0.601;
 
 	depth += prev_depth * blowaway_fact;
 
 	if (!water_added) {
-		depth = clamp(depth, 0.0,
-		    min(old_depth + prev_depth, max_depth) -
-		    max_depth * mix(0.00001, 0.0001, temp_flow_coeff));
+		float old_water = min(old_depth + prev_depth, max_depth);
+		depth = clamp(depth, 0.0, old_water -
+		    max_depth * mix(0.001, 0.01, temp_flow_coeff));
 	}
 
 	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
