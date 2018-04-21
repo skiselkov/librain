@@ -61,6 +61,7 @@ typedef enum {
 
 static bool_t	inited = B_FALSE;
 static char	*pluginpath = NULL;
+static bool_t	librain_in_VR = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
@@ -598,6 +599,12 @@ compute_precip(double now)
 }
 
 void
+librain_notify_VR(bool_t entering_VR)
+{
+	librain_in_VR = entering_VR;
+}
+
+void
 librain_draw_prepare(bool_t force)
 {
 	ALIGN16(mat4 mv_matrix);
@@ -627,7 +634,11 @@ librain_draw_prepare(bool_t force)
 
 	glGetIntegerv(GL_VIEWPORT, vp);
 	XPLMGetScreenSize(&w, &h);
-	if (vp[2] != w || vp[3] != h) {
+	/*
+	 * Only check the viewport only when NOT in VR. In VR, our viewport
+	 * is actually half of the full screen width (for "VR" reason...).
+	 */
+	if (!librain_in_VR && (vp[2] != w || vp[3] != h)) {
 		memcpy(saved_vp, vp, sizeof (saved_vp));
 		glViewport(vp[0], vp[1], w, h);
 	}
