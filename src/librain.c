@@ -61,7 +61,6 @@ typedef enum {
 
 static bool_t	inited = B_FALSE;
 static char	*pluginpath = NULL;
-static bool_t	librain_in_VR = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
@@ -145,6 +144,7 @@ static struct {
 	dr_t	rot_rate;
 	dr_t	le_temp;
 	dr_t	window_ice;
+	dr_t	VR_enabled;
 } drs;
 
 #define	RAIN_COMP_PHASE		xplm_Phase_Gauges
@@ -599,12 +599,6 @@ compute_precip(double now)
 }
 
 void
-librain_notify_VR(bool_t entering_VR)
-{
-	librain_in_VR = entering_VR;
-}
-
-void
 librain_draw_prepare(bool_t force)
 {
 	ALIGN16(mat4 mv_matrix);
@@ -635,10 +629,12 @@ librain_draw_prepare(bool_t force)
 	glGetIntegerv(GL_VIEWPORT, vp);
 	XPLMGetScreenSize(&w, &h);
 	/*
-	 * Only check the viewport only when NOT in VR. In VR, our viewport
-	 * is actually half of the full screen width (for "VR" reason...).
+	 * In VR the viewport width needs to be halved, because the viewport
+	 * is split between the left and right eye.
 	 */
-	if (!librain_in_VR && (vp[2] != w || vp[3] != h)) {
+	if (dr_geti(&drs.VR_enabled) != 0)
+		w /= 2;
+	if (vp[2] != w || vp[3] != h) {
 		memcpy(saved_vp, vp, sizeof (saved_vp));
 		glViewport(vp[0], vp[1], w, h);
 	}
@@ -874,6 +870,7 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 	fdr_find(&drs.rot_rate, "sim/flightmodel/position/R");
 	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
+	fdr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 
 	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);
