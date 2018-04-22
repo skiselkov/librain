@@ -144,6 +144,7 @@ static struct {
 	dr_t	rot_rate;
 	dr_t	le_temp;
 	dr_t	window_ice;
+	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
 } drs;
 
@@ -632,7 +633,7 @@ librain_draw_prepare(bool_t force)
 	 * In VR the viewport width needs to be halved, because the viewport
 	 * is split between the left and right eye.
 	 */
-	if (dr_geti(&drs.VR_enabled) != 0)
+	if (drs.VR_enabled_avail && dr_geti(&drs.VR_enabled) != 0)
 		w /= 2;
 	if (vp[2] != w || vp[3] != h) {
 		memcpy(saved_vp, vp, sizeof (saved_vp));
@@ -854,6 +855,8 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 
 	pluginpath = strdup(the_pluginpath);
 
+	memset(&drs, 0, sizeof (drs));
+
 	fdr_find(&drs.panel_render_type, "sim/graphics/view/panel_render_type");
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
 	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix");
@@ -870,7 +873,8 @@ librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t nu
 	fdr_find(&drs.rot_rate, "sim/flightmodel/position/R");
 	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
-	fdr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
+	if (dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled"))
+		drs.VR_enabled_avail = B_TRUE;
 
 	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);
