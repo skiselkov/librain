@@ -16,16 +16,18 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
-#extension GL_EXT_gpu_shader4: require
+#version 460
 
-uniform sampler2D	tex;
-uniform sampler2D	temp_tex;
-uniform vec2		my_tex_sz;
-uniform vec2		tp;
-uniform float		thrust;
-uniform float		precip_intens;
-uniform float		window_ice;
+layout(location = 10) uniform sampler2D	tex;
+layout(location = 11) uniform sampler2D	temp_tex;
+
+layout(location = 12) uniform vec2	my_tex_sz;
+layout(location = 13) uniform vec2	tp;
+layout(location = 14) uniform float	thrust;
+layout(location = 15) uniform float	precip_intens;
+layout(location = 16) uniform float	window_ice;
+
+layout(location = 0) out vec4	color_out;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com.
@@ -53,7 +55,7 @@ gold_noise(vec2 coordinate, float seed)
 float
 read_depth(vec2 pos)
 {
-	return (texture2D(tex, pos / textureSize2D(tex, 0)).r);
+	return (texture(tex, pos / textureSize(tex, 0)).r);
 }
 
 void
@@ -61,7 +63,7 @@ main()
 {
 	float depth_left, depth_right, depth_up, depth_down;
 	float d_lr, d_ud;
-	float temp = texture2D(temp_tex, gl_FragCoord.xy / my_tex_sz).r *
+	float temp = texture(temp_tex, gl_FragCoord.xy / my_tex_sz).r *
 	    temp_scale_fact;
 	vec2 thrust_v = (gl_FragCoord.xy - tp);
 	vec2 ice_displace = vec2(0, 0);
@@ -91,5 +93,5 @@ main()
 	    (1 + ice_displace.y)) + 0.5;
 	d_ud = clamp(d_ud + window_ice_fact * ice_displace.y, 0, 1);
 
-	gl_FragColor = vec4(d_lr, d_ud, 0.0, 1.0);
+	color_out = vec4(d_lr, d_ud, 0.0, 1.0);
 }

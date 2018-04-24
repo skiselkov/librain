@@ -16,10 +16,21 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
+#version 460
+
+layout(location = 0) uniform mat4	pvm;
+
+layout(location = 0) in vec3		vtx_pos;
+layout(location = 1) in vec3		vtx_norm;
+layout(location = 2) in vec2		vtx_tex0;
+
+layout(location = 50) out vec3		tex_norm;
+layout(location = 51) out vec2		tex_coord;
 
 void
 main()
 {
-	gl_FragColor = vec4(1);
+	tex_norm = vtx_norm;
+	tex_coord = vtx_tex0;
+	gl_Position = pvm * vec4(vtx_pos, 1.0);
 }

@@ -16,20 +16,22 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
-#extension GL_EXT_gpu_shader4: require
+#version 460
 
-uniform	sampler2D	tex;
-uniform sampler2D	temp_tex;
-uniform float		rand_seed;
-uniform float		precip_intens;
-uniform float		d_t;
-uniform vec2		tp;		/* thrust origin point */
-uniform vec2		gp;		/* gravity origin point */
-uniform vec2		wp;		/* wind origin point */
-uniform float		thrust;
-uniform float		gravity;
-uniform float		wind;
+layout(location = 10) uniform sampler2D	tex;
+layout(location = 11) uniform sampler2D	temp_tex;
+
+layout(location = 12) uniform float	rand_seed;
+layout(location = 13) uniform float	precip_intens;
+layout(location = 14) uniform float	d_t;
+layout(location = 15) uniform vec2	tp;	/* thrust origin point */
+layout(location = 16) uniform vec2	gp;	/* gravity origin point */
+layout(location = 17) uniform vec2	wp;	/* wind origin point */
+layout(location = 18) uniform float	thrust;
+layout(location = 19) uniform float	gravity;
+layout(location = 20) uniform float	wind;
+
+layout(location = 0) out vec4	color_out;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com 
@@ -67,21 +69,21 @@ droplet_gen_check(vec2 pos, float temp_flow_coeff)
 float
 read_depth(vec2 pos)
 {
-	return (texture2D(tex, pos / textureSize2D(tex, 0)).r);
+	return (texture(tex, pos / textureSize(tex, 0)).r);
 }
 
 void
 main()
 {
 	float old_depth, depth, prev_depth, new_depth;
-	vec2 tex_sz = textureSize2D(tex, 0);
+	vec2 tex_sz = textureSize(tex, 0);
 	vec2 prev_pos;
 	vec2 tp_dir, gp_dir, wp_dir, rand_dir;
 	vec4 old_val;
 	float r = 0, g = 0, b = 0, a = 0;
 	float blowaway_fact;
 	bool water_added;
-	float temp = texture2D(temp_tex, gl_FragCoord.xy / tex_sz).r *
+	float temp = texture(temp_tex, gl_FragCoord.xy / tex_sz).r *
 	    temp_scale_fact;
 	float temp_flow_coeff;
 
@@ -142,5 +144,5 @@ main()
 		    max_depth * mix(0.001, 0.01, temp_flow_coeff));
 	}
 
-	gl_FragColor = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
+	color_out = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
 }

@@ -16,17 +16,19 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
-#extension GL_EXT_gpu_shader4: require
+#version 460
 
-uniform	sampler2D	depth_tex;
-uniform	sampler2D	screenshot_tex;
-uniform	sampler2D	ws_tex;
+layout(location = 10) uniform sampler2D	depth_tex;
+layout(location = 11) uniform sampler2D	screenshot_tex;
+layout(location = 12) uniform sampler2D	ws_tex;
 
-varying vec2		tex_coord;
+layout(location = 50) in vec3		tex_norm;
+layout(location = 51) in vec2		tex_coord;
 
-const float		max_depth = 3.0;
-const float		kernel[25] = float[25](
+layout(location = 0) out vec4	color_out;
+
+const float	max_depth = 3.0;
+const float	kernel[25] = float[25](
 	0.01, 0.02, 0.04, 0.02, 0.01,
 	0.02, 0.04, 0.08, 0.04, 0.02,
 	0.04, 0.08, 0.16, 0.08, 0.04,
@@ -39,21 +41,21 @@ get_pixel(vec2 pos)
 {
 	vec4 pixel;
 
-	pos = pos / textureSize2D(ws_tex, 0);
+	pos = pos / textureSize(ws_tex, 0);
 	pos = clamp(pos, 0.0, 0.99999);
 
-	pixel = texture2D(ws_tex, pos);
+	pixel = texture(ws_tex, pos);
 	if (pixel.a == 1.0)
 		return (pixel);
 	else
-		texture2D(screenshot_tex, pos);
+		return (texture(screenshot_tex, pos));
 }
 
 void
 main()
 {
-	vec4 depth_val = texture2D(depth_tex, tex_coord);
-	float depth = depth_val.r + depth_val.g + depth_val.b;
+	vec4 depth_val = texture(depth_tex, tex_coord);
+	float depth = depth_val.r;
 	float depth_rat = depth / max_depth;
 	float depth_rat_fact = 10 * pow(depth_rat, 1.2);
 	vec4 out_pixel = vec4(0, 0, 0, 0);
@@ -70,5 +72,5 @@ main()
 		}
 	}
 
-	gl_FragColor = vec4(out_pixel.rgb, 1);
+	color_out = vec4(out_pixel.rgb, 1);
 }

@@ -609,12 +609,15 @@ geom_draw(const obj8_t *obj, const obj8_geom_t *geom, GLuint prog,
 	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"), 1, GL_FALSE,
 	    (void *)pvm);
 
-	glVertexAttribPointer(VTX_ATTRIB_POS, 3, GL_FLOAT, GL_FALSE,
-	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
-	glVertexAttribPointer(VTX_ATTRIB_NORM, 3, GL_FLOAT, GL_FALSE,
-	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, norm)));
-	glVertexAttribPointer(VTX_ATTRIB_TEX0, 2, GL_FLOAT, GL_FALSE,
-	    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, tex)));
+	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_pos"),
+	    3, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
+	    (void *)(offsetof(obj8_vtx_t, pos)));
+	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_norm"),
+	    3, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
+	    (void *)(offsetof(obj8_vtx_t, norm)));
+	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_tex0"),
+	    2, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
+	    (void *)(offsetof(obj8_vtx_t, tex)));
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
@@ -722,6 +725,10 @@ void
 obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
     const mat4 pvm_in)
 {
+	GLint pos_loc = glGetAttribLocation(prog, "vtx_pos");
+	GLint norm_loc = glGetAttribLocation(prog, "vtx_norm");
+	GLint tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
+
 	ALIGN16(mat4 pvm);
 	ALIGN16(vec3 xlate) =
 	    { obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z };
@@ -731,9 +738,9 @@ obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 
-	glEnableVertexAttribArray(VTX_ATTRIB_POS);
-	glEnableVertexAttribArray(VTX_ATTRIB_NORM);
-	glEnableVertexAttribArray(VTX_ATTRIB_TEX0);
+	glEnableVertexAttribArray(pos_loc);
+	glEnableVertexAttribArray(norm_loc);
+	glEnableVertexAttribArray(tex0_loc);
 
 	glm_translate(pvm, xlate);
 	obj8_draw_group_cmd(obj, obj->top, groupname, prog, pvm);
@@ -741,7 +748,7 @@ obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	glDisableVertexAttribArray(VTX_ATTRIB_POS);
-	glDisableVertexAttribArray(VTX_ATTRIB_NORM);
-	glDisableVertexAttribArray(VTX_ATTRIB_TEX0);
+	glDisableVertexAttribArray(pos_loc);
+	glDisableVertexAttribArray(norm_loc);
+	glDisableVertexAttribArray(tex0_loc);
 }

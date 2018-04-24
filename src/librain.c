@@ -60,7 +60,7 @@ typedef enum {
 } panel_render_type_t;
 
 static bool_t	inited = B_FALSE;
-static char	*pluginpath = NULL;
+static char	*shaderpath = NULL;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
@@ -83,10 +83,62 @@ static double	prev_win_ice = 0;
 static double	precip_intens = 0;
 static float	last_run_t = 0;
 
-ALIGN16(static mat4 glob_pvm) = GLM_MAT4_IDENTITY;
-ALIGN16(static mat4 water_depth_pvm) = GLM_MAT4_IDENTITY;
-ALIGN16(static mat4 water_norm_pvm) = GLM_MAT4_IDENTITY;
-ALIGN16(static mat4 ws_temp_pvm) = GLM_MAT4_IDENTITY;
+static shader_info_t generic_vert_info = { .filename = "generic.vert.spv" };
+static shader_info_t ws_temp_frag_info = { .filename = "ws_temp.frag.spv" };
+static shader_info_t rain_stage1_frag_info =
+    { .filename = "rain_stage1.frag.spv" };
+static shader_info_t rain_stage2_frag_info =
+    { .filename = "rain_stage2.frag.spv" };
+static shader_info_t ws_rain_frag_info = { .filename = "ws_rain.frag.spv" };
+static shader_info_t ws_smudge_frag_info = { .filename = "ws_smudge.frag.spv" };
+static shader_info_t nil_frag_info = { .filename = "nil.frag.spv" };
+
+static shader_prog_info_t ws_temp_prog_info = {
+    .progname = "ws_temp",
+    .vert = &generic_vert_info,
+    .frag = &ws_temp_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static shader_prog_info_t rain_stage1_prog_info = {
+    .progname = "rain_stage1",
+    .vert = &generic_vert_info,
+    .frag = &rain_stage1_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static shader_prog_info_t rain_stage2_prog_info = {
+    .progname = "rain_stage2",
+    .vert = &generic_vert_info,
+    .frag = &rain_stage2_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static shader_prog_info_t ws_rain_prog_info = {
+    .progname = "ws_rain",
+    .vert = &generic_vert_info,
+    .frag = &ws_rain_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static shader_prog_info_t ws_smudge_prog_info = {
+    .progname = "ws_smudge",
+    .vert = &generic_vert_info,
+    .frag = &ws_smudge_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static shader_prog_info_t z_depth_prog_info = {
+    .progname = "z_depth",
+    .vert = &generic_vert_info,
+    .frag = &nil_frag_info,
+    .attr_binds = default_vtx_attr_binds
+};
+
+static mat4 glob_pvm = GLM_MAT4_IDENTITY;
+static mat4 water_depth_pvm = GLM_MAT4_IDENTITY;
+static mat4 water_norm_pvm = GLM_MAT4_IDENTITY;
+static mat4 ws_temp_pvm = GLM_MAT4_IDENTITY;
 
 typedef struct {
 	const librain_glass_t	*glass;
@@ -342,7 +394,7 @@ ws_temp_comp(glass_info_t *gi)
 	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_temp"),
 	    2, gi->glass->hot_air_temp);
 
-	glutils_draw_quads(&gi->ws_temp_quads);
+	glutils_draw_quads(&gi->ws_temp_quads, ws_temp_prog);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -402,7 +454,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glUniform2f(glGetUniformLocation(rain_stage1_prog, "wp"),
 	    gi->wp.x, gi->wp.y);
 
-	glutils_draw_quads(&gi->water_depth_quads);
+	glutils_draw_quads(&gi->water_depth_quads, rain_stage1_prog);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -452,7 +504,7 @@ rain_stage2_comp(glass_info_t *gi)
 	glUniform1f(glGetUniformLocation(rain_stage2_prog, "window_ice"),
 	    dr_getf(&drs.window_ice));
 
-	glutils_draw_quads(&gi->water_norm_quads);
+	glutils_draw_quads(&gi->water_norm_quads, rain_stage2_prog);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -602,8 +654,8 @@ compute_precip(double now)
 void
 librain_draw_prepare(bool_t force)
 {
-	ALIGN16(mat4 mv_matrix);
-	ALIGN16(mat4 proj_matrix);
+	mat4 mv_matrix;
+	mat4 proj_matrix;
 	GLint vp[4];
 	int w, h;
 	double now = dr_getf(&drs.sim_time);
@@ -800,60 +852,40 @@ water_effects_fini(void)
 }
 
 static bool_t
-reload_gl_prog(GLint *prog, const char *progname, const char *vert_shader,
-    const char *frag_shader)
+reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
 {
-	char *path_vert = NULL, *path_frag = NULL;
+	GLuint new_prog;
 
-	ASSERT(vert_shader != NULL);
-	ASSERT(frag_shader != NULL);
-
-	if (*prog != 0) {
+	ASSERT(shaderpath != NULL);
+	new_prog = shader_prog_from_info(shaderpath, info);
+	if (new_prog == 0)
+		return (B_FALSE);
+	if (*prog != 0)
 		glDeleteProgram(*prog);
-		*prog = 0;
-	}
-	path_vert = mkpathname(pluginpath, "data", "librain", vert_shader,
-	    NULL);
-	path_frag = mkpathname(pluginpath, "data", "librain", frag_shader,
-	    NULL);
-	*prog = shader_prog_from_file(progname, path_vert, path_frag,
-	    DEFAULT_VTX_ATTRIB_BINDINGS, NULL);
-	lacf_free(path_vert);
-	lacf_free(path_frag);
+	*prog = new_prog;
 
-	return (*prog != 0);
+	return (B_TRUE);
 }
 
 bool_t
 librain_reload_gl_progs(void)
 {
-	return (reload_gl_prog(&ws_temp_prog, "ws_temp",
-	    "generic.vert", "ws_temp.frag") &&
-	    reload_gl_prog(&rain_stage1_prog, "rain_stage1",
-	    "generic.vert", "rain_stage1.frag") &&
-	    reload_gl_prog(&rain_stage2_prog, "rain_stage2",
-	    "generic.vert", "rain_stage2.frag") &&
-	    reload_gl_prog(&ws_rain_prog, "ws_rain_prog",
-	    "generic.vert", "ws_rain.frag") &&
-	    reload_gl_prog(&ws_smudge_prog, "ws_smudge_prog",
-	    "generic.vert", "ws_smudge.frag") &&
-	    reload_gl_prog(&z_depth_prog, "z_depth_prog",
-	    "generic.vert", "nil.frag")
-#ifdef	WS_TEMP_DEBUG
-	    && reload_gl_prog(&ws_temp_debug_prog, "ws_temp_debug_prog",
-	    "generic.vert", "ws_temp_debug.frag")
-#endif
-	    );
+	return (reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info) &&
+	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) &&
+	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) &&
+	    reload_gl_prog(&ws_rain_prog, &ws_rain_prog_info) &&
+	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) &&
+	    reload_gl_prog(&z_depth_prog, &z_depth_prog_info));
 }
 
 bool_t
-librain_init(const char *the_pluginpath, const librain_glass_t *glass, size_t num)
+librain_init(const char *the_shaderpath, const librain_glass_t *glass,
+    size_t num)
 {
-
 	ASSERT(!inited);
 	inited = B_TRUE;
 
-	pluginpath = strdup(the_pluginpath);
+	shaderpath = strdup(the_shaderpath);
 
 	memset(&drs, 0, sizeof (drs));
 
@@ -922,8 +954,8 @@ librain_fini(void)
 	if (!inited)
 		return;
 
-	free(pluginpath);
-	pluginpath = NULL;
+	free(shaderpath);
+	shaderpath = NULL;
 
 	XPLMUnregisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);

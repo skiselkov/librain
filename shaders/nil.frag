@@ -16,21 +16,15 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
-#extension GL_EXT_gpu_shader4: require
+#version 460
 
-uniform	sampler2D	src;
+layout(location = 50) in vec3	tex_norm;
+layout(location = 51) in vec2	tex_coord;
 
-varying vec2		tex_coord;
+layout(location = 0) out vec4	color_out;
 
 void
 main()
 {
-	float glass_temp = texture2D(src, tex_coord).r * 400.0;
-
-	gl_FragColor = vec4(
-	    clamp((glass_temp - 300) / 50.0, 0, 1),
-	    clamp((glass_temp - 250) / 50.0, 0, 1),
-	    clamp((glass_temp - 200) / 50.0, 0, 1),
-	    1.0);
+	color_out = vec4(tex_coord.s, tex_coord.t, 0, 1);
 }

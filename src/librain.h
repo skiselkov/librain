@@ -54,7 +54,7 @@ typedef struct {
 	float		hot_air_temp[2];
 } librain_glass_t;
 
-bool_t librain_init(const char *the_pluginpath, const librain_glass_t *glass,
+bool_t librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num);
 void librain_fini(void);
 

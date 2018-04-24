@@ -16,29 +16,30 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 120
-#extension GL_EXT_gpu_shader4: require
+#version 460
 
 /*
  * N.B. all temps are in Kelvin!
  */
 
-uniform	sampler2D	src;
-uniform	sampler2D	depth;
-uniform float		rand_seed;
-uniform float		le_temp;
-uniform float		cabin_temp;
-uniform float		wind_fact;
-uniform float		d_t;
-uniform float		inertia_in;
-uniform vec4		heat_zones[4];
-uniform float		heat_tgt_temps[4];
-uniform float		precip_intens;
+layout(location = 10) uniform sampler2D		src;
+layout(location = 11) uniform sampler2D		depth;
 
-uniform vec2		hot_air_src[2];
-uniform float		hot_air_radius[2];
-uniform float		hot_air_temp[2];
+layout(location = 12) uniform float		rand_seed;
+layout(location = 13) uniform float		le_temp;
+layout(location = 14) uniform float		cabin_temp;
+layout(location = 15) uniform float		wind_fact;
+layout(location = 16) uniform float		d_t;
+layout(location = 17) uniform float		inertia_in;
+layout(location = 18) uniform float		precip_intens;
 
+layout(location = 20) uniform vec4		heat_zones[4];
+layout(location = 30) uniform float		heat_tgt_temps[4];
+layout(location = 40) uniform vec2		hot_air_src[2];
+layout(location = 50) uniform float		hot_air_radius[2];
+layout(location = 60) uniform float		hot_air_temp[2];
+
+layout(location = 0) out vec4	color_out;
 
 /*
  * Gold Noise ©2017-2018 dcerisano@standard3d.com 
@@ -73,11 +74,10 @@ filter_in(float old_val, float new_val, float rate)
 void
 main()
 {
-	vec2 my_size = textureSize2D(src, 0);
-	float glass_temp = texture2D(src, gl_FragCoord.xy / my_size).r *
+	vec2 my_size = textureSize(src, 0);
+	float glass_temp = texture(src, gl_FragCoord.xy / my_size).r *
 	    temp_scale_fact;
-	float depth = texture2D(depth, gl_FragCoord.xy /
-	    textureSize2D(depth, 0)).r;
+	float depth = texture(depth, gl_FragCoord.xy / textureSize(depth, 0)).r;
 	float rand_temp = 4 * (gold_noise(gl_FragCoord.xy, rand_seed) - 0.5);
 	float inertia = inertia_in * (1 + depth);
 
@@ -137,5 +137,5 @@ main()
 		    inertia_out);
 	}
 
-	gl_FragColor = vec4(glass_temp / temp_scale_fact, 0, 0, 1.0);
+	color_out = vec4(glass_temp / temp_scale_fact, 0, 0, 1.0);
 }
