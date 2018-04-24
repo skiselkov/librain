@@ -23,7 +23,10 @@ SPVS = \
     ws_smudge.frag.spv
 
 OUTDIR=bin
-SPIRVX_TGT_VERSION=130
+SPIRVX_TGT_VERSION=120
+
+GLSLANG=glslang
+GLSL_CLEANUP=./glsl_cleanup.sh
 
 ifeq ($(V),1)
 	VERB=
@@ -36,14 +39,16 @@ define logMsg
 endef
 endif
 
-GLSLANG=glslang
 define BUILD_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
 	$(VERB) $(GLSLANG) -G -o $@ $^
 
-	$(call logMsg,\	[SPIRVX]\	$(notdir $(@:%.$(1).spv=%.$(1).glsl)))
+	$(call logMsg,\	[SPIRVX]\	$(@:%.$(1).spv=%.$(1).glsl))
 	$(VERB) spirv-cross --version $(SPIRVX_TGT_VERSION) \
+	    --extension GL_EXT_gpu_shader4 \
 	    --output $(@:%.$(1).spv=%.$(1).glsl) $@
+
+	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl)
 endef
 
 SPVS_OUT=$(addprefix $(OUTDIR)/,$(SPVS))
