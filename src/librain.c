@@ -37,10 +37,6 @@
 
 #include "librain.h"
 
-#if 0
-#define	WS_TEMP_DEBUG
-#endif
-
 #define	DESTROY_OP(var, zero_val, destroy_op) \
 	do { \
 		if ((var) != (zero_val)) { \
@@ -73,9 +69,6 @@ static GLint	rain_stage1_prog = 0;
 static GLint	rain_stage2_prog = 0;
 static GLint	ws_rain_prog = 0;
 static GLint	ws_smudge_prog = 0;
-#ifdef	WS_TEMP_DEBUG
-static GLint	ws_temp_debug_prog = 0;
-#endif
 
 static GLint	saved_vp[4] = { -1, -1, -1, -1 };
 static bool_t	prepare_ran = B_TRUE;
@@ -96,36 +89,31 @@ static shader_info_t nil_frag_info = { .filename = "nil.frag.spv" };
 static shader_prog_info_t ws_temp_prog_info = {
     .progname = "ws_temp",
     .vert = &generic_vert_info,
-    .frag = &ws_temp_frag_info,
-    .attr_binds = default_vtx_attr_binds
+    .frag = &ws_temp_frag_info
 };
 
 static shader_prog_info_t rain_stage1_prog_info = {
     .progname = "rain_stage1",
     .vert = &generic_vert_info,
-    .frag = &rain_stage1_frag_info,
-    .attr_binds = default_vtx_attr_binds
+    .frag = &rain_stage1_frag_info
 };
 
 static shader_prog_info_t rain_stage2_prog_info = {
     .progname = "rain_stage2",
     .vert = &generic_vert_info,
-    .frag = &rain_stage2_frag_info,
-    .attr_binds = default_vtx_attr_binds
+    .frag = &rain_stage2_frag_info
 };
 
 static shader_prog_info_t ws_rain_prog_info = {
     .progname = "ws_rain",
     .vert = &generic_vert_info,
-    .frag = &ws_rain_frag_info,
-    .attr_binds = default_vtx_attr_binds
+    .frag = &ws_rain_frag_info
 };
 
 static shader_prog_info_t ws_smudge_prog_info = {
     .progname = "ws_smudge",
     .vert = &generic_vert_info,
     .frag = &ws_smudge_frag_info,
-    .attr_binds = default_vtx_attr_binds
 };
 
 static shader_prog_info_t z_depth_prog_info = {
@@ -543,7 +531,6 @@ static void
 draw_ws_effects(glass_info_t *gi)
 {
 	GLint old_fbo;
-	GLuint prog;
 
 	glutils_disable_all_client_state();
 
@@ -583,9 +570,7 @@ draw_ws_effects(glass_info_t *gi)
 	 */
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
 
-#if	!defined(WS_TEMP_DEBUG)
-	prog = ws_smudge_prog;
-	glUseProgram(prog);
+	glUseProgram(ws_smudge_prog);
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(screenshot_tex, GL_TEXTURE_2D);
@@ -599,18 +584,10 @@ draw_ws_effects(glass_info_t *gi)
 	XPLMBindTexture2d(gi->water_depth_tex[!gi->water_depth_cur],
 	    GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_smudge_prog, "depth_tex"), 2);
-#else	/* defined(WS_TEMP_DEBUG) */
-	prog = ws_temp_debug_prog;
-	glUseProgram(prog);
-
-	glActiveTexture(GL_TEXTURE0);
-	XPLMBindTexture2d(gi->ws_temp_tex[gi->ws_temp_cur], GL_TEXTURE_2D);
-	glUniform1i(glGetUniformLocation(ws_temp_debug_prog, "src"), 0);
-#endif	/* defined(WS_TEMP_DEBUG) */
 
 	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
-		    prog, glob_pvm);
+		    ws_smudge_prog, glob_pvm);
 	}
 
 	glUseProgram(0);
@@ -815,9 +792,6 @@ water_effects_fini(void)
 	DESTROY_OP(ws_rain_prog, 0, glDeleteProgram(ws_rain_prog));
 	DESTROY_OP(ws_smudge_prog, 0, glDeleteProgram(ws_smudge_prog));
 	DESTROY_OP(z_depth_prog, 0, glDeleteProgram(z_depth_prog));
-#ifdef	WS_TEMP_DEBUG
-	DESTROY_OP(ws_temp_debug_prog, 0, glDeleteProgram(ws_temp_debug_prog));
-#endif
 
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
@@ -966,6 +940,12 @@ librain_fini(void)
 	water_effects_fini();
 
 	inited = B_FALSE;
+}
+
+void
+librain_get_pvm(mat4 pvm)
+{
+	memcpy(pvm, glob_pvm, sizeof (mat4));
 }
 
 GLuint

@@ -33,28 +33,6 @@
 
 #define	ANIM_ALLOC_STEP	8
 
-/*
- * Apparently these are the standard vertex attribute indices:
- * gl_Vertex		0
- * gl_Normal		2
- * gl_Color		3
- * gl_SecondaryColor	4
- * gl_FogCoord		5
- * gl_MultiTexCoord0	8
- * gl_MultiTexCoord1	9
- * gl_MultiTexCoord2	10
- * gl_MultiTexCoord3	11
- * gl_MultiTexCoord4	12
- * gl_MultiTexCoord5	13
- * gl_MultiTexCoord6	14
- * gl_MultiTexCoord7	15
- */
-enum {
-	VTX_ATTRIB_POS =	0,
-	VTX_ATTRIB_NORM =	2,
-	VTX_ATTRIB_TEX0 =	8
-};
-
 typedef struct {
 	GLfloat		x;
 	GLfloat		y;
@@ -601,11 +579,8 @@ obj8_free(obj8_t *obj)
 }
 
 static void
-geom_draw(const obj8_t *obj, const obj8_geom_t *geom, GLuint prog,
-    const mat4 pvm)
+geom_draw(const obj8_geom_t *geom, GLuint prog, const mat4 pvm)
 {
-	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
-
 	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"), 1, GL_FALSE,
 	    (void *)pvm);
 
@@ -619,8 +594,6 @@ geom_draw(const obj8_t *obj, const obj8_geom_t *geom, GLuint prog,
 	    2, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
 	    (void *)(offsetof(obj8_vtx_t, tex)));
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
-
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -630,7 +603,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     GLuint prog, const mat4 pvm_in)
 {
 	bool_t do_show = B_TRUE;
-	ALIGN16(mat4 pvm);
+	mat4 pvm;
 
 	UNUSED(obj);
 	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
@@ -651,11 +624,10 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
 				if (subcmd->tris.double_sided) {
 					glCullFace(GL_FRONT);
-					geom_draw(obj, &subcmd->tris, prog,
-					    pvm);
+					geom_draw(&subcmd->tris, prog, pvm);
 					glCullFace(GL_BACK);
 				}
-				geom_draw(obj, &subcmd->tris, prog, pvm);
+				geom_draw(&subcmd->tris, prog, pvm);
 			}
 			break;
 		case OBJ8_CMD_ANIM_HIDE_SHOW: {
@@ -669,7 +641,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_ANIM_ROTATE: {
 			double val = cmd_dr_read(subcmd);
 			double angle = 0;
-			ALIGN16(vec3 axis) = { subcmd->rotate.axis.x,
+			vec3 axis = { subcmd->rotate.axis.x,
 			    subcmd->rotate.axis.y, subcmd->rotate.axis.z };
 
 			for (size_t i = 0; i + 1 < subcmd->rotate.n_pts; i++) {
@@ -691,7 +663,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		}
 		case OBJ8_CMD_ANIM_TRANS: {
 			double val = cmd_dr_read(subcmd);
-			ALIGN16(vec3 xlate) = {0, 0, 0};
+			vec3 xlate = {0, 0, 0};
 
 			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
 				double v1 = MIN(subcmd->trans.values[i],
@@ -725,15 +697,15 @@ void
 obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
     const mat4 pvm_in)
 {
-	GLint pos_loc = glGetAttribLocation(prog, "vtx_pos");
-	GLint norm_loc = glGetAttribLocation(prog, "vtx_norm");
-	GLint tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
+	mat4 pvm;
+	GLint pos_loc, norm_loc, tex0_loc;
 
-	ALIGN16(mat4 pvm);
-	ALIGN16(vec3 xlate) =
-	    { obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z };
+	ASSERT(prog != 0);
 
 	memcpy(pvm, pvm_in, sizeof (pvm));
+	pos_loc = glGetAttribLocation(prog, "vtx_pos");
+	norm_loc = glGetAttribLocation(prog, "vtx_norm");
+	tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
@@ -742,7 +714,11 @@ obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
 	glEnableVertexAttribArray(norm_loc);
 	glEnableVertexAttribArray(tex0_loc);
 
-	glm_translate(pvm, xlate);
+	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
+
+	glm_translate(pvm,
+	    (vec3){ obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z });
 	obj8_draw_group_cmd(obj, obj->top, groupname, prog, pvm);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);

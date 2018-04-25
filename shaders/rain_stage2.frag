@@ -17,6 +17,9 @@
  */
 
 #version 460
+#extension GL_GOOGLE_include_directive: require
+
+#include "noise.glsl"
 
 layout(location = 10) uniform sampler2D	tex;
 layout(location = 11) uniform sampler2D	temp_tex;
@@ -29,28 +32,10 @@ layout(location = 16) uniform float	window_ice;
 
 layout(location = 0) out vec4	color_out;
 
-/*
- * Gold Noise ©2017-2018 dcerisano@standard3d.com.
- *  - based on the Golden Ratio, PI and Square Root of Two
- *  - fastest noise generator function
- *  - works with all chipsets (including low precision)
- */
-
-const float PHI = 1.61803398874989484820459 * 00000.1;	/* Golden Ratio */
-const float PI  = 3.14159265358979323846264 * 00000.1;	/* PI */
-const float SQ2 = 1.41421356237309504880169 * 10000.0;	/* Square Root of Two */
-
 const float max_depth = 3;
 const float temp_scale_fact = 400.0;
 const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
 const float water_frozen_temp = 273 - 2;	/* -3 degrees C */
-
-float
-gold_noise(vec2 coordinate, float seed)
-{
-	return (fract(sin(dot(coordinate * (seed + PHI), vec2(PHI, PI))) *
-	    SQ2));
-}
 
 float
 read_depth(vec2 pos)

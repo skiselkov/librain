@@ -65,6 +65,7 @@ void librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids);
 void librain_draw_exec(void);
 void librain_draw_finish(void);
 
+void librain_get_pvm(mat4 pvm);
 GLuint librain_get_screenshot_tex(void);
 
 #ifdef __cplusplus

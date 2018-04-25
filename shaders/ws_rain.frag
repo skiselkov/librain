@@ -22,8 +22,8 @@ layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	norm_tex;
 layout(location = 12) uniform sampler2D	screenshot_tex;
 
-layout(location = 50) in vec3		tex_norm;
-layout(location = 51) in vec2		tex_coord;
+layout(location = 0) in vec3		tex_norm;
+layout(location = 1) in vec2		tex_coord;
 
 layout(location = 0) out vec4	color_out;
 
