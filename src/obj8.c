@@ -598,6 +598,49 @@ geom_draw(const obj8_geom_t *geom, GLuint prog, const mat4 pvm)
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
 
+static inline double
+anim_extrapolate_1D(double *v_p, vect2_t v1, vect2_t v2)
+{
+	if ((v1.x < v2.x && (*v_p < v1.x || *v_p > v2.x)) ||
+	    (v1.x > v2.x && (*v_p > v1.x || *v_p < v2.x))) {
+		*v_p = fx_lin(*v_p, v1.x, v1.y, v2.x, v2.y);
+		return (B_TRUE);
+	}
+	return (B_FALSE);
+}
+
+static double
+rotation_get_angle(obj8_cmd_t *cmd)
+{
+	double val = cmd_dr_read(cmd);
+	size_t n = cmd->rotate.n_pts;
+
+	/* Too few points to animate anything */
+	if (n < 2)
+		return (0);
+	/* Invalid range */
+	if (cmd->rotate.pts[0].x == cmd->rotate.pts[n - 1].x)
+		return (0);
+
+	if (anim_extrapolate_1D(&val, cmd->rotate.pts[0],
+	    cmd->rotate.pts[n - 1]))
+		return (val);
+
+	for (size_t i = 0; i + 1 < n; i++) {
+		double v1 = MIN(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
+		double v2 = MAX(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
+		if (v1 <= val && val <= v2) {
+			double rat = (val - v1) / (v2 - v1);
+
+			return (wavg(cmd->rotate.pts[i].y,
+			    cmd->rotate.pts[i + 1].y, rat));
+		}
+	}
+
+	VERIFY_MSG(0, "Something went really wrong during animation "
+	    "of %s with value %f", cmd->dr.name, val);
+}
+
 void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     GLuint prog, const mat4 pvm_in)
@@ -638,29 +681,11 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 				do_show = subcmd->hide_show.set_val;
 			break;
 		}
-		case OBJ8_CMD_ANIM_ROTATE: {
-			double val = cmd_dr_read(subcmd);
-			double angle = 0;
-			vec3 axis = { subcmd->rotate.axis.x,
-			    subcmd->rotate.axis.y, subcmd->rotate.axis.z };
-
-			for (size_t i = 0; i + 1 < subcmd->rotate.n_pts; i++) {
-				double v1 = MIN(subcmd->rotate.pts[i].x,
-				    subcmd->rotate.pts[i + 1].x);
-				double v2 = MAX(subcmd->rotate.pts[i].x,
-				    subcmd->rotate.pts[i + 1].x);
-				if (v1 <= val && val <= v2) {
-					double rat = (val - v1) / (v2 - v1);
-
-					angle = wavg(subcmd->rotate.pts[i].y,
-					    subcmd->rotate.pts[i + 1].y, rat);
-					break;
-				}
-			}
-
-			glm_rotate(pvm, DEG2RAD(angle), axis);
+		case OBJ8_CMD_ANIM_ROTATE:
+			glm_rotate(pvm, DEG2RAD(rotation_get_angle(subcmd)),
+			    (vec3){ subcmd->rotate.axis.x,
+			    subcmd->rotate.axis.y, subcmd->rotate.axis.z });
 			break;
-		}
 		case OBJ8_CMD_ANIM_TRANS: {
 			double val = cmd_dr_read(subcmd);
 			vec3 xlate = {0, 0, 0};
