@@ -61,6 +61,7 @@ static char	*shaderpath = NULL;
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
 static GLint	old_vp[4] = { -1, -1, -1, -1 };
+static GLint	new_vp[4] = { -1, -1, -1, -1 };
 static float	last_rain_t = 0;
 
 static GLint	z_depth_prog = 0;
@@ -559,6 +560,9 @@ draw_ws_effects(glass_info_t *gi)
 	    GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_rain_prog, "depth_tex"), 2);
 
+	glUniform4f(glGetUniformLocation(ws_rain_prog, "vp"),
+	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
+
 	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
 		    ws_rain_prog, glob_pvm);
@@ -584,6 +588,9 @@ draw_ws_effects(glass_info_t *gi)
 	XPLMBindTexture2d(gi->water_depth_tex[!gi->water_depth_cur],
 	    GL_TEXTURE_2D);
 	glUniform1i(glGetUniformLocation(ws_smudge_prog, "depth_tex"), 2);
+
+	glUniform4f(glGetUniformLocation(ws_smudge_prog, "vp"),
+	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
 	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
@@ -667,6 +674,12 @@ librain_draw_prepare(bool_t force)
 	if (vp[2] != w || vp[3] != h) {
 		memcpy(saved_vp, vp, sizeof (saved_vp));
 		glViewport(vp[0], vp[1], w, h);
+		new_vp[0] = vp[0];
+		new_vp[1] = vp[1];
+		new_vp[2] = w;
+		new_vp[3] = h;
+	} else {
+		memcpy(new_vp, old_vp, sizeof (new_vp));
 	}
 
 	VERIFY3S(dr_getvf32(&drs.acf_matrix, (void *)mv_matrix, 0, 16),

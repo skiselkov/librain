@@ -21,6 +21,7 @@
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	screenshot_tex;
 layout(location = 12) uniform sampler2D	ws_tex;
+layout(location = 13) uniform vec4	vp;
 
 layout(location = 0) in vec3		tex_norm;
 layout(location = 1) in vec2		tex_coord;
@@ -40,9 +41,10 @@ vec4
 get_pixel(vec2 pos)
 {
 	vec4 pixel;
+	vec2 sz = textureSize(screenshot_tex, 0);
 
-	pos = pos / textureSize(ws_tex, 0);
-	pos = clamp(pos, 0.0, 0.99999);
+	pos = pos / sz;
+	pos = clamp(pos, vec2(0), vec2(vp.zw / sz) - 0.001);
 
 	pixel = texture(ws_tex, pos);
 	if (pixel.a == 1.0)
@@ -57,7 +59,7 @@ main()
 	vec4 depth_val = texture(depth_tex, tex_coord);
 	float depth = depth_val.r;
 	float depth_rat = depth / max_depth;
-	float depth_rat_fact = 10 * pow(depth_rat, 1.2);
+	float depth_rat_fact = 1 * pow(depth_rat, 1.2);
 	vec4 out_pixel = vec4(0, 0, 0, 0);
 
 	for (float x = 0; x < 5; x++) {

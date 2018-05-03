@@ -21,6 +21,7 @@
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	norm_tex;
 layout(location = 12) uniform sampler2D	screenshot_tex;
+layout(location = 13) uniform vec4	vp;
 
 layout(location = 0) in vec3		tex_norm;
 layout(location = 1) in vec2		tex_coord;
@@ -28,14 +29,15 @@ layout(location = 1) in vec2		tex_coord;
 layout(location = 0) out vec4	color_out;
 
 const float	displace_lim = 200.0;
-const float	darkening_fact = 450.0;
+const float	darkening_fact = 800.0;
 const float	max_depth = 3.0;
 
 vec4
 get_pixel(vec2 pos)
 {
-	pos = pos / textureSize(screenshot_tex, 0);
-	pos = clamp(pos, 0.0, 0.99999);
+	vec2 sz = textureSize(screenshot_tex, 0);
+	pos = pos / sz;
+	pos = clamp(pos, vec2(0), vec2(vp.zw / sz) - 0.001);
 	return (texture(screenshot_tex, pos));
 }
 

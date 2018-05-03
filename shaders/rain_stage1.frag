@@ -37,6 +37,7 @@ layout(location = 20) uniform float	wind;
 layout(location = 0) out vec4	color_out;
 
 const float max_depth = 3.0;
+const float min_depth = 0.01;
 const float precip_fact = 0.1;
 const float gravity_factor = 0.05;
 const float precip_scale_fact = 0.02;
@@ -45,7 +46,7 @@ const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
 const float water_frozen_temp = 273 - 2;	/* -3 degrees C */
 
 bool
-droplet_gen_check(vec2 pos, float temp_flow_coeff)
+droplet_gen_check(vec2 pos)
 {
 	return (gold_noise(pos, rand_seed) >
 	    (1 - (precip_fact * precip_intens * precip_scale_fact *
@@ -76,21 +77,19 @@ main()
 	if (temp > water_liquid_temp) {
 		temp_flow_coeff = 1;
 	} else if (temp < water_frozen_temp) {
-		temp_flow_coeff = 0;
+		temp_flow_coeff = 0.002;
 	} else {
 		temp_flow_coeff = (temp - water_frozen_temp) /
 		    (water_liquid_temp - water_frozen_temp);
 	}
 
-	if (droplet_gen_check(gl_FragCoord.xy, temp_flow_coeff)) {
+	if (droplet_gen_check(gl_FragCoord.xy)) {
 		new_depth = max_depth;
 		water_added = true;
-	} else if (droplet_gen_check(gl_FragCoord.xy + vec2(1, 0),
-	    temp_flow_coeff) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(-1, 0), temp_flow_coeff) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(0, 1), temp_flow_coeff) ||
-	    droplet_gen_check(gl_FragCoord.xy + vec2(0, -1),
-	    temp_flow_coeff)) {
+	} else if (droplet_gen_check(gl_FragCoord.xy + vec2(1, 0)) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(-1, 0)) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(0, 1)) ||
+	    droplet_gen_check(gl_FragCoord.xy + vec2(0, -1))) {
 		new_depth = max_depth / 3;
 		water_added = true;
 	} else {
@@ -120,15 +119,17 @@ main()
 	    tex_sz * d_t * temp_flow_coeff);
 	prev_depth = read_depth(prev_pos);
 
-	blowaway_fact = 0.601;
+	blowaway_fact = mix(0.57, 0.601, temp_flow_coeff);
 
 	depth += prev_depth * blowaway_fact;
 
 	if (!water_added) {
 		float old_water = min(old_depth + prev_depth, max_depth);
 		depth = clamp(depth, 0.0, old_water -
-		    max_depth * mix(0.001, 0.01, temp_flow_coeff));
+		    max_depth * mix(0.005, 0.01, temp_flow_coeff));
 	}
 
-	color_out = vec4(clamp(depth, 0.0, max_depth), 0, 0, 1);
+	if (depth < min_depth)
+		depth = 0;
+	color_out = vec4(clamp(depth, 0, max_depth), 0, 0, 1);
 }

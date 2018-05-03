@@ -25,6 +25,8 @@
  * N.B. all temps are in Kelvin!
  */
 
+#define	CABIN_TEMP_INERTIA_FACTOR	2
+
 layout(location = 10) uniform sampler2D		src;
 layout(location = 11) uniform sampler2D		depth;
 
@@ -73,8 +75,9 @@ main()
 		glass_temp = le_temp;
 
 	glass_temp = filter_in(glass_temp, le_temp,
-	    mix(inertia, inertia / 10, min(wind_fact + precip_intens, 1)));
-	glass_temp = filter_in(glass_temp, cabin_temp, inertia * 2.5);
+	    mix(inertia, inertia / 90, min(wind_fact + precip_intens, 1)));
+	glass_temp = filter_in(glass_temp, cabin_temp,
+	    inertia * CABIN_TEMP_INERTIA_FACTOR);
 
 	/*
 	 * Hot air blowing on the windshield?
@@ -90,7 +93,7 @@ main()
 		    hot_air_src[i] * my_size);
 		radius = hot_air_radius[i] * my_size.x;
 		glass_temp = filter_in(glass_temp, hot_air_temp[i],
-		    inertia + max(2 * inertia * (hot_air_dist / radius), 1));
+		    1.5 * max(inertia * (hot_air_dist / radius), 1));
 	}
 
 	glass_temp = filter_in(glass_temp, glass_temp + rand_temp, 0.5);
