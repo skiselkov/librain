@@ -204,6 +204,30 @@ parse_trans_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	return (B_TRUE);
 }
 
+/*
+ * X-Plane wraps rotations around the "shorter way", so here we adjust
+ * rotation offsets in terms of deltas from the previous point.
+ */
+static void
+normalize_rotate_angle(obj8_cmd_t *cmd, size_t n)
+{
+	double prev, delta;
+
+	ASSERT3U(cmd->type, ==, OBJ8_CMD_ANIM_ROTATE);
+	ASSERT3U(cmd->rotate.n_pts, >, n);
+
+	if (n == 0)
+		prev = 0;
+	else
+		prev = cmd->rotate.pts[n - 1].y;
+	delta = cmd->rotate.pts[n].y - prev;
+	while (delta > 180)
+		delta -= 360;
+	while (delta < -180)
+		delta += 360;
+	cmd->rotate.pts[n].y = prev + delta;
+}
+
 static bool_t
 parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
     int linenr)
@@ -223,12 +247,13 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	}
 	n = cmd->rotate.n_pts;
 	cmd->rotate.n_pts++;
-	if (sscanf(line, "ANIM_rotate_key %lf %lf",
-	    &cmd->rotate.pts[n].x, &cmd->rotate.pts[n].y) != 2) {
+	if (sscanf(line, "ANIM_rotate_key %lf %lf", &cmd->rotate.pts[n].x,
+	    &cmd->rotate.pts[n].y) != 2) {
 		logMsg("%s:%d: failed to parse ANIM_rotate_key",
 		    filename, linenr);
 		return (B_FALSE);
 	}
+	normalize_rotate_angle(cmd, n);
 
 	return (B_TRUE);
 }
@@ -466,6 +491,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			    &cmd->dr_offset)) {
 				cmd->null_dr = B_TRUE;
 			}
+			normalize_rotate_angle(cmd, 1);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
