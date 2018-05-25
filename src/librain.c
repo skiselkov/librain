@@ -952,6 +952,12 @@ librain_fini(void)
 
 	water_effects_fini();
 
+	for (int i = 0; i < 4; i++) {
+		old_vp[i] = -1;
+		new_vp[i] = -1;
+		saved_vp[i] = -1;
+	}
+
 	inited = B_FALSE;
 }
 
