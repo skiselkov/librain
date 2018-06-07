@@ -39,8 +39,8 @@ layout(location = 0) out vec4	color_out;
 const float max_depth = 3.0;
 const float min_depth = 0.01;
 const float precip_fact = 0.1;
-const float gravity_factor = 0.05;
-const float precip_scale_fact = 0.02;
+const float gravity_factor = 0.25;
+const float precip_scale_fact = 0.0117;
 const float temp_scale_fact = 400.0;
 const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
 const float water_frozen_temp = 273 - 2;	/* -3 degrees C */
@@ -73,6 +73,7 @@ main()
 	float temp = texture(temp_tex, gl_FragCoord.xy / tex_sz).r *
 	    temp_scale_fact;
 	float temp_flow_coeff;
+	float wind_dist_factor, thrust_dist_factor;
 
 	if (temp > water_liquid_temp) {
 		temp_flow_coeff = 1;
@@ -113,9 +114,12 @@ main()
 	wp_dir = (gl_FragCoord.xy - wp);
 	wp_dir = wp_dir / length(wp_dir);
 
+	wind_dist_factor = pow(thrust, 2.5);
+	thrust_dist_factor = pow(wind, 1.85);
+
 	prev_pos = gl_FragCoord.xy -
 	    ((gp_dir * (gravity_factor * gravity * pow(precip_intens, 2)) +
-	    tp_dir * pow(thrust, 1.25) + wp_dir * pow(wind, 1.5)) *
+	    tp_dir * thrust_dist_factor + wp_dir * wind_dist_factor) *
 	    tex_sz * d_t * temp_flow_coeff);
 	prev_depth = read_depth(prev_pos);
 
