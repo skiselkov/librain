@@ -184,6 +184,7 @@ static struct {
 	dr_t	wind_spd;
 	dr_t	rot_rate;
 	dr_t	le_temp;
+	dr_t	amb_temp;
 	dr_t	window_ice;
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
@@ -442,6 +443,8 @@ rain_stage1_comp(glass_info_t *gi)
 	    gi->tp.x, gi->tp.y);
 	glUniform2f(glGetUniformLocation(rain_stage1_prog, "wp"),
 	    gi->wp.x, gi->wp.y);
+	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind_temp"),
+	    C2KELVIN(dr_getf(&drs.amb_temp)));
 
 	glutils_draw_quads(&gi->water_depth_quads, rain_stage1_prog);
 
@@ -619,7 +622,7 @@ compute_precip(double now)
 	 * window ice accumulation.
 	 */
 	if (precip_intens < MIN_PRECIP_ICE_ADD &&
-	    dr_getf(&drs.le_temp) < PRECIP_ICE_TEMP_THRESH &&
+	    dr_getf(&drs.amb_temp) < PRECIP_ICE_TEMP_THRESH &&
 	    cur_win_ice > 0) {
 		double d_ice = (cur_win_ice - prev_win_ice) / d_t;
 		double d_precip;
@@ -646,7 +649,7 @@ librain_draw_prepare(bool_t force)
 
 	compute_precip(now);
 
-	if (precip_intens > 0 || dr_getf(&drs.le_temp) <= 4)
+	if (precip_intens > 0 || dr_getf(&drs.amb_temp) <= 4)
 		last_rain_t = now;
 
 	/*
@@ -654,7 +657,7 @@ librain_draw_prepare(bool_t force)
 	 * windshield, even if the outside air temp is below zero.
 	 */
 	if (now - last_rain_t > RAIN_DRAW_TIMEOUT && !force &&
-	    dr_getf(&drs.le_temp) > 4) {
+	    dr_getf(&drs.amb_temp) > 4) {
 		prepare_ran = B_FALSE;
 		return;
 	}
@@ -890,6 +893,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.wind_dir, "sim/weather/wind_direction_degt");
 	fdr_find(&drs.wind_spd, "sim/weather/wind_speed_kt");
 	fdr_find(&drs.rot_rate, "sim/flightmodel/position/R");
+	fdr_find(&drs.amb_temp, "sim/weather/temperature_ambient_c");
 	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
 	if (dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled"))

@@ -68,14 +68,14 @@ main()
 	    temp_scale_fact;
 	float depth = texture(depth, gl_FragCoord.xy / textureSize(depth, 0)).r;
 	float rand_temp = 4 * (gold_noise(gl_FragCoord.xy, rand_seed) - 0.5);
-	float inertia = inertia_in * (1 + depth);
+	float inertia = inertia_in * (1 + depth / max_depth);
 
 	/* Protect from runaway values */
 	if (glass_temp < 200 || glass_temp > temp_scale_fact)
 		glass_temp = le_temp;
 
 	glass_temp = filter_in(glass_temp, le_temp,
-	    mix(inertia, inertia / 90, min(wind_fact + precip_intens, 1)));
+	    mix(inertia / 4, inertia / 40, min(wind_fact, 1)));
 	glass_temp = filter_in(glass_temp, cabin_temp,
 	    inertia * CABIN_TEMP_INERTIA_FACTOR);
 
@@ -112,15 +112,15 @@ main()
 
 		if (left <= gl_FragCoord.x && right >= gl_FragCoord.x &&
 		    bottom <= gl_FragCoord.y && top >= gl_FragCoord.y) {
-			inertia_out = inertia;
+			inertia_out = inertia_in;
 		} else if (gl_FragCoord.x < left &&
 		    gl_FragCoord.y >= bottom && gl_FragCoord.y <= top) {
-			inertia_out = max(inertia * left - gl_FragCoord.x,
-			    inertia);
+			inertia_out = max(inertia_in * left - gl_FragCoord.x,
+			    inertia_in);
 		} else if (gl_FragCoord.x > right &&
 		    gl_FragCoord.y >= bottom && gl_FragCoord.y <= top) {
-			inertia_out = max(inertia * gl_FragCoord.x - right,
-			    inertia);
+			inertia_out = max(inertia_in * gl_FragCoord.x - right,
+			    inertia_in);
 		}
 
 		glass_temp = filter_in(glass_temp, heat_tgt_temps[i],

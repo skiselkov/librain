@@ -56,7 +56,7 @@ main()
 
 	if (temp < water_liquid_temp) {
 		float fact = min((temp - water_liquid_temp) /
-		    (water_frozen_temp - water_liquid_temp), 1) * 0.1;
+		    (water_frozen_temp - water_liquid_temp), 1);
 		float depth = pow(read_depth(gl_FragCoord.xy) / max_depth, 0.3);
 		fact *= depth;
 		ice_displace = vec2(

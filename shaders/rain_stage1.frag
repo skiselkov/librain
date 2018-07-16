@@ -19,6 +19,7 @@
 #version 460
 #extension GL_GOOGLE_include_directive: require
 
+#include "util.glsl"
 #include "noise.glsl"
 
 layout(location = 10) uniform sampler2D	tex;
@@ -33,6 +34,7 @@ layout(location = 17) uniform vec2	wp;	/* wind origin point */
 layout(location = 18) uniform float	thrust;
 layout(location = 19) uniform float	gravity;
 layout(location = 20) uniform float	wind;
+layout(location = 21) uniform float	wind_temp;
 
 layout(location = 0) out vec4	color_out;
 
@@ -42,15 +44,18 @@ const float precip_fact = 0.1;
 const float gravity_factor = 0.25;
 const float precip_scale_fact = 0.0117;
 const float temp_scale_fact = 400.0;
-const float water_liquid_temp = 273 + 2;	/* 5 degrees C */
-const float water_frozen_temp = 273 - 2;	/* -3 degrees C */
+const float water_liquid_temp = C2KELVIN(1.5);
+const float water_frozen_temp = C2KELVIN(-0.5);
 
 bool
 droplet_gen_check(vec2 pos)
 {
-	return (gold_noise(pos, rand_seed) >
-	    (1 - (precip_fact * precip_intens * precip_scale_fact *
-	    max(pow(min(1 - thrust, 1 - wind), 1), 0.35))));
+	float temp_fact = clamp(fx_lin(wind_temp, C2KELVIN(-20.0), 0.0,
+	    C2KELVIN(0.0), 1.0), 0.0, 1.0);
+	float prob = precip_fact * precip_intens * precip_scale_fact *
+	    temp_fact * max(pow(min(1 - thrust, 1 - wind), 1), 0.35);
+
+	return (gold_noise(pos, rand_seed) > (1 - prob));
 }
 
 float
