@@ -23,7 +23,7 @@ rm -rf mac32 mac64
 mkdir -p mac32 mac64
 
 make distclean > /dev/null
-qmake -spec macx-clang && make -j $NCPUS && mv libacfutils.a mac64
+qmake -spec macx-clang && make -j $NCPUS && mv librain.a mac64
 if [ $? != 0 ] ; then
   exit
 fi
