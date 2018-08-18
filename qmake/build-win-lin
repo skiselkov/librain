@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# CDDL HEADER START
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+# CDDL HEADER END
+
+# Copyright 2018 Saso Kiselkov. All rights reserved.
+
+# Invoke this script to build libacfutils for both Windows and Linux,
+# 32- & 64-bit flavors. Install the necessary mingw cross-compile utilities
+# first.
+# On Linux also do "apt install libopenal-dev:x86_64 libopenal-dev:i386".
+
+# We'll try to build on N+1 CPUs we have available. The extra +1 is to allow
+# for one make instance to be blocking on disk.
+NCPUS=$(( $(grep 'processor[[:space:]]\+:' /proc/cpuinfo  | wc -l) + 1 ))
+RELEASE="debug"
+
+rm -rf win32 win64 lin32 lin64
+mkdir -p win64 lin64
+
+make distclean > /dev/null
+qmake -set DLL $DLL
+qmake -set WHOLE_ARCHIVE $WHOLE_ARCHIVE
+qmake -set CROSS_COMPILE x86_64-w64-mingw32- && \
+    qmake -spec win32-g++ && make -j $NCPUS
+if [ $? != 0 ] ; then
+	exit
+fi
+mv "$RELEASE/rain1.dll" "win64/rain.dll" || exit 1
+mv "librain.a" "win64/rain.lib" || exit 1
+
+qmake -spec linux-g++-64 && make -j $NCPUS && mv librain.a lin64
+if [ $? != 0 ] ; then
+  exit
+fi
+
+make distclean > /dev/null

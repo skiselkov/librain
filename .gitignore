@@ -1,1 +1,7 @@
 shaders/bin
+qmake/Makefile.Debug
+qmake/Makefile.Release
+qmake/debug
+qmake/lin64
+qmake/rain_resource.rc
+qmake/win64
