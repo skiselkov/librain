@@ -37,7 +37,7 @@ if [ $? != 0 ] ; then
 	exit
 fi
 mv "$RELEASE/rain1.dll" "win64/rain.dll" || exit 1
-mv "librain.a" "win64/rain.lib" || exit 1
+mv "$RELEASE/librain1.a" "win64/rain.lib" || exit 1
 
 qmake -spec linux-g++-64 && make -j $NCPUS && mv librain.a lin64
 if [ $? != 0 ] ; then
