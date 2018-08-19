@@ -68,6 +68,7 @@ void librain_draw_finish(void);
 
 void librain_get_pvm(mat4 pvm);
 GLuint librain_get_screenshot_tex(void);
+void librain_set_debug_draw(bool_t flag);
 
 #ifdef __cplusplus
 }

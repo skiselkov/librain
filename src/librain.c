@@ -59,6 +59,7 @@ typedef enum {
 
 static bool_t	inited = B_FALSE;
 static char	*shaderpath = NULL;
+static bool_t	debug_draw = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
@@ -316,7 +317,8 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 	if (!prepare_ran)
 		return;
 
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	if (!debug_draw)
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glUseProgram(z_depth_prog);
 	if (z_depth_group_ids != NULL) {
 		for (int i = 0; z_depth_group_ids[i] != NULL; i++)
@@ -326,7 +328,8 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 		obj8_draw_group(obj, NULL, z_depth_prog, glob_pvm);
 	}
 	glUseProgram(0);
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	if (!debug_draw)
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
 static void
@@ -1021,4 +1024,17 @@ GLuint
 librain_get_screenshot_tex(void)
 {
 	return (screenshot_tex);
+}
+
+/*
+ * By setting this flag to true, any object you draw using
+ * librain_draw_z_depth will be visible on the screen (instead of only
+ * being used in a z-depth pass). Useful for debugging z-depth object
+ * placement. The UV mapping (if any) of the geometry will be drawn
+ * using a mixture of RGB colors, to give the objects some more shape.
+ */
+void
+librain_set_debug_draw(bool_t flag)
+{
+	debug_draw = flag;
 }
