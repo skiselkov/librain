@@ -46,7 +46,7 @@ TARGET = rain
 
 win32 {
 	# Minimum Windows version is Windows Vista (0x0600)
-	DEFINES += APL=0 IBM=1 LIN=0 _WIN32_WINNT=0x0600 GLEW_BUILD
+	DEFINES += APL=0 IBM=1 LIN=0 _WIN32_WINNT=0x0600 GLEW_BUILD DLLMODE
 	QMAKE_DEL_FILE = rm -f
 	QMAKE_CFLAGS -= -Werror
 	LIBS += -static-libgcc

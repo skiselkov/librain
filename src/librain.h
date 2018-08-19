@@ -27,7 +27,7 @@ extern "C" {
 #endif
 
 typedef struct {
-	const obj8_t	*obj;
+	obj8_t		*obj;
 	const char	**group_ids;
 
 	double		slant_factor;
@@ -54,6 +54,7 @@ typedef struct {
 	float		hot_air_temp[2];
 } librain_glass_t;
 
+bool_t librain_glob_init(void);
 bool_t librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num);
 void librain_fini(void);
@@ -61,7 +62,7 @@ void librain_fini(void);
 bool_t librain_reload_gl_progs(void);
 
 void librain_draw_prepare(bool_t force);
-void librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids);
+void librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids);
 void librain_draw_exec(void);
 void librain_draw_finish(void);
 

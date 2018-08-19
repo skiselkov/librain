@@ -85,14 +85,14 @@ typedef struct {
 	GLuint		vtx_buf;
 	void		*idx_table;
 	GLuint		idx_buf;
-	vect3_t		pos_offset;
+	mat4		matrix;
 	obj8_cmd_t	*top;
 } obj8_t;
 
 obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
 void obj8_free(obj8_t *obj);
-void obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
-    const mat4 mvp);
+void obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 mvp);
+void obj8_set_matrix(obj8_t *obj, mat4 matrix);
 
 #ifdef __cplusplus
 }

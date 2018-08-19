@@ -29,6 +29,7 @@
 #include <acfutils/perf.h>
 #include <acfutils/safe_alloc.h>
 
+#include "librain.h"
 #include "obj8.h"
 
 #define	ANIM_ALLOC_STEP	8
@@ -275,6 +276,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	dr_t		cgY_orig, cgZ_orig;
 	obj8_cmd_t	*cur_cmd = NULL;
 	obj8_cmd_t	*cur_anim = NULL;
+	vect3_t		offset;
 
 	fdr_find(&cgY_orig, "sim/aircraft/weight/acf_cgY_original");
 	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
@@ -284,8 +286,10 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 
 	obj = safe_calloc(1, sizeof (*obj));
 	obj->top = cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, NULL);
-	obj->pos_offset = vect3_add(pos_offset, VECT3(0,
+
+	offset = vect3_add(pos_offset, VECT3(0,
 	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))));
+	glm_translate_make(obj->matrix, (vec3){offset.x, offset.y, offset.z});
 
 	for (int linenr = 1; getline(&line, &cap, fp) > 0; linenr++) {
 		strip_space(line);
@@ -548,8 +552,12 @@ errout:
 obj8_t *
 obj8_parse(const char *filename, vect3_t pos_offset)
 {
-	FILE *fp = fopen(filename, "rb");
+	FILE *fp;
 	obj8_t *obj;
+
+	if (!librain_glob_init())
+		return (NULL);
+	fp = fopen(filename, "rb");
 
 	if (fp == NULL) {
 		logMsg("Can't open %s: %s", filename, strerror(errno));
@@ -745,15 +753,13 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 }
 
 void
-obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
-    const mat4 pvm_in)
+obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 {
 	mat4 pvm;
 	GLint pos_loc, norm_loc, tex0_loc;
 
 	ASSERT(prog != 0);
 
-	memcpy(pvm, pvm_in, sizeof (pvm));
 	pos_loc = glGetAttribLocation(prog, "vtx_pos");
 	norm_loc = glGetAttribLocation(prog, "vtx_norm");
 	tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
@@ -768,8 +774,7 @@ obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
-	glm_translate(pvm,
-	    (vec3){ obj->pos_offset.x, obj->pos_offset.y, obj->pos_offset.z });
+	glm_mat4_mul(pvm_in, obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, prog, pvm);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -778,4 +783,27 @@ obj8_draw_group(const obj8_t *obj, const char *groupname, GLuint prog,
 	glDisableVertexAttribArray(pos_loc);
 	glDisableVertexAttribArray(norm_loc);
 	glDisableVertexAttribArray(tex0_loc);
+}
+
+/*
+ * Applies a pre-transform matrix to all geometry in the OBJ. You can use
+ * this when the simple pos_offset parameter in obj8_parse isn't enough.
+ * Simply supply a custom transform matrix here and it will be applied
+ * instead of the fixed pos_offset. Please note that this completely
+ * replaces the old matrix established using pos_offset, so be sure to
+ * apply any offseting you passed in obj8_parse to the matrix passed here
+ * as well.
+ */
+void
+obj8_set_matrix(obj8_t *obj, mat4 matrix)
+{
+	dr_t cgY_orig, cgZ_orig;
+	mat4 m1;
+
+	fdr_find(&cgY_orig, "sim/aircraft/weight/acf_cgY_original");
+	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
+
+	glm_translate_make(m1, (vec3){0,
+	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))});
+	glm_mat4_mul(matrix, m1, obj->matrix);
 }

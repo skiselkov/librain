@@ -18,11 +18,13 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <time.h>
 
 #include <GL/glew.h>
 
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
+#include <XPLMUtilities.h>
 
 #include <acfutils/assert.h>
 #include <acfutils/crc64.h>
@@ -72,7 +74,7 @@ static GLint	ws_rain_prog = 0;
 static GLint	ws_smudge_prog = 0;
 
 static GLint	saved_vp[4] = { -1, -1, -1, -1 };
-static bool_t	prepare_ran = B_TRUE;
+static bool_t	prepare_ran = B_FALSE;
 static double	prev_win_ice = 0;
 static double	precip_intens = 0;
 static float	last_run_t = 0;
@@ -309,7 +311,7 @@ grab_screenshot(void)
 }
 
 void
-librain_draw_z_depth(const obj8_t *obj, const char **z_depth_group_ids)
+librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 {
 	if (!prepare_ran)
 		return;
@@ -566,9 +568,13 @@ draw_ws_effects(glass_info_t *gi)
 	glUniform4f(glGetUniformLocation(ws_rain_prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
-	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
-		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
-		    ws_rain_prog, glob_pvm);
+	if (gi->glass->group_ids != NULL) {
+		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
+			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
+			    ws_rain_prog, glob_pvm);
+		}
+	} else {
+		obj8_draw_group(gi->glass->obj, NULL, ws_rain_prog, glob_pvm);
 	}
 
 	/*
@@ -595,9 +601,13 @@ draw_ws_effects(glass_info_t *gi)
 	glUniform4f(glGetUniformLocation(ws_smudge_prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
-	for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
-		obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
-		    ws_smudge_prog, glob_pvm);
+	if (gi->glass->group_ids != NULL) {
+		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
+			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
+			    ws_smudge_prog, glob_pvm);
+		}
+	} else {
+		obj8_draw_group(gi->glass->obj, NULL, ws_smudge_prog, glob_pvm);
 	}
 
 	glUseProgram(0);
@@ -869,6 +879,39 @@ librain_reload_gl_progs(void)
 }
 
 bool_t
+librain_glob_init(void)
+{
+#ifdef	DLLMODE
+	static bool_t glob_inited = B_FALSE;
+	GLenum err;
+
+	if (glob_inited)
+		return (B_TRUE);
+
+	log_init(XPLMDebugString, "librain");
+	crc64_init();
+	crc64_srand(microclock() + clock());
+
+	/* GLEW bootstrap */
+	err = glewInit();
+	if (err != GLEW_OK) {
+		/* Problem: glewInit failed, something is seriously wrong. */
+		logMsg("FATAL ERROR: cannot initialize libGLEW: %s",
+		    glewGetErrorString(err));
+		return (B_FALSE);
+	}
+	if (!GLEW_VERSION_2_1) {
+		logMsg("FATAL ERROR: your system doesn't support at "
+		    "least OpenGL 2.1");
+		return (B_FALSE);
+	}
+
+	glob_inited = B_TRUE;
+#endif	/* DLLMODE */
+	return (B_TRUE);
+}
+
+bool_t
 librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num)
 {
@@ -878,6 +921,9 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	shaderpath = strdup(the_shaderpath);
 
 	memset(&drs, 0, sizeof (drs));
+
+	if (!librain_glob_init())
+		return (B_FALSE);
 
 	fdr_find(&drs.panel_render_type, "sim/graphics/view/panel_render_type");
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
