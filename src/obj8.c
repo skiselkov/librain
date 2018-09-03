@@ -724,6 +724,15 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			double val = cmd_dr_read(subcmd);
 			vec3 xlate = {0, 0, 0};
 
+			if (subcmd->trans.n_pts == 1) {
+				/*
+				 * single-point translations simply set
+				 * position
+				 */
+				xlate[0] = subcmd->trans.pos[0].x;
+				xlate[1] = subcmd->trans.pos[0].y;
+				xlate[2] = subcmd->trans.pos[0].z;
+			}
 			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
 				double v1 = MIN(subcmd->trans.values[i],
 				    subcmd->trans.values[i + 1]);
@@ -763,9 +772,6 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	pos_loc = glGetAttribLocation(prog, "vtx_pos");
 	norm_loc = glGetAttribLocation(prog, "vtx_norm");
 	tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
 
 	glEnableVertexAttribArray(pos_loc);
 	glEnableVertexAttribArray(norm_loc);

@@ -37,15 +37,9 @@
 #include <acfutils/shader.h>
 #include <acfutils/time.h>
 
+#include "glpriv.h"
 #include "librain.h"
 
-#define	DESTROY_OP(var, zero_val, destroy_op) \
-	do { \
-		if ((var) != (zero_val)) { \
-			destroy_op; \
-			(var) = (zero_val); \
-		} \
-	} while (0)
 #define	RAIN_DRAW_TIMEOUT	15	/* seconds */
 
 #define	MIN_PRECIP_ICE_ADD	0.05	/* dimensionless */
@@ -58,7 +52,6 @@ typedef enum {
 } panel_render_type_t;
 
 static bool_t	inited = B_FALSE;
-static char	*shaderpath = NULL;
 static bool_t	debug_draw = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
@@ -197,45 +190,6 @@ static struct {
 #define	RAIN_COMP_BEFORE	0
 
 static void
-setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data,
-    GLint mag_filter, GLint min_filter)
-{
-	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
-
-	if (mag_filter != 0) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
-		    mag_filter);
-	}
-	if (min_filter != 0) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-		    min_filter);
-	}
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0, format,
-	    type, data);
-}
-
-static void
-setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data)
-{
-	setup_texture_filter(tex, int_fmt, width,
-	    height, format, type, data, GL_LINEAR, GL_LINEAR);
-}
-
-static void
-setup_color_fbo_for_tex(GLuint fbo, GLuint tex)
-{
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-	    GL_TEXTURE_2D, tex, 0);
-	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
-	    GL_FRAMEBUFFER_COMPLETE);
-}
-
-static void
 update_vectors(glass_info_t *gi)
 {
 	float rot_rate = dr_getf(&drs.rot_rate);
@@ -294,8 +248,8 @@ update_viewport(void)
 	}
 }
 
-static void
-grab_screenshot(void)
+void
+librain_refresh_screenshot(void)
 {
 	GLint old_fbo;
 
@@ -320,6 +274,8 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 	if (!debug_draw)
 		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glUseProgram(z_depth_prog);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
 	if (z_depth_group_ids != NULL) {
 		for (int i = 0; z_depth_group_ids[i] != NULL; i++)
 			obj8_draw_group(obj, z_depth_group_ids[i],
@@ -363,7 +319,7 @@ ws_temp_comp(glass_info_t *gi)
 	glActiveTexture(GL_TEXTURE1);
 	XPLMBindTexture2d(gi->water_depth_tex[gi->water_depth_cur],
 	    GL_TEXTURE_2D);
-	glUniform1i(glGetUniformLocation(ws_temp_prog, "depth"), 0);
+	glUniform1i(glGetUniformLocation(ws_temp_prog, "depth"), 1);
 
 	glUniform1f(glGetUniformLocation(ws_temp_prog, "rand_seed"),
 	    rand_seed);
@@ -571,6 +527,9 @@ draw_ws_effects(glass_info_t *gi)
 	glUniform4f(glGetUniformLocation(ws_rain_prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
@@ -604,6 +563,8 @@ draw_ws_effects(glass_info_t *gi)
 	glUniform4f(glGetUniformLocation(ws_smudge_prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
@@ -677,7 +638,7 @@ librain_draw_prepare(bool_t force)
 	prepare_ran = B_TRUE;
 
 	update_viewport();
-	grab_screenshot();
+	librain_refresh_screenshot();
 
 	glGetIntegerv(GL_VIEWPORT, vp);
 	XPLMGetScreenSize(&w, &h);
@@ -852,22 +813,6 @@ water_effects_fini(void)
 	free(glass_infos);
 	glass_infos = NULL;
 	num_glass_infos = 0;
-}
-
-static bool_t
-reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
-{
-	GLuint new_prog;
-
-	ASSERT(shaderpath != NULL);
-	new_prog = shader_prog_from_info(shaderpath, info);
-	if (new_prog == 0)
-		return (B_FALSE);
-	if (*prog != 0)
-		glDeleteProgram(*prog);
-	*prog = new_prog;
-
-	return (B_TRUE);
 }
 
 bool_t
