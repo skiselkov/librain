@@ -450,6 +450,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 		} else if (strncmp(line, "ANIM_trans", 10) == 0) {
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
+			int l;
 
 			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
 			cmd->trans.n_pts = 2;
@@ -457,15 +458,16 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			cmd->trans.values =
 			    calloc(sizeof (*cmd->trans.values), 2);
 			cmd->trans.pos = calloc(sizeof (*cmd->trans.pos), 2);
-			if (sscanf(line, "ANIM_trans %lf %lf %lf %lf %lf %lf "
+			l = sscanf(line, "ANIM_trans %lf %lf %lf %lf %lf %lf "
 			    "%lf %lf %255s",
 			    &cmd->trans.pos[0].x, &cmd->trans.pos[0].y,
 			    &cmd->trans.pos[0].z, &cmd->trans.pos[1].x,
 			    &cmd->trans.pos[1].y, &cmd->trans.pos[1].z,
 			    &cmd->trans.values[0], &cmd->trans.values[1],
-			    dr_name) != 9) {
-				logMsg("%s:%d: failed to parse ANIM_trans",
-				    filename, linenr);
+			    dr_name);
+			if (l < 6) {
+				logMsg("%s:%d: failed to parse ANIM_trans (%d)",
+				    filename, linenr, l);
 				goto errout;
 			}
 			if (!find_dr_with_offset(dr_name, &cmd->dr,
@@ -486,7 +488,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			    &cmd->rotate.axis.z,
 			    &cmd->rotate.pts[0].y, &cmd->rotate.pts[1].y,
 			    &cmd->rotate.pts[0].x, &cmd->rotate.pts[1].x,
-			    dr_name) != 8) {
+			    dr_name) < 7) {
 				logMsg("%s:%d: failed to parse ANIM_trans",
 				    filename, linenr);
 				goto errout;
@@ -661,13 +663,17 @@ rotation_get_angle(obj8_cmd_t *cmd)
 		return (val);
 
 	for (size_t i = 0; i + 1 < n; i++) {
-		double v1 = MIN(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
-		double v2 = MAX(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
-		if (v1 <= val && val <= v2) {
+		double v1 = cmd->rotate.pts[i].x;
+		double v2 = cmd->rotate.pts[i + 1].x;
+		if (v1 < v2 && v1 <= val && val <= v2) {
 			double rat = (val - v1) / (v2 - v1);
 
 			return (wavg(cmd->rotate.pts[i].y,
 			    cmd->rotate.pts[i + 1].y, rat));
+		} else if (v2 < v1 && v2 <= val && val <= v1) {
+			double rat = (val - v2) / (v1 - v2);
+			return (wavg(cmd->rotate.pts[i].y,
+			    cmd->rotate.pts[i + 1].y, 1 - rat));
 		}
 	}
 
@@ -724,6 +730,15 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			double val = cmd_dr_read(subcmd);
 			vec3 xlate = {0, 0, 0};
 
+			if (subcmd->trans.n_pts == 1) {
+				/*
+				 * single-point translations simply set
+				 * position
+				 */
+				xlate[0] = subcmd->trans.pos[0].x;
+				xlate[1] = subcmd->trans.pos[0].y;
+				xlate[2] = subcmd->trans.pos[0].z;
+			}
 			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
 				double v1 = MIN(subcmd->trans.values[i],
 				    subcmd->trans.values[i + 1]);
@@ -763,9 +778,6 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	pos_loc = glGetAttribLocation(prog, "vtx_pos");
 	norm_loc = glGetAttribLocation(prog, "vtx_norm");
 	tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
 
 	glEnableVertexAttribArray(pos_loc);
 	glEnableVertexAttribArray(norm_loc);

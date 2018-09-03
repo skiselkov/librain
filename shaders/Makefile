@@ -17,6 +17,16 @@ SPVS = \
     generic.vert.spv \
     ws_temp.frag.spv \
     nil.frag.spv \
+    ice_depth.vert.spv \
+    ice_depth_add_point.frag.spv \
+    ice_depth_remove_point.frag.spv \
+    ice_depth_deice_point.frag.spv \
+    ice_depth_add_line.frag.spv \
+    ice_depth_remove_line.frag.spv \
+    ice_depth_deice_line.frag.spv \
+    ice_norm.frag.spv \
+    ice_render.frag.spv \
+    ice_blur.frag.spv \
     rain_stage1.frag.spv \
     rain_stage2.frag.spv \
     ws_rain.frag.spv \
@@ -41,7 +51,7 @@ endif
 
 define BUILD_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
-	$(VERB) $(GLSLANG) -G -o $@ $^
+	$(VERB) $(GLSLANG) $(2) -G -o $@ $^
 
 	$(call logMsg,\	[SPIRVX]\	$(@:%.$(1).spv=%.$(1).glsl))
 	$(VERB) spirv-cross --version $(SPIRVX_TGT_VERSION) \
@@ -56,6 +66,19 @@ all : $(SPVS_OUT)
 
 clean :
 	rm -f $(SPVS_OUT) $(patsubst %.spv,%.glsl,$(SPVS_OUT))
+
+$(OUTDIR)/ice_depth_add_point.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=1 -DSRC_TYPE=0)
+$(OUTDIR)/ice_depth_remove_point.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=0 -DDEICE=0)
+$(OUTDIR)/ice_depth_deice_point.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=0 -DDEICE=1)
+$(OUTDIR)/ice_depth_add_line.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=1 -DSRC_TYPE=1)
+$(OUTDIR)/ice_depth_remove_line.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=0)
+$(OUTDIR)/ice_depth_deice_line.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=1)
 
 $(OUTDIR)/%.vert.spv : %.vert
 	$(call BUILD_SHADER,vert)

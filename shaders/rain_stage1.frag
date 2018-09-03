@@ -79,14 +79,15 @@ main()
 	    temp_scale_fact;
 	float temp_flow_coeff;
 	float wind_dist_factor, thrust_dist_factor;
+	float old_pos_temp;
 
 	if (temp > water_liquid_temp) {
 		temp_flow_coeff = 1;
 	} else if (temp < water_frozen_temp) {
-		temp_flow_coeff = 0.002;
+		temp_flow_coeff = 0.0075;
 	} else {
-		temp_flow_coeff = (temp - water_frozen_temp) /
-		    (water_liquid_temp - water_frozen_temp);
+		temp_flow_coeff = max((temp - water_frozen_temp) /
+		    (water_liquid_temp - water_frozen_temp), 0.0075);
 	}
 
 	if (droplet_gen_check(gl_FragCoord.xy)) {
@@ -126,7 +127,11 @@ main()
 	    ((gp_dir * (gravity_factor * gravity * pow(precip_intens, 2)) +
 	    tp_dir * thrust_dist_factor + wp_dir * wind_dist_factor) *
 	    tex_sz * d_t * temp_flow_coeff);
-	prev_depth = read_depth(prev_pos);
+	old_pos_temp = texture(temp_tex, prev_pos).r * temp_scale_fact;
+	if (temp < water_liquid_temp || old_pos_temp > water_frozen_temp)
+		prev_depth = read_depth(prev_pos);
+	else
+		prev_depth = 0;
 
 	blowaway_fact = mix(0.57, 0.601, temp_flow_coeff);
 
