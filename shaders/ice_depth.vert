@@ -22,6 +22,7 @@
 #include "noise.glsl"
 
 layout(location = 0) uniform mat4	pvm;
+layout(location = 1) uniform float	growth_mult;
 
 /* from previous invocation of frag shader */
 layout(location = 10) uniform sampler2D	depth;
@@ -33,12 +34,20 @@ layout(location = 2) in vec2		vtx_tex0;
 layout(location = 0) out vec3		tex_norm;
 layout(location = 1) out vec2		tex_coord;
 
+#define	REF_DEPTH	1.5
+#define	DEPTH_COEFF	(0.0001)
+#define	MIN_DEPTH	0.001
+
+#define	POW3(x)		((x) * (x) * (x))
+
 void
 main()
 {
 	float depth_val = texture(depth, vtx_tex0).r;
+	float depth_rat = depth_val / REF_DEPTH;
 	float rand_val = gold_noise(vtx_tex0 * textureSize(depth, 0), 1.0);
-	vec3 rand_pos = (0.0015 * depth_val + 0.001) * vtx_norm;
+	vec3 rand_pos = max(DEPTH_COEFF * growth_mult * POW3(depth_rat),
+	    MIN_DEPTH) * vtx_norm;
 
 	tex_norm = vtx_norm;
 	tex_coord = vtx_tex0;

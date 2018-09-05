@@ -25,10 +25,9 @@
 layout(location = 10) uniform sampler2D	depth;
 layout(location = 11) uniform sampler2D	norm;
 layout(location = 12) uniform sampler2D	bg;
-#ifdef	MOTION_BLUR
-layout(location = 13) uniform float	rand_seed;
-layout(location = 14) uniform float	blur_radius;
-#endif	/* MOTION_BLUR */
+layout(location = 13) uniform vec3	sun_dir;
+layout(location = 14) uniform float	sun_pitch;
+layout(location = 15) uniform mat4	acf_orient;
 
 /* from vertex shader */
 layout(location = 0) in vec3		tex_norm;
@@ -39,12 +38,6 @@ layout(location = 0) out vec4		color_out;
 
 #define	POW4(x)	((x) * (x) * (x) * (x))
 
-vec2
-vec_norm(vec2 v)
-{
-	return (vec2(v.y, -v.x));
-}
-
 void
 main()
 {
@@ -52,23 +45,15 @@ main()
 	vec4 bg_pixel = texture(bg, gl_FragCoord.xy / bg_sz);
 	float white = bg_pixel.r + bg_pixel.g + bg_pixel.b;
 	vec2 norm_pixel = texture(norm, tex_coord).rg - vec2(0.5);
-
-#ifdef	MOTION_BLUR
-	vec2 c2p = tex_coord - vec2(0.5);
-	vec2 blur_v = vec_norm(c2p) * blur_radius;
-
-	float depth_val = clamp(
-	    (texture(depth, tex_coord + (-1 * blur_v)).r * 0.25) +
-	    (texture(depth, tex_coord).r * 0.5) +
-	    (texture(depth, tex_coord + blur_v).r * 0.25), 0, 1.5);
-#else	/* !MOTION_BLUR */
 	float depth_val = clamp(texture(depth, tex_coord).r, 0, 1.5);
-#endif	/* !MOTION_BLUR */
+	vec3 norm_dir = (acf_orient * vec4(tex_norm, 1)).xyz;
+	float sun_angle = 1 - clamp(dot(norm_dir, sun_dir), 0, 1);
+	float sun_darkening = sin(radians(clamp(sun_angle, 0, 90)));
 
 	/*
 	 * Because we don't know pixel lighting conditions, we need to work
 	 * by boosting the brightness of the background pixel.
 	 */
-	color_out = vec4(1, 1, 1,
-	    (depth_val - length(norm_pixel) / 2) * sqrt(white));
+	color_out = vec4(1, 1, 1, (depth_val - length(norm_pixel) / 2 -
+	    sun_angle / 2 - sun_darkening / 2) * sqrt(white));
 }

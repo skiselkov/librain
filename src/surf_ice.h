@@ -53,6 +53,7 @@ typedef struct {
 	surf_ice_src_type_t	src;
 	surf_deice_type_t	deice;
 	float			rand_seed;
+	float			growth_mult;
 	surf_ice_impl_t		*priv;
 } surf_ice_t;
 
@@ -63,7 +64,7 @@ bool_t surf_ice_reload_gl_progs(void);
 void surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id);
 void surf_ice_fini(surf_ice_t *surf);
 void surf_ice_render(surf_ice_t *surf, double ice, bool_t deice_on,
-    double blur_radius);
+    double blur_radius, bool_t visible);
 void surf_ice_clear(surf_ice_t *surf);
 
 bool_t surf_ice_render_pass_needed(void);

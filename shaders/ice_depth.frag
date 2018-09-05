@@ -28,7 +28,7 @@
 #define	POW6(x)		((x) * (x) * (x) * (x) * (x) * (x))
 #define	LINE_EDGE_X1	0.1
 #define	LINE_EDGE_X2	0.9
-#define	MAX_ICE		2
+#define	MAX_ICE		20
 
 /* render pass inputs */
 layout(location = 10) uniform sampler2D	prev;
@@ -72,7 +72,7 @@ add_ice(float prev_depth)
 	float extra_ice = 0;
 
 	if (rand_val < d_t * POW6(dist))
-		extra_ice = 100 * d_ice;
+		extra_ice = max(100 * d_ice, 0.0075);
 	return (vec4(min(prev_depth + extra_ice, MAX_ICE), 0, 0, 1));
 }
 
@@ -81,16 +81,24 @@ add_ice(float prev_depth)
 vec4
 remove_ice(float prev_depth)
 {
-	vec2 coord;
-	float rand_val;
-
-	coord = round(vec2(gl_FragCoord.x / 10 + gl_FragCoord.y / (1 + (seed * 5.3)),
+#if	DEICE
+	vec2 coord = round(vec2(
+	    gl_FragCoord.x / 10 + gl_FragCoord.y / (1 + (seed * 5.3)),
 	    gl_FragCoord.y / 10 - gl_FragCoord.x / (1 + (seed * 4.7))));
-	rand_val = gold_noise(coord, seed);
+	float rand_val = gold_noise(coord, seed);
 
 	if (rand_val < 3 * d_t)
 		return (vec4(0, 0, 0, 1));
 	return (vec4(prev_depth, 0, 0, 1));
+#else	/* !DEICE */
+	float rand_val = gold_noise(gl_FragCoord.xy, seed);
+	float dist = clamp(1 - origin_distance(), 0, 1);
+	float extra_ice = 0;
+
+	if (rand_val < d_t * POW6(dist))
+		extra_ice = min(100 * d_ice, -0.001);
+	return (vec4(max(prev_depth + extra_ice, 0), 0, 0, 1));
+#endif	/* !DEICE */
 }
 
 #endif	/* !ADD_ICE */

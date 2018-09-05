@@ -20,11 +20,13 @@ SPVS = \
     ice_depth.vert.spv \
     ice_depth_add_point.frag.spv \
     ice_depth_remove_point.frag.spv \
+    ice_depth_deice_point.frag.spv \
     ice_depth_add_line.frag.spv \
     ice_depth_remove_line.frag.spv \
+    ice_depth_deice_line.frag.spv \
     ice_norm.frag.spv \
     ice_render.frag.spv \
-    ice_render_blur.frag.spv \
+    ice_blur.frag.spv \
     rain_stage1.frag.spv \
     rain_stage2.frag.spv \
     ws_rain.frag.spv \
@@ -68,14 +70,15 @@ clean :
 $(OUTDIR)/ice_depth_add_point.frag.spv : ice_depth.frag
 	$(call BUILD_SHADER,frag,-DADD_ICE=1 -DSRC_TYPE=0)
 $(OUTDIR)/ice_depth_remove_point.frag.spv : ice_depth.frag
-	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=0)
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=0 -DDEICE=0)
+$(OUTDIR)/ice_depth_deice_point.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=0 -DDEICE=1)
 $(OUTDIR)/ice_depth_add_line.frag.spv : ice_depth.frag
 	$(call BUILD_SHADER,frag,-DADD_ICE=1 -DSRC_TYPE=1)
 $(OUTDIR)/ice_depth_remove_line.frag.spv : ice_depth.frag
-	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1)
-
-$(OUTDIR)/ice_render_blur.frag.spv : ice_render.frag
-	$(call BUILD_SHADER,frag,-DMOTION_BLUR)
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=0)
+$(OUTDIR)/ice_depth_deice_line.frag.spv : ice_depth.frag
+	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=1)
 
 $(OUTDIR)/%.vert.spv : %.vert
 	$(call BUILD_SHADER,vert)

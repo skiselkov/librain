@@ -663,13 +663,17 @@ rotation_get_angle(obj8_cmd_t *cmd)
 		return (val);
 
 	for (size_t i = 0; i + 1 < n; i++) {
-		double v1 = MIN(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
-		double v2 = MAX(cmd->rotate.pts[i].x, cmd->rotate.pts[i + 1].x);
-		if (v1 <= val && val <= v2) {
+		double v1 = cmd->rotate.pts[i].x;
+		double v2 = cmd->rotate.pts[i + 1].x;
+		if (v1 < v2 && v1 <= val && val <= v2) {
 			double rat = (val - v1) / (v2 - v1);
 
 			return (wavg(cmd->rotate.pts[i].y,
 			    cmd->rotate.pts[i + 1].y, rat));
+		} else if (v2 < v1 && v2 <= val && val <= v1) {
+			double rat = (val - v2) / (v1 - v2);
+			return (wavg(cmd->rotate.pts[i].y,
+			    cmd->rotate.pts[i + 1].y, 1 - rat));
 		}
 	}
 
