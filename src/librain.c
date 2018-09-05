@@ -694,7 +694,7 @@ librain_draw_finish(void)
 static void
 glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 {
-	GLfloat temp_tex[WS_TEMP_TEX_W * WS_TEMP_TEX_H];
+	GLfloat *temp_tex;
 	vect2_t ws_temp_pos[] = {
 	    VECT2(0, 0), VECT2(0, WS_TEMP_TEX_H),
 	    VECT2(WS_TEMP_TEX_W, WS_TEMP_TEX_H), VECT2(WS_TEMP_TEX_W, 0)
@@ -710,6 +710,9 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    VECT2(WATER_NORM_TEX_W, 0)
 	};
 
+	temp_tex = safe_calloc(sizeof (*temp_tex),
+	    WS_TEMP_TEX_W * WS_TEMP_TEX_H);
+
 	gi->glass = glass;
 
 	/*
@@ -717,7 +720,6 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 	glGenTextures(2, gi->ws_temp_tex);
 	glGenFramebuffers(2, gi->ws_temp_fbo);
-	memset(temp_tex, 0, sizeof (temp_tex));
 	for (int i = 0; i < 2; i++) {
 		setup_texture(gi->ws_temp_tex[i], GL_R32F, WS_TEMP_TEX_W,
 		    WS_TEMP_TEX_H, GL_RED, GL_FLOAT, temp_tex);
@@ -761,6 +763,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	setup_texture(gi->ws_smudge_tex, GL_RGBA, 16, 16, GL_RGBA,
 	    GL_UNSIGNED_BYTE, NULL);
 	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex);
+
+	free(temp_tex);
 }
 
 static void

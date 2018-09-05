@@ -208,19 +208,20 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 	    VECT2(surf->w, 0)
 	};
 	vect2_t t[] = { VECT2(0, 0), VECT2(0, 1), VECT2(1, 1), VECT2(1, 0) };
-	GLfloat temp_tex[surf->w * surf->h];
+	GLfloat *temp_tex;
 
 	ASSERT(inited);
 	ASSERT(obj != NULL);
 	ASSERT3U(surf->w, >, 0);
 	ASSERT3U(surf->h, >, 0);
 
+	temp_tex = safe_calloc(sizeof (*temp_tex), surf->w * surf->h);
+
 	priv = safe_calloc(1, sizeof (*priv));
 	surf->priv = priv;
 
 	glGenTextures(2, priv->depth_tex);
 	glGenFramebuffers(2, priv->depth_fbo);
-	memset(temp_tex, 0, sizeof (temp_tex));
 	for (int i = 0; i < 2; i++) {
 		setup_texture(priv->depth_tex[i], GL_R32F, surf->w, surf->h,
 		    GL_RED, GL_FLOAT, temp_tex);
@@ -238,6 +239,8 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 	if (group_id != NULL)
 		priv->group_id = strdup(group_id);
 	glm_ortho(0, surf->w, 0, surf->h, 0, 1, priv->pvm);
+
+	free(temp_tex);
 }
 
 void
