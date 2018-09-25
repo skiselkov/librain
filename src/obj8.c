@@ -488,8 +488,8 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 			    &cmd->rotate.axis.z,
 			    &cmd->rotate.pts[0].y, &cmd->rotate.pts[1].y,
 			    &cmd->rotate.pts[0].x, &cmd->rotate.pts[1].x,
-			    dr_name) < 7) {
-				logMsg("%s:%d: failed to parse ANIM_trans",
+			    dr_name) < 5) {
+				logMsg("%s:%d: failed to parse ANIM_rotate",
 				    filename, linenr);
 				goto errout;
 			}
