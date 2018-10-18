@@ -652,11 +652,13 @@ rotation_get_angle(obj8_cmd_t *cmd)
 	size_t n = cmd->rotate.n_pts;
 
 	/* Too few points to animate anything */
-	if (n < 2)
+	if (n == 0)
 		return (0);
-	/* Invalid range */
+	if (n == 1)
+		return (cmd->rotate.pts[0].y);
+	/* Invalid range, but return first rotation offset */
 	if (cmd->rotate.pts[0].x == cmd->rotate.pts[n - 1].x)
-		return (0);
+		return (cmd->rotate.pts[0].y);
 
 	if (anim_extrapolate_1D(&val, cmd->rotate.pts[0],
 	    cmd->rotate.pts[n - 1]))
