@@ -34,6 +34,7 @@ SPVS = \
 
 OUTDIR=bin
 SPIRVX_TGT_VERSION=120
+SPIRVX_420_VERSION=420
 
 GLSLANG=glslang
 GLSL_CLEANUP=./glsl_cleanup.sh
@@ -57,8 +58,12 @@ define BUILD_SHADER
 	$(VERB) spirv-cross --version $(SPIRVX_TGT_VERSION) \
 	    --extension GL_EXT_gpu_shader4 \
 	    --output $(@:%.$(1).spv=%.$(1).glsl) $@
-
 	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl)
+
+	$(call logMsg,\	[SPIRVX 4.20]\	$(@:%.$(1).spv=%.$(1).glsl420))
+	$(VERB) spirv-cross --version $(SPIRVX_420_VERSION) \
+	    --output $(@:%.$(1).spv=%.$(1).glsl420) $@
+	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl420)
 endef
 
 SPVS_OUT=$(addprefix $(OUTDIR)/,$(SPVS))
