@@ -184,6 +184,11 @@ static struct {
 	dr_t	window_ice;
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
+
+	bool_t	xe_present;
+	dr_t	xe_active;
+	dr_t	xe_rain;
+	dr_t	xe_snow;
 } drs;
 
 #define	RAIN_COMP_PHASE		xplm_Phase_Gauges
@@ -587,7 +592,12 @@ compute_precip(double now)
 	if (d_t <= 0)
 		return;
 
-	precip_intens = dr_getf(&drs.precip_rat);
+	if (drs.xe_present && dr_geti(&drs.xe_active) != 0) {
+		precip_intens = MAX(dr_getf(&drs.xe_rain),
+		    dr_getf(&drs.xe_snow));
+	} else {
+		precip_intens = dr_getf(&drs.precip_rat);
+	}
 	cur_win_ice = dr_getf(&drs.window_ice);
 
 	/*
@@ -894,8 +904,12 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.amb_temp, "sim/weather/temperature_ambient_c");
 	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
-	if (dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled"))
-		drs.VR_enabled_avail = B_TRUE;
+	drs.VR_enabled_avail =
+	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
+
+	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
+	    dr_find(&drs.xe_active, "env/rain") &&
+	    dr_find(&drs.xe_active, "env/snow"));
 
 	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);
