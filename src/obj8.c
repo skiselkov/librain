@@ -34,6 +34,9 @@
 
 #define	ANIM_ALLOC_STEP	8
 
+TEXSZ_MK_TOKEN(obj8_vtx_buf);
+TEXSZ_MK_TOKEN(obj8_idx_buf);
+
 typedef struct {
 	GLfloat		x;
 	GLfloat		y;
@@ -527,17 +530,24 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	obj->vtx_table = vtx_table;
 	obj->idx_table = idx_table;
 
+	obj->vtx_cap = vtx_cap;
+	obj->idx_cap = idx_cap;
+
 	glGenBuffers(1, &obj->vtx_buf);
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
-	glBufferData(GL_ARRAY_BUFFER, vtx_cap * sizeof (*vtx_table),
+	glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap * sizeof (obj8_vtx_t),
 	    obj->vtx_table, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj, filename, 0,
+	    obj->vtx_cap * sizeof (obj8_vtx_t));
 
 	glGenBuffers(1, &obj->idx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_cap * sizeof (*idx_table),
-	    obj->idx_table, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+	    obj->idx_cap * sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj, filename, 0,
+	    obj->idx_cap * sizeof (GLuint));
 
 	free(line);
 
@@ -604,11 +614,17 @@ obj8_free(obj8_t *obj)
 {
 	obj8_cmd_free(obj->top);
 
-	if (obj->vtx_buf != 0)
+	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
+		TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
+		    obj->vtx_cap * sizeof (obj8_vtx_t));
+	}
 	free(obj->vtx_table);
-	if (obj->idx_buf != 0)
+	if (obj->idx_buf != 0) {
 		glDeleteBuffers(1, &obj->idx_buf);
+		TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
+		    obj->idx_cap * sizeof (GLuint));
+	}
 	free(obj->idx_table);
 
 	free(obj);

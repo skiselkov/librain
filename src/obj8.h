@@ -83,8 +83,10 @@ typedef struct obj8_cmd_s {
 typedef struct {
 	void		*vtx_table;
 	GLuint		vtx_buf;
+	unsigned	vtx_cap;
 	void		*idx_table;
 	GLuint		idx_buf;
+	unsigned	idx_cap;
 	mat4		matrix;
 	obj8_cmd_t	*top;
 } obj8_t;

@@ -41,9 +41,16 @@
 #include "librain.h"
 
 #define	RAIN_DRAW_TIMEOUT	15	/* seconds */
+#define	DFL_VP_SIZE		16	/* pixels */
 
 #define	MIN_PRECIP_ICE_ADD	0.05	/* dimensionless */
 #define	PRECIP_ICE_TEMP_THRESH	4	/* Celsius */
+
+TEXSZ_MK_TOKEN(librain_water_depth_tex);
+TEXSZ_MK_TOKEN(librain_water_norm_tex);
+TEXSZ_MK_TOKEN(librain_ws_temp_tex);
+TEXSZ_MK_TOKEN(librain_ws_smudge_tex);
+TEXSZ_MK_TOKEN(librain_screenshot_tex);
 
 typedef enum {
 	PANEL_RENDER_TYPE_2D = 0,
@@ -56,8 +63,8 @@ static bool_t	debug_draw = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
-static GLint	old_vp[4] = { -1, -1, -1, -1 };
-static GLint	new_vp[4] = { -1, -1, -1, -1 };
+static GLint	old_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
+static GLint	new_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static float	last_rain_t = 0;
 
 static GLint	z_depth_prog = 0;
@@ -67,7 +74,7 @@ static GLint	rain_stage2_prog = 0;
 static GLint	ws_rain_prog = 0;
 static GLint	ws_smudge_prog = 0;
 
-static GLint	saved_vp[4] = { -1, -1, -1, -1 };
+static GLint	saved_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static bool_t	prepare_ran = B_FALSE;
 static double	prev_win_ice = 0;
 static double	precip_intens = 0;
@@ -240,14 +247,29 @@ update_viewport(void)
 	if (old_vp[2] == vp[2] && old_vp[3] == vp[3])
 		return;
 
+	IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
+	    old_vp[2], old_vp[3]));
+	for (size_t i = 0; i < num_glass_infos; i++) {
+		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex,
+		    glass_infos[i].glass, GL_RGBA, GL_UNSIGNED_BYTE,
+		    old_vp[2], old_vp[3]));
+	}
+
 	/* If the viewport size has changed, update the textures. */
 	memcpy(old_vp, vp, sizeof (vp));
 	XPLMBindTexture2d(screenshot_tex, GL_TEXTURE_2D);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, vp[2], vp[3], 0,
 	    GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
+	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
+	    vp[2], vp[3]));
+
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		XPLMBindTexture2d(glass_infos[i].ws_smudge_tex, GL_TEXTURE_2D);
+
+		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex,
+		    glass_infos[i].glass, NULL, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+		    vp[2], vp[3]));
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vp[2], vp[3], 0,
 		    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	}
@@ -735,6 +757,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		    WS_TEMP_TEX_H, GL_RED, GL_FLOAT, temp_tex);
 		setup_color_fbo_for_tex(gi->ws_temp_fbo[i],
 		    gi->ws_temp_tex[i]);
+		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_temp_tex, glass,
+		    NULL, 0, GL_RED, GL_FLOAT, WS_TEMP_TEX_W, WS_TEMP_TEX_H));
 	}
 	glutils_init_2D_quads(&gi->ws_temp_quads, ws_temp_pos, NULL, 4);
 
@@ -749,6 +773,9 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		    GL_FLOAT, NULL);
 		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
 		    gi->water_depth_tex[i]);
+		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
+		    glass, NULL, 0, GL_RED, GL_FLOAT,
+		    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H));
 	}
 	glutils_init_2D_quads(&gi->water_depth_quads, water_depth_pos, NULL, 4);
 
@@ -763,6 +790,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    NULL, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex);
 	glutils_init_2D_quads(&gi->water_norm_quads, water_norm_pos, NULL, 4);
+	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,
+	    GL_RG, GL_UNSIGNED_BYTE, WATER_NORM_TEX_W, WATER_NORM_TEX_H));
 
 	/*
 	 * Final render pre-stage: capture the full res displacement,
@@ -770,9 +799,11 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 	glGenTextures(1, &gi->ws_smudge_tex);
 	glGenFramebuffers(1, &gi->ws_smudge_fbo);
-	setup_texture(gi->ws_smudge_tex, GL_RGBA, 16, 16, GL_RGBA,
-	    GL_UNSIGNED_BYTE, NULL);
+	setup_texture(gi->ws_smudge_tex, GL_RGBA, old_vp[2], old_vp[3],
+	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex);
+	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex, glass, NULL, 0,
+	    GL_RGBA, GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
 
 	free(temp_tex);
 }
@@ -800,8 +831,33 @@ water_effects_fini(void)
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
 
+		for (int i = 0; i < 2; i++) {
+			if (gi->ws_temp_tex[0] != 0) {
+				IF_TEXSZ(TEXSZ_FREE_INSTANCE(
+				    librain_ws_temp_tex, gi->glass, GL_RED,
+				    GL_FLOAT, WS_TEMP_TEX_W, WS_TEMP_TEX_H));
+			}
+			if (gi->water_depth_tex[0] != 0) {
+				IF_TEXSZ(TEXSZ_FREE_INSTANCE(
+				    librain_water_depth_tex, gi->glass, GL_RED,
+				    GL_FLOAT, WATER_DEPTH_TEX_W,
+				    WATER_DEPTH_TEX_H));
+			}
+		}
+		if (gi->water_norm_tex != 0) {
+			IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_water_norm_tex,
+			    gi->glass, GL_RG, GL_UNSIGNED_BYTE,
+			    WATER_NORM_TEX_W, WATER_NORM_TEX_H));
+		}
+		if (gi->ws_smudge_tex != 0) {
+			IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex,
+			    gi->glass, GL_RGBA, GL_UNSIGNED_BYTE,
+			    old_vp[2], old_vp[3]));
+		}
+
 		DESTROY_OP(gi->ws_temp_fbo[0], 0,
 		    glDeleteFramebuffers(2, gi->ws_temp_fbo));
+
 		DESTROY_OP(gi->ws_temp_tex[0], 0,
 		    glDeleteTextures(2, gi->ws_temp_tex));
 		glutils_destroy_quads(&gi->ws_temp_quads);
@@ -924,8 +980,10 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	XPLMBindTexture2d(screenshot_tex, GL_TEXTURE_2D);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 10, 10, 0, GL_RGB,
-	    GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, old_vp[2], old_vp[3], 0,
+	    GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
+	    old_vp[2], old_vp[3]));
 
 	glGenFramebuffers(1, &screenshot_fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, screenshot_fbo);
@@ -963,15 +1021,20 @@ librain_fini(void)
 	XPLMUnregisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);
 
+	if (screenshot_tex != 0) {
+		IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB,
+		    GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
+	}
+
 	DESTROY_OP(screenshot_fbo, 0, glDeleteFramebuffers(1, &screenshot_fbo));
 	DESTROY_OP(screenshot_tex, 0, glDeleteTextures(1, &screenshot_tex));
 
 	water_effects_fini();
 
-	for (int i = 0; i < 4; i++) {
-		old_vp[i] = -1;
-		new_vp[i] = -1;
-		saved_vp[i] = -1;
+	for (int i = 2; i < 4; i++) {
+		old_vp[i] = DFL_VP_SIZE;
+		new_vp[i] = DFL_VP_SIZE;
+		saved_vp[i] = DFL_VP_SIZE;
 	}
 
 	inited = B_FALSE;

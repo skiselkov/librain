@@ -36,6 +36,11 @@
 #define	ICE_RENDER_MAX_DELAY	60
 #define	ICE_RESYNC_INTVAL	0.5
 
+TEXSZ_MK_TOKEN(librain_ice_depth_tex);
+TEXSZ_MK_TOKEN(librain_ice_norm_tex);
+TEXSZ_MK_TOKEN(librain_ice_blur_tex);
+TEXSZ_MK_TOKEN(librain_ice_packbuf);
+
 struct surf_ice_impl_s {
 	int		cur;
 	double		prev_ice;
@@ -226,12 +231,16 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 		setup_texture(priv->depth_tex[i], GL_R32F, surf->w, surf->h,
 		    GL_RED, GL_FLOAT, temp_tex);
 		setup_color_fbo_for_tex(priv->depth_fbo[i], priv->depth_tex[i]);
+		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ice_depth_tex, surf,
+		    NULL, 0, GL_RED, GL_FLOAT, surf->w, surf->h));
 	}
 	glGenTextures(1, &priv->norm_tex);
 	glGenFramebuffers(1, &priv->norm_fbo);
 	setup_texture(priv->norm_tex, GL_RG, surf->w, surf->h,
 	    GL_RG, GL_UNSIGNED_BYTE, NULL);
 	setup_color_fbo_for_tex(priv->norm_fbo, priv->norm_tex);
+	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ice_norm_tex, surf,
+	    NULL, 0, GL_RG, GL_UNSIGNED_BYTE, surf->w, surf->h));
 
 	glutils_init_2D_quads(&priv->quads, p, t, 4);
 
@@ -252,12 +261,33 @@ surf_ice_fini(surf_ice_t *surf)
 		return;
 	DESTROY_OP(priv->depth_fbo[0], 0,
 	    glDeleteFramebuffers(2, priv->depth_fbo));
+	if (priv->depth_tex[0] != 0) {
+		for (int i = 0; i < 2; i++) {
+			IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ice_depth_tex,
+			    surf, GL_RED, GL_FLOAT, surf->w, surf->h));
+		}
+	}
+	if (priv->norm_tex != 0) {
+		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ice_norm_tex, surf,
+		    GL_RG, GL_UNSIGNED_BYTE, surf->w, surf->h));
+	}
+	if (priv->blur_tex[0] != 0) {
+		for (int i = 0; i < 2; i++) {
+			IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ice_blur_tex,
+			    surf, GL_RG, GL_UNSIGNED_BYTE, surf->w, surf->h));
+		}
+	}
+
 	DESTROY_OP(priv->depth_tex[0], 0, glDeleteTextures(2, priv->depth_tex));
 	DESTROY_OP(priv->norm_fbo, 0, glDeleteFramebuffers(1, &priv->norm_fbo));
 	DESTROY_OP(priv->norm_tex, 0, glDeleteTextures(1, &priv->norm_tex));
 	DESTROY_OP(priv->blur_fbo[0], 0,
 	    glDeleteFramebuffers(2, priv->blur_fbo));
 	DESTROY_OP(priv->blur_tex[0], 0, glDeleteTextures(2, priv->blur_tex));
+	if (priv->packbuf != 0) {
+		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(librain_ice_packbuf,
+		    surf, surf->w * surf->h * sizeof (GLfloat)));
+	}
 	DESTROY_OP(priv->packbuf, 0, glDeleteBuffers(1, &priv->packbuf));
 	glutils_destroy_quads(&priv->quads);
 	free(priv->group_id);
@@ -396,6 +426,9 @@ render_blur(surf_ice_t *surf, double blur_radius)
 		for (int i = 0; i < 2; i++) {
 			setup_color_fbo_for_tex(priv->blur_fbo[i],
 			    priv->blur_tex[i]);
+			IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ice_blur_tex,
+			    surf, NULL, 0, GL_RG, GL_UNSIGNED_BYTE,
+			    surf->w, surf->h));
 		}
 	}
 
@@ -484,6 +517,8 @@ act_ice_state_resync(surf_ice_t *surf, double ice)
 	if (ice == 0) {
 		/* No need to sync at zero icing levels */
 		if (priv->packbuf != 0) {
+			IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(librain_ice_packbuf,
+			    surf, surf->w * surf->h * sizeof (GLfloat)));
 			glDeleteBuffers(1, &priv->packbuf);
 			priv->packbuf_sync = NULL;
 			priv->packbuf = 0;
@@ -497,6 +532,10 @@ act_ice_state_resync(surf_ice_t *surf, double ice)
 			    surf->w * surf->h * sizeof (GLfloat), NULL,
 			    GL_STREAM_READ);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+			IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(librain_ice_packbuf,
+			    surf, NULL, 0, surf->w * surf->h *
+			    sizeof (GLfloat)));
 		}
 		/* If we have a buffer in flight, is it time to grab it? */
 		if (priv->packbuf_sync != NULL) {
