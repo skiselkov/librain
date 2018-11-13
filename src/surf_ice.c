@@ -335,7 +335,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glGetIntegerv(GL_VIEWPORT, vp);
 	glViewport(0, 0, surf->w, surf->h);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, priv->depth_fbo[priv->cur]);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, priv->depth_fbo[priv->cur]);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	if (d_ice > 0) {
@@ -371,7 +371,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	    crc64_rand_fract());
 	glutils_draw_quads(&priv->quads, depth_prog);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, priv->norm_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, priv->norm_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glUseProgram(norm_prog);
 	XPLMBindTexture2d(priv->depth_tex[priv->cur], GL_TEXTURE_2D);
@@ -381,7 +381,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glutils_draw_quads(&priv->quads, norm_prog);
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 	priv->prev_ice = ice;
 	priv->cur = !priv->cur;
@@ -393,7 +393,7 @@ render_blur_tex(surf_ice_t *surf, int i, GLuint tex, double blur_radius)
 {
 	surf_ice_impl_t *priv = surf->priv;
 
-	glBindFramebuffer(GL_FRAMEBUFFER, priv->blur_fbo[i]);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, priv->blur_fbo[i]);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -441,7 +441,7 @@ render_blur(surf_ice_t *surf, double blur_radius)
 	render_blur_tex(surf, 1, priv->norm_tex, blur_radius);
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
 
 static void

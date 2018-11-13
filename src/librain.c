@@ -282,14 +282,14 @@ librain_refresh_screenshot(void)
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_READ_FRAMEBUFFER, old_fbo);
 	glReadBuffer(GL_COLOR_ATTACHMENT0);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, screenshot_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, screenshot_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glBlitFramebuffer(0, 0, old_vp[2], old_vp[3],
 	    0, 0, old_vp[2], old_vp[3], GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
 
 void
@@ -330,7 +330,7 @@ ws_temp_comp(glass_info_t *gi)
 
 	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER,
 	    gi->ws_temp_fbo[!gi->ws_temp_cur]);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
@@ -376,7 +376,7 @@ ws_temp_comp(glass_info_t *gi)
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 	gi->ws_temp_cur = !gi->ws_temp_cur;
 	gi->last_ws_temp_t = now;
@@ -396,7 +396,7 @@ rain_stage1_comp(glass_info_t *gi)
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER,
 	    gi->water_depth_fbo[!gi->water_depth_cur]);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -438,7 +438,7 @@ rain_stage1_comp(glass_info_t *gi)
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 	gi->last_stage1_t = cur_t;
 }
@@ -452,7 +452,7 @@ rain_stage2_comp(glass_info_t *gi)
 
 	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, gi->water_norm_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, gi->water_norm_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -491,7 +491,7 @@ rain_stage2_comp(glass_info_t *gi)
 	XPLMBindTexture2d(gi->water_norm_tex, GL_TEXTURE_2D);
 	glGenerateMipmap(GL_TEXTURE_2D);
 
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
 
 int
@@ -531,7 +531,7 @@ draw_ws_effects(glass_info_t *gi)
 	 * any smudging.
 	 */
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, gi->ws_smudge_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, gi->ws_smudge_fbo);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
@@ -570,7 +570,7 @@ draw_ws_effects(glass_info_t *gi)
 	 * Final stage: render the prepped displaced texture and apply
 	 * variable smudging based on water depth.
 	 */
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 	glUseProgram(ws_smudge_prog);
 
@@ -986,7 +986,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	    old_vp[2], old_vp[3]));
 
 	glGenFramebuffers(1, &screenshot_fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, screenshot_fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, screenshot_fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 	    GL_TEXTURE_2D, screenshot_tex, 0);
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,

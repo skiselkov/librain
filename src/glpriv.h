@@ -82,7 +82,7 @@ setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
 static void
 setup_color_fbo_for_tex(GLuint fbo, GLuint tex)
 {
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 	    GL_TEXTURE_2D, tex, 0);
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
