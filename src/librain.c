@@ -225,9 +225,13 @@ update_vectors(glass_info_t *gi)
 
 	total_wind = vect2_scmul(total_wind, 1.0 / gi->glass->max_tas);
 
-	thrust_v = vect2_scmul(VECT2(0,
-	    MAX(dr_getf(&drs.prop_thrust) / gi->glass->max_thrust, 0)),
-	    gi->glass->thrust_factor);
+	if (gi->glass->thrust_factor > 0 && gi->glass->max_thrust > 0) {
+		thrust_v = vect2_scmul(VECT2(0,
+		    MAX(dr_getf(&drs.prop_thrust) / gi->glass->max_thrust, 0)),
+		    gi->glass->thrust_factor);
+	} else {
+		thrust_v = ZERO_VECT2;
+	}
 
 	gi->wind = clamp(vect2_abs(total_wind), 0, 1);
 
@@ -724,6 +728,18 @@ librain_draw_finish(void)
 }
 
 static void
+validate_glass(const librain_glass_t *glass)
+{
+	VERIFY(glass != NULL);
+	VERIFY_MSG(glass->obj != NULL,
+	    "You must NOT pass NULL for librain_glass_t->obj (%p)", glass);
+	VERIFY(!isnan(glass->slant_factor));
+	VERIFY(!IS_NULL_VECT(glass->thrust_point));
+	VERIFY(!isnan(glass->thrust_factor));
+	VERIFY3F(glass->max_thrust, >=, 0);
+}
+
+static void
 glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 {
 	GLfloat *temp_tex;
@@ -744,6 +760,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 
 	temp_tex = safe_calloc(sizeof (*temp_tex),
 	    WS_TEMP_TEX_W * WS_TEMP_TEX_H);
+
+	validate_glass(glass);
 
 	gi->glass = glass;
 
@@ -929,19 +947,28 @@ librain_glob_init(void)
 	return (B_TRUE);
 }
 
+/*
+ * Initializes librain for operation. This MUST be called at plugin load
+ * time.
+ */
 bool_t
 librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num)
 {
-	ASSERT(!inited);
+	ASSERT(the_shaderpath != NULL);
+	ASSERT(glass != NULL);
+	ASSERT(num != 0);
+
+	ASSERT_MSG(!inited, "Multiple calls to librain_init() detected. "
+	    "De-initialize the library first using librain_fini().%s", "");
 	inited = B_TRUE;
+
+	if (!librain_glob_init())
+		return (B_FALSE);
 
 	shaderpath = strdup(the_shaderpath);
 
 	memset(&drs, 0, sizeof (drs));
-
-	if (!librain_glob_init())
-		return (B_FALSE);
 
 	fdr_find(&drs.panel_render_type, "sim/graphics/view/panel_render_type");
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
