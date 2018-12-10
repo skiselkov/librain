@@ -538,16 +538,16 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap * sizeof (obj8_vtx_t),
 	    obj->vtx_table, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj, filename, 0,
-	    obj->vtx_cap * sizeof (obj8_vtx_t));
+	IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj, filename, 0,
+	    obj->vtx_cap * sizeof (obj8_vtx_t)));
 
 	glGenBuffers(1, &obj->idx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER,
 	    obj->idx_cap * sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj, filename, 0,
-	    obj->idx_cap * sizeof (GLuint));
+	IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj, filename, 0,
+	    obj->idx_cap * sizeof (GLuint)));
 
 	free(line);
 
@@ -616,14 +616,14 @@ obj8_free(obj8_t *obj)
 
 	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
-		TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
-		    obj->vtx_cap * sizeof (obj8_vtx_t));
+		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
+		    obj->vtx_cap * sizeof (obj8_vtx_t)));
 	}
 	free(obj->vtx_table);
 	if (obj->idx_buf != 0) {
 		glDeleteBuffers(1, &obj->idx_buf);
-		TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
-		    obj->idx_cap * sizeof (GLuint));
+		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
+		    obj->idx_cap * sizeof (GLuint)));
 	}
 	free(obj->idx_table);
 
