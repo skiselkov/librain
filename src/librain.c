@@ -1005,8 +1005,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
-	    dr_find(&drs.xe_active, "env/rain") &&
-	    dr_find(&drs.xe_active, "env/snow"));
+	    dr_find(&drs.xe_rain, "env/rain") &&
+	    dr_find(&drs.xe_snow, "env/snow"));
 
 	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
 	    RAIN_COMP_BEFORE, NULL);
