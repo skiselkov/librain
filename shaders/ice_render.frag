@@ -54,6 +54,7 @@ main()
 	 * Because we don't know pixel lighting conditions, we need to work
 	 * by boosting the brightness of the background pixel.
 	 */
+
 	color_out = vec4(1, 1, 1, (depth_val - length(norm_pixel) / 2 -
 	    sun_angle / 2 - sun_darkening / 2) * sqrt(white));
 }

@@ -488,6 +488,7 @@ render_obj(surf_ice_t *surf, double blur_radius)
 
 	librain_get_pvm(pvm);
 	glDepthMask(GL_FALSE);
+	glEnable(GL_BLEND);
 	obj8_draw_group(priv->obj, priv->group_id, render_prog, pvm);
 	glDepthMask(GL_TRUE);
 
