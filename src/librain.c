@@ -202,6 +202,14 @@ static struct {
 #define	RAIN_COMP_BEFORE	0
 
 static void
+check_librain_init(void)
+{
+	ASSERT_MSG(inited, "librain not initialized or init failed. "
+	    "Please call librain_init and check its return value to see "
+	    "the init failed.%s", "");
+}
+
+static void
 update_vectors(glass_info_t *gi)
 {
 	float rot_rate = dr_getf(&drs.rot_rate);
@@ -299,6 +307,8 @@ librain_refresh_screenshot(void)
 void
 librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 {
+	check_librain_init();
+
 	if (!prepare_ran)
 		return;
 
@@ -657,6 +667,7 @@ librain_draw_prepare(bool_t force)
 	int w, h;
 	double now = dr_getf(&drs.sim_time);
 
+	check_librain_init();
 	compute_precip(now);
 
 	if (precip_intens > 0 || dr_getf(&drs.amb_temp) <= 4)
@@ -709,6 +720,7 @@ librain_draw_prepare(bool_t force)
 void
 librain_draw_exec(void)
 {
+	check_librain_init();
 	if (dr_getf(&drs.sim_time) - last_rain_t <= RAIN_DRAW_TIMEOUT) {
 		for (size_t i = 0; i < num_glass_infos; i++)
 			draw_ws_effects(&glass_infos[i]);
@@ -718,6 +730,8 @@ librain_draw_exec(void)
 void
 librain_draw_finish(void)
 {
+	check_librain_init();
+
 	if (!prepare_ran)
 		return;
 
@@ -1070,12 +1084,14 @@ librain_fini(void)
 void
 librain_get_pvm(mat4 pvm)
 {
+	check_librain_init();
 	memcpy(pvm, glob_pvm, sizeof (mat4));
 }
 
 GLuint
 librain_get_screenshot_tex(void)
 {
+	check_librain_init();
 	return (screenshot_tex);
 }
 
@@ -1089,5 +1105,6 @@ librain_get_screenshot_tex(void)
 void
 librain_set_debug_draw(bool_t flag)
 {
+	check_librain_init();
 	debug_draw = flag;
 }
