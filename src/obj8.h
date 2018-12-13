@@ -54,7 +54,8 @@ typedef struct obj8_cmd_s {
 	struct obj8_cmd_s	*parent;
 	dr_t			dr;
 	int			dr_offset;
-	bool_t			null_dr;
+	char			dr_name[128];
+	bool_t			dr_found;
 	union {
 		struct {
 			list_t	cmds;

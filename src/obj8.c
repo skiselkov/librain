@@ -124,14 +124,19 @@ find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
 static double
 cmd_dr_read(obj8_cmd_t *cmd)
 {
-	double v = 0;
+	double v;
 
-	if (!cmd->null_dr) {
-		if (cmd->dr_offset > 0)
-			dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
-		else
-			v = dr_getf(&cmd->dr);
+	if (!cmd->dr_found) {
+		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
+		    &cmd->dr_offset)) {
+			return (0);
+		}
+		cmd->dr_found = B_TRUE;
 	}
+	if (cmd->dr_offset > 0)
+		dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
+	else
+		v = dr_getf(&cmd->dr);
 
 	return (v);
 }
@@ -151,9 +156,7 @@ parse_hide_show(bool_t set_val, const char *fmt, const char *line,
 		return (B_FALSE);
 	}
 	cmd->hide_show.set_val = set_val;
-
-	if (!find_dr_with_offset(dr_name, &cmd->dr, &cmd->dr_offset))
-		cmd->null_dr = B_TRUE;
+	strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
 
 	return (B_TRUE);
 }
@@ -407,10 +410,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				goto errout;
 			}
 			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
-			if (!find_dr_with_offset(dr_name, &cmd->dr,
-			    &cmd->dr_offset)) {
-				cmd->null_dr = B_TRUE;
-			}
+			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
 			char dr_name[256];
@@ -430,10 +430,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				    "ANIM_rotate_begin", filename, linenr);
 				goto errout;
 			}
-			if (!find_dr_with_offset(dr_name, &cmd->dr,
-			    &cmd->dr_offset)) {
-				cmd->null_dr = B_TRUE;
-			}
+			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_trans_end", 14) == 0 ||
 		    strncmp(line, "ANIM_rotate_end", 15) == 0) {
@@ -473,10 +470,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				    filename, linenr, l);
 				goto errout;
 			}
-			if (!find_dr_with_offset(dr_name, &cmd->dr,
-			    &cmd->dr_offset)) {
-				cmd->null_dr = B_TRUE;
-			}
+			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
 		} else if (strncmp(line, "ANIM_rotate", 11) == 0) {
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
@@ -496,10 +490,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 				    filename, linenr);
 				goto errout;
 			}
-			if (!find_dr_with_offset(dr_name, &cmd->dr,
-			    &cmd->dr_offset)) {
-				cmd->null_dr = B_TRUE;
-			}
+			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
 			normalize_rotate_angle(cmd, 1);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
