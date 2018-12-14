@@ -658,11 +658,26 @@ compute_precip(double now)
 	last_run_t = now;
 }
 
-void
-librain_draw_prepare(bool_t force)
+static void
+compute_pvm(mat4 pvm)
 {
 	mat4 mv_matrix;
 	mat4 proj_matrix;
+
+	VERIFY3S(dr_getvf32(&drs.acf_matrix, (void *)mv_matrix, 0, 16),
+	    ==, 16);
+	VERIFY3S(dr_getvf32(&drs.proj_matrix, (void *)proj_matrix, 0, 16),
+	    ==, 16);
+
+	for (int i = 0; i < 4; i++)
+		proj_matrix[3][i] /= 100;
+
+	glm_mat4_mul(proj_matrix, mv_matrix, pvm);
+}
+
+void
+librain_draw_prepare(bool_t force)
+{
 	GLint vp[4];
 	int w, h;
 	double now = dr_getf(&drs.sim_time);
@@ -706,15 +721,7 @@ librain_draw_prepare(bool_t force)
 		memcpy(new_vp, old_vp, sizeof (new_vp));
 	}
 
-	VERIFY3S(dr_getvf32(&drs.acf_matrix, (void *)mv_matrix, 0, 16),
-	    ==, 16);
-	VERIFY3S(dr_getvf32(&drs.proj_matrix, (void *)proj_matrix, 0, 16),
-	    ==, 16);
-
-	for (int i = 0; i < 4; i++)
-		proj_matrix[3][i] /= 100;
-
-	glm_mat4_mul(proj_matrix, mv_matrix, glob_pvm);
+	compute_pvm(glob_pvm);
 }
 
 void
@@ -734,6 +741,7 @@ librain_draw_finish(void)
 
 	if (!prepare_ran)
 		return;
+	prepare_ran = B_FALSE;
 
 	if (saved_vp[0] != -1) {
 		glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
@@ -1085,7 +1093,11 @@ void
 librain_get_pvm(mat4 pvm)
 {
 	check_librain_init();
-	memcpy(pvm, glob_pvm, sizeof (mat4));
+	/* If we can, grab a cached copy */
+	if (prepare_ran)
+		memcpy(pvm, glob_pvm, sizeof (mat4));
+	else
+		compute_pvm(pvm);
 }
 
 GLuint
