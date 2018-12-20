@@ -20,10 +20,13 @@
 NCPUS=$(( $(sysctl -n hw.ncpu) + 1 ))
 SO=""
 
-while getopts "s" opt; do
+while getopts "sS" opt; do
 	case "$opt" in
 	s)
 		SO=1
+		;;
+	S)
+		STANDALONE=1
 		;;
 	esac
 done
@@ -32,6 +35,11 @@ rm -rf mac32 mac64
 mkdir -p mac32 mac64
 
 make distclean > /dev/null
+if [ -z "$STANDALONE" ]; then
+	qmake -set STANDALONE 0
+else
+	qmake -set STANDALONE 1
+fi
 if [ -z "$SO" ]; then
 	qmake -set DLL 0
 else
