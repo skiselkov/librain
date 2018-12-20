@@ -37,6 +37,66 @@
 TEXSZ_MK_TOKEN(obj8_vtx_buf);
 TEXSZ_MK_TOKEN(obj8_idx_buf);
 
+typedef enum {
+	OBJ8_CMD_GROUP,
+	OBJ8_CMD_TRIS,
+	OBJ8_CMD_ANIM_HIDE_SHOW,
+	OBJ8_CMD_ANIM_TRANS,
+	OBJ8_CMD_ANIM_ROTATE,
+	OBJ8_NUM_CMDS
+} obj8_cmd_type_t;
+
+typedef struct {
+	unsigned	vtx_off;	/* offset into index table */
+	unsigned	n_vtx;		/* number of vertices in geometry */
+	char		group_id[32];	/* Contents of X-GROUP-ID attribute */
+	bool_t		double_sided;
+	list_node_t	node;
+} obj8_geom_t;
+
+typedef struct obj8_cmd_s {
+	obj8_cmd_type_t		type;
+	struct obj8_cmd_s	*parent;
+	dr_t			dr;
+	int			dr_offset;
+	char			dr_name[128];
+	bool_t			dr_found;
+	union {
+		struct {
+			list_t	cmds;
+		} group;
+		struct {
+			double	val[2];
+			bool_t	set_val;
+		} hide_show;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			vect2_t	*pts;
+			vect3_t	axis;
+		} rotate;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			double	*values;
+			vect3_t	*pos;
+		} trans;
+		obj8_geom_t	tris;
+	};
+	list_node_t	list_node;
+} obj8_cmd_t;
+
+struct obj8_s {
+	void		*vtx_table;
+	GLuint		vtx_buf;
+	unsigned	vtx_cap;
+	void		*idx_table;
+	GLuint		idx_buf;
+	unsigned	idx_cap;
+	mat4		matrix;
+	obj8_cmd_t	*top;
+};
+
 typedef struct {
 	GLfloat		x;
 	GLfloat		y;
