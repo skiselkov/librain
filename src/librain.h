@@ -20,6 +20,8 @@
 #define	_LIBRAIN_H_
 
 #include <acfutils/types.h>
+
+#include "librain_common.h"
 #include "obj8.h"
 
 #ifdef __cplusplus
@@ -371,26 +373,27 @@ typedef struct {
 /*
  * Initialization & teardown functions. See librain.c for more information.
  */
-bool_t librain_init(const char *the_shaderpath, const librain_glass_t *glass,
-    size_t num);
-void librain_fini(void);
+LIBRAIN_EXPORT bool_t librain_init(const char *the_shaderpath,
+    const librain_glass_t *glass, size_t num);
+LIBRAIN_EXPORT void librain_fini(void);
 
 /*
  * Rendering pipeline functions. See librain.c for more information.
  */
-void librain_draw_prepare(bool_t force);
-void librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids);
-void librain_draw_exec(void);
-void librain_draw_finish(void);
+LIBRAIN_EXPORT void librain_draw_prepare(bool_t force);
+LIBRAIN_EXPORT void librain_draw_z_depth(obj8_t *obj,
+    const char **z_depth_group_ids);
+LIBRAIN_EXPORT void librain_draw_exec(void);
+LIBRAIN_EXPORT void librain_draw_finish(void);
 
 /*
  * Helper functions for more advanced effects rendering.
  */
-void librain_get_pvm(mat4 pvm);
-GLuint librain_get_screenshot_tex(void);
-void librain_set_debug_draw(bool_t flag);
-void librain_refresh_screenshot(void);
-bool_t librain_reload_gl_progs(void);
+LIBRAIN_EXPORT void librain_get_pvm(mat4 pvm);
+LIBRAIN_EXPORT GLuint librain_get_screenshot_tex(void);
+LIBRAIN_EXPORT void librain_set_debug_draw(bool_t flag);
+LIBRAIN_EXPORT void librain_refresh_screenshot(void);
+LIBRAIN_EXPORT bool_t librain_reload_gl_progs(void);
 
 /*
  * librain-internal

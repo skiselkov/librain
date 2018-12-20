@@ -28,16 +28,19 @@
 #include <acfutils/geom.h>
 #include <acfutils/list.h>
 
+#include "librain_common.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct obj8_s obj8_t;
 
-obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
-void obj8_free(obj8_t *obj);
-void obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 mvp);
-void obj8_set_matrix(obj8_t *obj, mat4 matrix);
+LIBRAIN_EXPORT obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
+LIBRAIN_EXPORT void obj8_free(obj8_t *obj);
+LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
+    GLuint prog, mat4 mvp);
+LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
 
 #ifdef __cplusplus
 }
