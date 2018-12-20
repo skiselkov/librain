@@ -23,6 +23,10 @@ dll = $$[DLL]
 contains(dll, 1) {
 	CONFIG -= staticlib
 	CONFIG += dll
+}
+
+standalone = $$[STANDALONE]
+contains(standalone, 1) {
 	DEFINES += DLLMODE
 }
 

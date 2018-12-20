@@ -26,10 +26,13 @@ NCPUS=$(( $(grep 'processor[[:space:]]\+:' /proc/cpuinfo  | wc -l) + 1 ))
 RELEASE="debug"
 SO=""
 
-while getopts "s" opt; do
+while getopts "sS" opt; do
 	case "$opt" in
 	s)
 		SO=1
+		;;
+	S)
+		STANDALONE=1
 		;;
 	esac
 done
@@ -39,6 +42,7 @@ mkdir -p win64 lin64
 
 make distclean > /dev/null
 qmake -set DLL 1
+qmake -set STANDALONE 1
 qmake -set WHOLE_ARCHIVE $WHOLE_ARCHIVE
 qmake -set CROSS_COMPILE x86_64-w64-mingw32- && \
     qmake -spec win32-g++ && make -j $NCPUS
@@ -48,11 +52,17 @@ fi
 mv "$RELEASE/rain.dll" "win64/rain.dll" || exit 1
 mv "$RELEASE/librain.a" "win64/rain.lib" || exit 1
 
+if [ -z "$STANDALONE" ]; then
+	qmake -set STANDALONE 0
+else
+	qmake -set STANDALONE 1
+fi
 if [ -z "$SO" ]; then
 	qmake -set DLL 0
 else
 	qmake -set DLL 1
 fi
+
 qmake -spec linux-g++-64 && make -j $NCPUS
 if [ $? != 0 ] ; then
   exit
