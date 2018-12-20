@@ -19,7 +19,8 @@ QT -= gui core
 CONFIG += staticlib warn_on plugin debug
 CONFIG -= thread exceptions qt rtti release
 
-win32 {
+dll = $$[DLL]
+contains(dll, 1) {
 	CONFIG -= staticlib
 	CONFIG += dll
 }

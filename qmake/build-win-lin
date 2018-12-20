@@ -24,12 +24,21 @@
 # for one make instance to be blocking on disk.
 NCPUS=$(( $(grep 'processor[[:space:]]\+:' /proc/cpuinfo  | wc -l) + 1 ))
 RELEASE="debug"
+SO=""
+
+while getopts "s" opt; do
+	case "$opt" in
+	s)
+		SO=1
+		;;
+	esac
+done
 
 rm -rf win32 win64 lin32 lin64
 mkdir -p win64 lin64
 
 make distclean > /dev/null
-qmake -set DLL $DLL
+qmake -set DLL 1
 qmake -set WHOLE_ARCHIVE $WHOLE_ARCHIVE
 qmake -set CROSS_COMPILE x86_64-w64-mingw32- && \
     qmake -spec win32-g++ && make -j $NCPUS
@@ -39,9 +48,19 @@ fi
 mv "$RELEASE/rain.dll" "win64/rain.dll" || exit 1
 mv "$RELEASE/librain.a" "win64/rain.lib" || exit 1
 
-qmake -spec linux-g++-64 && make -j $NCPUS && mv librain.a lin64
+if [ -z "$SO" ]; then
+	qmake -set DLL 0
+else
+	qmake -set DLL 1
+fi
+qmake -spec linux-g++-64 && make -j $NCPUS
 if [ $? != 0 ] ; then
   exit
+fi
+if [ -z "$SO" ]; then
+	mv librain.a lin64
+else
+	mv librain.so lin64
 fi
 
 make distclean > /dev/null
