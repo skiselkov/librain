@@ -25,7 +25,7 @@ while getopts "s" opt; do
 	s)
 		SO=1
 		;;
-<------>esac
+	esac
 done
 
 rm -rf mac32 mac64

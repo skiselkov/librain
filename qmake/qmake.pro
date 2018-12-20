@@ -84,6 +84,9 @@ macx-clang {
 	QMAKE_CFLAGS += $$system("$$[LIBACFUTILS]/pkg-config-deps mac-64 \
 	    --static-openal --cflags")
 	LIBS += -L$$[LIBACFUTILS]/qmake/mac64 -lacfutils
+	LIBS += -F$$[LIBACFUTILS]/SDK/Libraries/Mac
+	LIBS += -framework OpenGL
+	LIBS += -framework XPLM
 }
 
 HEADERS += ../src/*.h
