@@ -39,14 +39,14 @@ extern "C" {
     #endif
   #else		/* !DLLMODE */
     #ifdef	__GNUC__
-      #define	LIBRAIN_EXPORT	__attribute__((dllimport))
+      #define	LIBRAIN_EXPORT
     #else	/* !__GNUC__ */
-      #define	LIBRAIN_EXPORT	__declspec(dllimport)
+      #define	LIBRAIN_EXPORT
     #endif	/* !__GNUC__ */
   #endif	/* !DLLMODE */
 #else	/* !defined(_WIN32) && !defined(__CYGWIN__) */
   #if	__GNUC__ >= 4
-    #define	LIBRAIN_EXPORT	__attribute__((visibility ("default")))
+    #define	LIBRAIN_EXPORT
   #else
     #define LIBRAIN_EXPORT
   #endif
