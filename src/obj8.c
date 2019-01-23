@@ -28,6 +28,7 @@
 #include <acfutils/math.h>
 #include <acfutils/perf.h>
 #include <acfutils/safe_alloc.h>
+#include <acfutils/thread.h>
 
 #include "librain.h"
 #include "obj8.h"
@@ -87,6 +88,8 @@ typedef struct obj8_cmd_s {
 } obj8_cmd_t;
 
 struct obj8_s {
+	char		*filename;
+
 	void		*vtx_table;
 	GLuint		vtx_buf;
 	unsigned	vtx_cap;
@@ -95,7 +98,21 @@ struct obj8_s {
 	unsigned	idx_cap;
 	mat4		matrix;
 	obj8_cmd_t	*top;
+
+	thread_t	loader;
+	mutex_t		lock;
+	condvar_t	cv;
+	bool_t		load_complete;
+	bool_t		load_error;
+	bool_t		load_stop;
 };
+
+typedef struct {
+	FILE		*fp;
+	vect3_t		pos_offset;
+	vect3_t		cg_offset;
+	obj8_t		*obj;
+} obj8_load_info_t;
 
 typedef struct {
 	GLfloat		x;
@@ -152,53 +169,6 @@ obj8_cmd_alloc(obj8_cmd_type_t type, obj8_cmd_t *parent)
 	}
 
 	return (cmd);
-}
-
-static bool_t
-find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
-{
-	char *bracket;
-
-	if (dr_find(dr, "%s", dr_name)) {
-		*offset = -1;
-		return (B_TRUE);
-	}
-
-	bracket = strrchr(dr_name, '[');
-	if (bracket != NULL) {
-		int cap;
-
-		*bracket = 0;
-		if (!dr_find(dr, "%s", dr_name))
-			return (B_FALSE);
-		cap = dr_getvi(dr, NULL, 0, 0);
-		if (cap == 0)
-			return (B_FALSE);
-		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
-		return (B_TRUE);
-	}
-
-	return (B_FALSE);
-}
-
-static double
-cmd_dr_read(obj8_cmd_t *cmd)
-{
-	double v;
-
-	if (!cmd->dr_found) {
-		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
-		    &cmd->dr_offset)) {
-			return (0);
-		}
-		cmd->dr_found = B_TRUE;
-	}
-	if (cmd->dr_offset > 0)
-		dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
-	else
-		v = dr_getf(&cmd->dr);
-
-	return (v);
 }
 
 static bool_t
@@ -325,8 +295,8 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	return (B_TRUE);
 }
 
-static obj8_t *
-obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
+static void
+obj8_parse_worker(void *userinfo)
 {
 	obj8_t		*obj;
 	obj8_vtx_t	*vtx_table = NULL;
@@ -339,25 +309,29 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	unsigned	cur_idx = 0;
 	char		group_id[32] = { 0 };
 	bool_t		double_sided = B_FALSE;
-	dr_t		cgY_orig, cgZ_orig;
 	obj8_cmd_t	*cur_cmd = NULL;
 	obj8_cmd_t	*cur_anim = NULL;
 	vect3_t		offset;
 
-	fdr_find(&cgY_orig, "sim/aircraft/weight/acf_cgY_original");
-	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
+	obj8_load_info_t *info;
+	const char	*filename;
+	FILE		*fp;
+	vect3_t		pos_offset;
 
-	/* Make sure outside GL errors don't confuse us */
-	(void) glGetError();
+	ASSERT(userinfo != NULL);
+	info = userinfo;
+	fp = info->fp;
+	obj = info->obj;
+	filename = obj->filename;
+	pos_offset = info->pos_offset;
 
-	obj = safe_calloc(1, sizeof (*obj));
 	obj->top = cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, NULL);
 
-	offset = vect3_add(pos_offset, VECT3(0,
-	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))));
+	offset = vect3_add(pos_offset, info->cg_offset);
 	glm_translate_make(obj->matrix, (vec3){offset.x, offset.y, offset.z});
 
-	for (int linenr = 1; getline(&line, &cap, fp) > 0; linenr++) {
+	for (int linenr = 1; getline(&line, &cap, fp) > 0 && !obj->load_stop;
+	    linenr++) {
 		strip_space(line);
 
 		if (strncmp(line, "VT", 2) == 0) {
@@ -584,32 +558,100 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	obj->vtx_cap = vtx_cap;
 	obj->idx_cap = idx_cap;
 
-	glGenBuffers(1, &obj->vtx_buf);
-	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
-	glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap * sizeof (obj8_vtx_t),
-	    obj->vtx_table, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj, filename, 0,
-	    obj->vtx_cap * sizeof (obj8_vtx_t)));
-
-	glGenBuffers(1, &obj->idx_buf);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-	    obj->idx_cap * sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj, filename, 0,
-	    obj->idx_cap * sizeof (GLuint)));
-
 	free(line);
 
-	return (obj);
+	fclose(info->fp);
+	free(info);
+
+	mutex_enter(&obj->lock);
+	obj->load_complete = B_TRUE;
+	cv_broadcast(&obj->cv);
+	mutex_exit(&obj->lock);
+
+	return;
 errout:
 	free(vtx_table);
 	free(idx_table);
 	free(line);
-	obj8_free(obj);
 
-	return (NULL);
+	fclose(info->fp);
+	free(info);
+
+	mutex_enter(&obj->lock);
+	obj->load_complete = B_TRUE;
+	obj->load_error = B_TRUE;
+	cv_broadcast(&obj->cv);
+	mutex_exit(&obj->lock);
+}
+
+static obj8_t *
+obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
+{
+	obj8_load_info_t *info;
+	dr_t cgY_orig, cgZ_orig;
+	obj8_t *obj;
+
+	fdr_find(&cgY_orig, "sim/aircraft/weight/acf_cgY_original");
+	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
+
+	obj = safe_calloc(1, sizeof (*obj));
+	mutex_init(&obj->lock);
+	cv_init(&obj->cv);
+	obj->filename = strdup(filename);
+
+	info = safe_calloc(1, sizeof (*info));
+	info->fp = fp;
+	info->pos_offset = pos_offset;
+	info->obj = obj;
+	info->cg_offset = VECT3(0, -FEET2MET(dr_getf(&cgY_orig)),
+	    -FEET2MET(dr_getf(&cgZ_orig)));
+
+	VERIFY(thread_create(&obj->loader, obj8_parse_worker, info));
+
+	return (obj);
+}
+
+static bool_t
+upload_data(obj8_t *obj)
+{
+	if (!obj->load_complete) {
+		mutex_enter(&obj->lock);
+		while (!obj->load_complete)
+			cv_wait(&obj->cv, &obj->lock);
+		mutex_exit(&obj->lock);
+	}
+	/*
+	 * Once the initial data load is complete, upload the tables and
+	 * dispose of the in-memory copies as they are no longer needed.
+	 */
+	if (obj->vtx_buf == 0 && !obj->load_error) {
+		ASSERT(obj->vtx_table != NULL);
+		ASSERT(obj->idx_table != NULL);
+
+		/* Make sure outside GL errors don't confuse us */
+		(void) glGetError();
+
+		glGenBuffers(1, &obj->vtx_buf);
+		glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+		glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap *
+		    sizeof (obj8_vtx_t), obj->vtx_table, GL_STATIC_DRAW);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj,
+		    obj->filename, 0, obj->vtx_cap * sizeof (obj8_vtx_t)));
+		free(obj->vtx_table);
+		obj->vtx_table = NULL;
+
+		glGenBuffers(1, &obj->idx_buf);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, obj->idx_cap *
+		    sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj,
+		    obj->filename, 0, obj->idx_cap * sizeof (GLuint)));
+		free(obj->idx_table);
+		obj->idx_table = NULL;
+	}
+	return (!obj->load_error);
 }
 
 obj8_t *
@@ -626,8 +668,8 @@ obj8_parse(const char *filename, vect3_t pos_offset)
 		logMsg("Can't open %s: %s", filename, strerror(errno));
 		return (NULL);
 	}
+	/* obj8_parse_fp takes ownership of the file handle */
 	obj = obj8_parse_fp(fp, filename, pos_offset);
-	fclose(fp);
 
 	return (obj);
 }
@@ -665,6 +707,9 @@ obj8_free(obj8_t *obj)
 {
 	obj8_cmd_free(obj->top);
 
+	obj->load_stop = B_TRUE;
+	thread_join(&obj->loader);
+
 	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
@@ -677,8 +722,56 @@ obj8_free(obj8_t *obj)
 		    obj->idx_cap * sizeof (GLuint)));
 	}
 	free(obj->idx_table);
+	free(obj->filename);
 
 	free(obj);
+}
+
+static bool_t
+find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+{
+	char *bracket;
+
+	if (dr_find(dr, "%s", dr_name)) {
+		*offset = -1;
+		return (B_TRUE);
+	}
+
+	bracket = strrchr(dr_name, '[');
+	if (bracket != NULL) {
+		int cap;
+
+		*bracket = 0;
+		if (!dr_find(dr, "%s", dr_name))
+			return (B_FALSE);
+		cap = dr_getvi(dr, NULL, 0, 0);
+		if (cap == 0)
+			return (B_FALSE);
+		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
+		return (B_TRUE);
+	}
+
+	return (B_FALSE);
+}
+
+static double
+cmd_dr_read(obj8_cmd_t *cmd)
+{
+	double v;
+
+	if (!cmd->dr_found) {
+		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
+		    &cmd->dr_offset)) {
+			return (0);
+		}
+		cmd->dr_found = B_TRUE;
+	}
+	if (cmd->dr_offset > 0)
+		dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
+	else
+		v = dr_getf(&cmd->dr);
+
+	return (v);
 }
 
 static void
@@ -843,6 +936,9 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	GLint pos_loc, norm_loc, tex0_loc;
 
 	ASSERT(prog != 0);
+
+	if (!upload_data(obj))
+		return;
 
 	pos_loc = glGetAttribLocation(prog, "vtx_pos");
 	norm_loc = glGetAttribLocation(prog, "vtx_norm");
