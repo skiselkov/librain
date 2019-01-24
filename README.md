@@ -126,7 +126,7 @@ You have to call `librain_draw_z_depth(...)` for all the objects which can block
 You can optimize the performance by using a low-res version of these objects.
 
 
-### All-in-one
+### Sample plugin
 ```cpp
 #include "include/librain.h"
 #include "include/obj8.h"
