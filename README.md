@@ -125,8 +125,9 @@ static int draw_rain_effects(
 You have to call `librain_draw_z_depth(...)` for all the objects which can block the view of the glass element that receives the rain animation.
 You can optimize the performance by using a low-res version of these objects.
 
+---
 
-### Sample plugin
+### Very basic sample plugin
 ```cpp
 #include "include/librain.h"
 #include "include/obj8.h"
