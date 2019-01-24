@@ -159,7 +159,7 @@ rendering performance.
 
 static const char *file = "path/to/your/windshield.obj";
 static const vect3_t pos_offset = { 0, 0, 0 };
-static obj8_t *obj = NULL;
+static obj8_t *windShieldObj = NULL;
 
 char *shaderDir = "librain-shaders";
 
@@ -168,7 +168,6 @@ vect2_t gp = { 0.5, 1.3 };
 vect2_t wp = { 1.5, 0.5 };
 
 static librain_glass_t windShield = {
-	.obj = obj,
 	.slant_factor = 1.0,
 	.thrust_point = tp,
 	.gravity_point = gp,
@@ -215,7 +214,13 @@ PLUGIN_API int XPluginStart(
 	 * Load our windshield object. You will also want to load
 	 * any additional objects used for z-buffer filling.
 	 */
-	obj = obj8_parse(file, pos_offset);
+	windShieldObj = obj8_parse(file, pos_offset);
+	if (windShieldObj == NULL) {
+		XPLMDebugString("Oh noes, failed to load the windshield OBJ!");
+		librain_fini();
+		return (0);
+	}
+	glassElementsArray[0].obj = windShieldObj;
 	/*
 	 * Turn on debug drawing. This makes all z-buffer drawing
 	 * visible to verify it's working right. When you are satisfied
