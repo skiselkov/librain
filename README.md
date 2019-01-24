@@ -122,7 +122,7 @@ static int draw_rain_effects(
 	return 1;
 }
 ```
-You have to call `librain_draw_z_depth(...)` for all the objects which can block the view of the glass element that reveives the rain animation.
+You have to call `librain_draw_z_depth(...)` for all the objects which can block the view of the glass element that receives the rain animation.
 You can optimize the performance by using a low-res version of these objects.
 
 
@@ -201,10 +201,11 @@ static int draw_rain_effects(
 	return 1;
 }
 
-int					dummy_mouse_handler(XPLMWindowID in_window_id, int x, int y, int is_down, void * in_refcon) { return 0; }
-XPLMCursorStatus	dummy_cursor_status_handler(XPLMWindowID in_window_id, int x, int y, void * in_refcon) { return xplm_CursorDefault; }
-int					dummy_wheel_handler(XPLMWindowID in_window_id, int x, int y, int wheel, int clicks, void * in_refcon) { return 0; }
-void				dummy_key_handler(XPLMWindowID in_window_id, char key, XPLMKeyFlags flags, char virtual_key, void * in_refcon, int losing_focus) { }
+int                 dummy_mouse_handler(XPLMWindowID in_window_id, int x, int y, int is_down, void * in_refcon) { return 0; }
+XPLMCursorStatus    dummy_cursor_status_handler(XPLMWindowID in_window_id, int x, int y, void * in_refcon) { return xplm_CursorDefault; }
+int                 dummy_wheel_handler(XPLMWindowID in_window_id, int x, int y, int wheel, int clicks, void * in_refcon) { return 0; }
+void                dummy_key_handler(XPLMWindowID in_window_id, char key, XPLMKeyFlags flags, char virtual_key, void * in_refcon, int losing_focus) { }
+
 
 PLUGIN_API int XPluginStart(
 							char *		outName,
