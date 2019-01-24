@@ -196,7 +196,9 @@ static int draw_rain_effects(
 	void *               inRefcon)
 {
 	librain_draw_prepare(FALSE);
-	librain_draw_z_depth(obj, NULL);
+	librain_draw_z_depth(compassObj, NULL);
+	librain_draw_z_depth(fuselageObj, NULL);
+	librain_draw_z_depth(windShieldObj, NULL);
 	librain_draw_exec();
 	librain_draw_finish();
 	return 1;
