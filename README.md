@@ -1,11 +1,11 @@
 # Implementing librain to your project
 
 ## Prerequisites
-	- librain latest release (https://github.com/skiselkov/librain/releases)
-	- libacfutils latest release (https://github.com/skiselkov/libacfutils/releases)
-	- X-Plane SDK (https://developer.x-plane.com/sdk/plugin-sdk-downloads/)
-	- Understanding basic plugin structure for X-Plane and X-Plane's SDK
-	- Adding a DLL (or similar on other platforms) to your project
+ - librain latest release (https://github.com/skiselkov/librain/releases)
+ - libacfutils latest release (https://github.com/skiselkov/libacfutils/releases)
+ - X-Plane SDK (https://developer.x-plane.com/sdk/plugin-sdk-downloads/)
+ - Understanding basic plugin structure for X-Plane and X-Plane's SDK
+ - Adding a DLL (or similar on other platforms) to your project
 
 ### Adding headers
 After you copied all the required inclues to their place you can include the required headers.
