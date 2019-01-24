@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define	MAX_WIPERS	2
+
 /*
  * Grand Theory Description:
  *
@@ -368,6 +370,57 @@ typedef struct {
 	float		hot_air_src[4];
 	float		hot_air_radius[2];
 	float		hot_air_temp[2];
+
+	/*
+	 * WIPER LOGIC
+	 *
+	 * Wipers are defined as circular areas in water texture space
+	 * with a center around which the wiper blade pivots and an
+	 * outer an inner radius. You then notify the library of the
+	 * position of each wiper blade using the librain_set_wiper_angle
+	 * function. All angles are in RADIANS and increase clockwise.
+	 * An angle of 0 radians is straight up along the water texture.
+	 *
+	 *              0
+	 *           _..-.._
+	 *         /    |    \
+	 *        .     |     .
+	 * -PI/2  |-----+-----| +PI/2
+	 *
+	 * Wipers MUST only be moved between -PI and +PI. Rollover between
+	 * PI and -PI is NOT handled, so be sure to only move the wiper
+	 * through the upright zero value.
+	 *
+	 * Please note that you must call librain_set_wiper_angle from
+	 * a flight loop callback, not a draw callback.
+	 *
+	 * You don't need to declare a particular speed at which the wiper
+	 * moves. Wiper movement between simulator frames is entirely up
+	 * to you. But you must observe the following speed limit: the
+	 * wiper must not move between the edges of travel in less than
+	 * 0.5 seconds, otherwise visual artifacts can result. The library
+	 * fades out water droplets behind the wiper's path of travel in
+	 * 0.5 seconds, so if you move it faster, it could hit its own
+	 * fadeout tail and it's not going to look nice.
+	 *
+	 * If you are unsure where on the texture region your wiper is
+	 * located, you can turn on visible drawing of the wiper blades
+	 * and inner/outer radii by calling librain_set_wipers_visible.
+	 */
+	/*
+	 * Wiper pivot point. This is in texturing space.
+	 */
+	vect2_t		wiper_pivot[MAX_WIPERS];
+	/*
+	 * Wiper area outer radius in texturing space.
+	 * If a wiper is unused, leave this set to 0.
+	 */
+	double		wiper_radius_outer[MAX_WIPERS];
+	/*
+	 * Wiper area outer radius in texturing space.
+	 * If a wiper is unused, leave this set to 0.
+	 */
+	double		wiper_radius_inner[MAX_WIPERS];
 } librain_glass_t;
 
 /*
@@ -387,13 +440,24 @@ LIBRAIN_EXPORT void librain_draw_exec(void);
 LIBRAIN_EXPORT void librain_draw_finish(void);
 
 /*
+ * Wiper control.
+ */
+LIBRAIN_EXPORT void librain_set_wiper_angle(const librain_glass_t *glass,
+    unsigned wiper_nr, double angle_radians, bool_t is_moving);
+
+/*
  * Helper functions for more advanced effects rendering.
  */
 LIBRAIN_EXPORT void librain_get_pvm(mat4 pvm);
 LIBRAIN_EXPORT GLuint librain_get_screenshot_tex(void);
-LIBRAIN_EXPORT void librain_set_debug_draw(bool_t flag);
 LIBRAIN_EXPORT void librain_refresh_screenshot(void);
 LIBRAIN_EXPORT bool_t librain_reload_gl_progs(void);
+
+/*
+ * Debugging support.
+ */
+LIBRAIN_EXPORT void librain_set_debug_draw(bool_t flag);
+LIBRAIN_EXPORT void librain_set_wipers_visible(bool_t flag);
 
 /*
  * librain-internal

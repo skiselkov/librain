@@ -45,6 +45,7 @@
 
 #define	MIN_PRECIP_ICE_ADD	0.05	/* dimensionless */
 #define	PRECIP_ICE_TEMP_THRESH	4	/* Celsius */
+#define	WIPER_SMEAR_DELAY	0.5	/* secs */
 
 TEXSZ_MK_TOKEN(librain_water_depth_tex);
 TEXSZ_MK_TOKEN(librain_water_norm_tex);
@@ -60,6 +61,7 @@ typedef enum {
 
 static bool_t	inited = B_FALSE;
 static bool_t	debug_draw = B_FALSE;
+static bool_t	wipers_visible = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
@@ -133,6 +135,17 @@ static mat4 water_norm_pvm = GLM_MAT4_IDENTITY;
 static mat4 ws_temp_pvm = GLM_MAT4_IDENTITY;
 
 typedef struct {
+	double	angle_now;		/* radians */
+	double	angle_now_t;		/* secs */
+	double	angle_prev;		/* radians */
+	double	angle_edge;		/* radians */
+	double	angle_edge_t;		/* secs */
+	bool_t	dir;			/* moving clockwise? */
+	double	angle_smear;		/* radians */
+	double	angle_smear_t;		/* secs */
+} wiper_t;
+
+typedef struct {
 	const librain_glass_t	*glass;
 
 	float			last_stage1_t;
@@ -167,6 +180,8 @@ typedef struct {
 	vect2_t			wp;
 	float			thrust;
 	float			wind;
+
+	wiper_t			wipers[MAX_WIPERS];
 } glass_info_t;
 
 static glass_info_t *glass_infos = NULL;
@@ -397,6 +412,68 @@ ws_temp_comp(glass_info_t *gi)
 }
 
 static void
+wiper_setup_prog_one(const glass_info_t *gi, GLuint prog, unsigned wiper_i,
+    unsigned wiper_prog_i, double pos_cur, double pos_prev)
+{
+	char name[32];
+	const librain_glass_t *glass = gi->glass;
+
+	snprintf(name, sizeof (name), "wiper_pivot[%d]", wiper_prog_i);
+	glUniform2f(glGetUniformLocation(prog, name),
+	    glass->wiper_pivot[wiper_i].x, glass->wiper_pivot[wiper_i].y);
+
+	snprintf(name, sizeof (name), "wiper_radius_outer[%d]", wiper_prog_i);
+	glUniform1f(glGetUniformLocation(prog, name),
+	    glass->wiper_radius_outer[wiper_i]);
+
+	snprintf(name, sizeof (name), "wiper_radius_inner[%d]", wiper_prog_i);
+	glUniform1f(glGetUniformLocation(prog, name),
+	    glass->wiper_radius_inner[wiper_i]);
+
+	snprintf(name, sizeof (name), "wiper_pos_cur[%d]", wiper_prog_i);
+	glUniform1f(glGetUniformLocation(prog, name), pos_cur);
+
+	snprintf(name, sizeof (name), "wiper_pos_prev[%d]", wiper_prog_i);
+	glUniform1f(glGetUniformLocation(prog, name), pos_prev);
+
+	snprintf(name, sizeof (name), "wiper_pos_prev[%d]", wiper_prog_i);
+	glUniform1f(glGetUniformLocation(prog, name), pos_prev);
+}
+
+static void
+wiper_setup_prog(const glass_info_t *gi, GLuint prog)
+{
+	unsigned num_wipers = 0;
+
+	for (int i = 0; i < MAX_WIPERS; i++) {
+		const wiper_t *wiper = &gi->wipers[i];
+
+		/* Skip the wiper if it isn't in motion, or if is zero-size */
+		if (wiper->angle_prev == wiper->angle_now ||
+		    gi->glass->wiper_radius_outer[0] ==
+		    gi->glass->wiper_radius_inner[0])
+			continue;
+
+		if (!isnan(wiper->angle_edge)) {
+			/* Reversing at end of travel, emit two zones */
+			wiper_setup_prog_one(gi, prog, i, num_wipers,
+			    wiper->angle_now, wiper->angle_edge);
+			num_wipers++;
+			wiper_setup_prog_one(gi, prog, i, num_wipers,
+			    wiper->angle_edge, wiper->angle_smear);
+			num_wipers++;
+		} else {
+			/* In the middle of traverse, emit one zone */
+			wiper_setup_prog_one(gi, prog, i, num_wipers,
+			    wiper->angle_now, wiper->angle_smear);
+			num_wipers++;
+		}
+	}
+
+	glUniform1i(glGetUniformLocation(prog, "num_wipers"), num_wipers);
+}
+
+static void
 rain_stage1_comp(glass_info_t *gi)
 {
 	GLint old_fbo;
@@ -447,6 +524,8 @@ rain_stage1_comp(glass_info_t *gi)
 	    gi->wp.x, gi->wp.y);
 	glUniform1f(glGetUniformLocation(rain_stage1_prog, "wind_temp"),
 	    C2KELVIN(dr_getf(&drs.amb_temp)));
+
+	wiper_setup_prog(gi, rain_stage1_prog);
 
 	glutils_draw_quads(&gi->water_depth_quads, rain_stage1_prog);
 
@@ -533,8 +612,35 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	return (1);
 }
 
+static bool_t
+wiper_debug_add(GLuint prog, const glass_info_t *gi, int i)
+{
+	char name[32];
+
+	if (gi->glass->wiper_radius_outer[i] ==
+	    gi->glass->wiper_radius_inner[i])
+		return (B_FALSE);
+
+	snprintf(name, sizeof (name), "wiper_pivot[%d]", i);
+	glUniform2f(glGetUniformLocation(prog, name),
+	    gi->glass->wiper_pivot[i].x, gi->glass->wiper_pivot[i].y);
+
+	snprintf(name, sizeof (name), "wiper_radius_outer[%d]", i);
+	glUniform1f(glGetUniformLocation(prog, name),
+	    gi->glass->wiper_radius_outer[i]);
+
+	snprintf(name, sizeof (name), "wiper_radius_inner[%d]", i);
+	glUniform1f(glGetUniformLocation(prog, name),
+	    gi->glass->wiper_radius_inner[i]);
+
+	snprintf(name, sizeof (name), "wiper_pos[%d]", i);
+	glUniform1f(glGetUniformLocation(prog, name), gi->wipers[i].angle_now);
+
+	return (B_TRUE);
+}
+
 static void
-draw_ws_effects(glass_info_t *gi)
+draw_ws_effects(const glass_info_t *gi)
 {
 	GLint old_fbo;
 
@@ -567,6 +673,19 @@ draw_ws_effects(glass_info_t *gi)
 
 	glUniform4f(glGetUniformLocation(ws_rain_prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
+
+	if (wipers_visible) {
+		unsigned num_wipers = 0;
+		for (int i = 0; i < MAX_WIPERS; i++) {
+			if (wiper_debug_add(ws_rain_prog, gi, i))
+				num_wipers++;
+		}
+		glUniform1i(glGetUniformLocation(ws_rain_prog, "num_wipers"),
+		    num_wipers);
+	} else {
+		glUniform1i(glGetUniformLocation(ws_rain_prog, "num_wipers"),
+		    0);
+	}
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
@@ -750,6 +869,93 @@ librain_draw_finish(void)
 }
 
 static void
+reset_wiper(wiper_t *wiper)
+{
+	ASSERT(wiper != NULL);
+	wiper->angle_prev = NAN;
+	wiper->angle_edge = NAN;
+	wiper->angle_smear = NAN;
+}
+
+static void
+update_wiper(wiper_t *wiper, double angle, bool_t is_moving)
+{
+	double cur_t = dr_getf(&drs.sim_time);
+	double d_t, ang_vel;
+	bool_t dir_new;
+
+	ASSERT(wiper != NULL);
+
+	d_t = cur_t - wiper->angle_now_t;
+	if (d_t <= 0)
+		return;
+
+	if (!is_moving) {
+		reset_wiper(wiper);
+		return;
+	}
+
+	if (isnan(wiper->angle_prev)) {
+		wiper->angle_prev = angle;
+		wiper->angle_now_t = cur_t;
+		return;
+	}
+	wiper->angle_prev = wiper->angle_now;
+	wiper->angle_now = angle;
+	wiper->angle_now_t = cur_t;
+
+	ang_vel = (wiper->angle_now - wiper->angle_prev) / d_t;
+	dir_new = (ang_vel > 0);
+	if (dir_new != wiper->dir) {
+		wiper->angle_edge = wiper->angle_prev;
+		wiper->angle_edge_t = cur_t;
+		wiper->dir = dir_new;
+	}
+	if (cur_t - wiper->angle_edge_t >= WIPER_SMEAR_DELAY) {
+		/* Stop tracking the edge. */
+		wiper->angle_edge = NAN;
+	}
+	if (isnan(wiper->angle_smear)) {
+		wiper->angle_smear = wiper->angle_prev;
+		wiper->angle_smear_t = cur_t;
+	}
+	if (cur_t - wiper->angle_smear_t > WIPER_SMEAR_DELAY) {
+		/*
+		 * If the wiper has reversed, start moving towards the edge
+		 * position, not the current wiper position.
+		 */
+		if (!isnan(wiper->angle_edge)) {
+			FILTER_IN_LIN(wiper->angle_smear, wiper->angle_edge,
+			    d_t, ABS(ang_vel));
+		} else {
+			FILTER_IN_LIN(wiper->angle_smear, wiper->angle_now,
+			    d_t, ABS(ang_vel));
+		}
+		wiper->angle_smear_t = cur_t - WIPER_SMEAR_DELAY;
+	}
+}
+
+LIBRAIN_EXPORT void
+librain_set_wiper_angle(const librain_glass_t *glass, unsigned wiper_nr,
+    double angle_radians, bool_t is_moving)
+{
+	ASSERT(glass != NULL);
+	ASSERT3U(wiper_nr, <, MAX_WIPERS);
+	ASSERT3F(angle_radians, >=, -M_PI);
+	ASSERT3F(angle_radians, <=, M_PI);
+
+	for (size_t i = 0; i < num_glass_infos; i++) {
+		if (glass_infos[i].glass == glass) {
+			update_wiper(&(glass_infos[i].wipers[wiper_nr]),
+			    angle_radians, is_moving);
+			return;
+		}
+	}
+	VERIFY_MSG(0, "invalid librain_glass_t passed: %p (unknown pointer)",
+	    glass);
+}
+
+static void
 validate_glass(const librain_glass_t *glass)
 {
 	VERIFY(glass != NULL);
@@ -846,6 +1052,9 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    GL_RGBA, GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
 
 	free(temp_tex);
+
+	for (int i = 0; i < MAX_WIPERS; i++)
+		reset_wiper(&gi->wipers[i]);
 }
 
 static void
@@ -1119,4 +1328,16 @@ librain_set_debug_draw(bool_t flag)
 {
 	check_librain_init();
 	debug_draw = flag;
+}
+
+/*
+ * By setting this flag to true, the library will draw a visible outline
+ * around the wiper area and where the wipers are located. This can be
+ * used for fine-tuning the wiper position constants.
+ */
+LIBRAIN_EXPORT void
+librain_set_wipers_visible(bool_t flag)
+{
+	check_librain_init();
+	wipers_visible = flag;
 }

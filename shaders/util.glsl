@@ -16,6 +16,9 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
+#ifndef	_UTIL_GLSL_
+#define	_UTIL_GLSL_
+
 #define	C2KELVIN(c)	((c) + 273.15)
 #define	POW2(x)		((x) * (x))
 
@@ -24,3 +27,22 @@ fx_lin(float x, float x1, float y1, float x2, float y2)
 {
 	return (((x - x1) / (x2 - x1)) * (y2 - y1) + y1);
 }
+
+float
+dir2hdg(vec2 v)
+{
+	if (v.y >= 0.0)
+		return (asin(v.x / length(v)));
+	else if (v.x >= 0.0)
+		return (radians(180) - asin(v.x / length(v)));
+	else
+		return (radians(-180) - asin(v.x / length(v)));
+}
+
+float
+iter_fract(float x, float start, float end)
+{
+	return ((x - start) / (end - start));
+}
+
+#endif	/* _UTIL_GLSL_ */
