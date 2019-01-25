@@ -26,7 +26,7 @@ rm -rf "$OUTPUT"
 mkdir -p "$OUTPUT/docs" "$OUTPUT"/shaders
 
 cp ../../shaders/bin/*.glsl* ../../shaders/bin/*.spv* "$OUTPUT/shaders"
-cp ../HOWTO ../../README.md ../../src/librain.h "$OUTPUT/docs"
+cp ../../COPYING ../HOWTO ../../README.md ../../src/librain.h "$OUTPUT/docs"
 
 make distclean > /dev/null
 
