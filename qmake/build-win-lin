@@ -56,7 +56,6 @@ mv "$RELEASE/librain.a" "win64-dll/rain.lib" || exit 1
 qmake -set DLL 0
 qmake -spec win32-g++
 make clean && make -j $NCPUS
-make clean && make -j $NCPUS
 if [ $? != 0 ] ; then
 	exit
 fi

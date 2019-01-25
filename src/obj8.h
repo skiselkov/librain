@@ -41,6 +41,7 @@ LIBRAIN_EXPORT void obj8_free(obj8_t *obj);
 LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
     GLuint prog, mat4 mvp);
 LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
+LIBRAIN_EXPORT const char *obj8_get_filename(const obj8_t *obj);
 
 #ifdef __cplusplus
 }

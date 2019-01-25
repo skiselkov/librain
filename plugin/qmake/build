@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# CDDL HEADER START
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+# CDDL HEADER END
+
+# Copyright 2019 Saso Kiselkov. All rights reserved.
+
+# We'll try to build on N+1 CPUs we have available. The extra +1 is to allow
+# for one make instance to be blocking on disk.
+NCPUS=$(( $(grep 'processor[[:space:]]\+:' /proc/cpuinfo  | wc -l) + 1 ))
+RELEASE="debug"
+
+OUTPUT=librain.plugin
+
+rm -rf "$OUTPUT"
+mkdir -p "$OUTPUT/docs" "$OUTPUT"/shaders
+
+cp ../../shaders/bin/*.glsl* ../../shaders/bin/*.spv* "$OUTPUT/shaders"
+cp ../HOWTO ../../README.md ../../src/librain.h "$OUTPUT/docs"
+
+make distclean > /dev/null
+
+if [[ $(uname) = "Darwin" ]]; then
+	mkdir -p "$OUTPUT/mac_x64"
+
+	qmake -spec macx-clang
+	make clean && make -j $NCPUS
+	if [ $? != 0 ] ; then
+		exit
+	fi
+	mv librain.dylib "$OUTPUT/mac_x64/librain.plugin.xpl" || exit 1
+else
+	mkdir -p "$OUTPUT/win_x64" "$OUTPUT/lin_x64"
+
+	qmake -set CROSS_COMPILE x86_64-w64-mingw32-
+	qmake -spec win32-g++
+	make clean && make -j $NCPUS
+	if [ $? != 0 ] ; then
+		exit
+	fi
+	mv "$RELEASE/rain.dll" "$OUTPUT/win_x64/librain.plugin.xpl" || exit 1
+
+	qmake -spec linux-g++-64
+	make clean && make -j $NCPUS
+	if [ $? != 0 ] ; then
+	  exit
+	fi
+	mv librain.so "$OUTPUT/lin_x64/librain.plugin.xpl" || exit 1
+fi
+
+make distclean > /dev/null

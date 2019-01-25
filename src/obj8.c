@@ -984,3 +984,10 @@ obj8_set_matrix(obj8_t *obj, mat4 matrix)
 	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))});
 	glm_mat4_mul(matrix, m1, obj->matrix);
 }
+
+const char *
+obj8_get_filename(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->filename);
+}
