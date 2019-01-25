@@ -16,7 +16,7 @@ After you copied all the required inclues to their place you can include the req
 
 ### Define window/windshield object(s)
 ```cpp
-const char *file = "path/to/your/windshield.obj";
+const char *windShieldObjPath = "path/to/your/windshield.obj";
 ```
 
 ### Define object's position offset
@@ -30,10 +30,10 @@ vect3_t pos_offset = { 0, 0, 0 };
 
 ### Parse the object 
 
-Careful, don't do this before calling ``librain_init``.
+This must be done before calling ``librain_init``.
 
 ```cpp
-obj8_t *windShieldObj = obj8_parse(file, pos_offset);
+obj8_t *windShieldObj = obj8_parse(windShieldObjPath, pos_offset);
 ```
 
 ### Specify the shader's directory
@@ -55,7 +55,6 @@ static const vect2_t gp = { 0.5, 1.3 };
 static const vect2_t wp = { 1.5, 0.5 };
 
 static librain_glass_t windShield = {
-	.obj = windShieldObj,  // obj_t *
 	.group_ids = NULL,     // const char **
 	.slant_factor = 1.0,   // double
 	.thrust_point = tp,    // vect2_t
@@ -69,10 +68,9 @@ static librain_glass_t windShield = {
 	.cabin_temp = 22.0     // float
 };
 
-static librain_glass_t windShield = { ... }
+static librain_glass_t sideWindow = { ... };
 
-static librain_glass_t glassElementsArray[1] = { windShield };
-static librain_glass_t glassElementsArray[2] = { sideWindow };
+static librain_glass_t glassElementsArray[2] = { windShield, sideWindow };
 ...
 ```
 
@@ -115,12 +113,19 @@ static int draw_rain_effects(
 	void             *inRefcon)
 {
 	librain_draw_prepare(FALSE);
-	librain_draw_z_depth(windShieldObj, NULL);
+	/*
+	 * Since the windshield effect needs to be manually occluded, we
+	 * would now call ``librain_draw_z_depth`` with additional OBJs
+	 * that serve as the masking objects. Typically this would be things
+	 * like the cockpit interior and/or exterior fuselage model - anything
+	 * that could cover the windshield.
+	 */
 	librain_draw_exec();
 	librain_draw_finish();
 	return 1;
 }
 ```
+
 You have to call `librain_draw_z_depth(...)` for all the objects which can
 block the view of the glass element that receives the rain animation. This
 is used to populate the z-buffer of the scene and occlude the rendered
@@ -157,9 +162,8 @@ rendering performance.
 # error This is made to be compiled against the XPLM300 SDK
 #endif
 
-static const char *file = "path/to/your/windshield.obj";
+static const char *windShieldObjPath = "path/to/your/windshield.obj";
 static const vect3_t pos_offset = { 0, 0, 0 };
-static obj8_t *windShieldObj = NULL;
 
 char *shaderDir = "librain-shaders";
 
@@ -188,9 +192,9 @@ static int draw_rain_effects(
 	void             *inRefcon)
 {
 	librain_draw_prepare(FALSE);
+	/* Load these OBJs using obj8_parse as necessary */
 	librain_draw_z_depth(compassObj, NULL);
 	librain_draw_z_depth(fuselageObj, NULL);
-	librain_draw_z_depth(windShieldObj, NULL);
 	librain_draw_exec();
 	librain_draw_finish();
 	return 1;
@@ -205,22 +209,22 @@ PLUGIN_API int XPluginStart(
 	strcpy(outSig, "librain.hello.world");
 	strcpy(outDesc, "A Hello World plug-in for librain");
 
-	/* Before doing ANYTHING with the library, initialize it. */
-	if (!librain_init(shaderDir, glassElementsArray, 1)) {
-		XPLMDebugString("Oh noes, failed to initialize librain!");
-		return (0);
-	}
 	/*
 	 * Load our windshield object. You will also want to load
 	 * any additional objects used for z-buffer filling.
 	 */
-	windShieldObj = obj8_parse(file, pos_offset);
-	if (windShieldObj == NULL) {
+	glassElementsArray[0].obj = obj8_parse(windShieldObjPath, pos_offset);
+	if (glassElementsArray[0].obj == NULL) {
 		XPLMDebugString("Oh noes, failed to load the windshield OBJ!");
 		librain_fini();
 		return (0);
 	}
-	glassElementsArray[0].obj = windShieldObj;
+
+	/* Once we have loaded all OBJs, initialize the glass structures. */
+	if (!librain_init(shaderDir, glassElementsArray, 1)) {
+		XPLMDebugString("Oh noes, failed to initialize librain!");
+		return (0);
+	}
 	/*
 	 * Turn on debug drawing. This makes all z-buffer drawing
 	 * visible to verify it's working right. When you are satisfied
