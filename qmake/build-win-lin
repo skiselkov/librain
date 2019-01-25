@@ -37,40 +37,44 @@ while getopts "sS" opt; do
 	esac
 done
 
-rm -rf win32 win64 lin32 lin64
-mkdir -p win64 lin64
+rm -rf win64-dll win64-mingw lin64
+mkdir -p win64-dll win64-mingw lin64
 
-make distclean > /dev/null
-qmake -set DLL 1
 qmake -set STANDALONE 1
-qmake -set WHOLE_ARCHIVE $WHOLE_ARCHIVE
-qmake -set CROSS_COMPILE x86_64-w64-mingw32- && \
-    qmake -spec win32-g++ && make -j $NCPUS
+make distclean > /dev/null
+
+qmake -set DLL 1
+qmake -set CROSS_COMPILE x86_64-w64-mingw32-
+qmake -spec win32-g++
+make clean && make -j $NCPUS
 if [ $? != 0 ] ; then
 	exit
 fi
-mv "$RELEASE/rain.dll" "win64/rain.dll" || exit 1
-mv "$RELEASE/librain.a" "win64/rain.lib" || exit 1
+mv "$RELEASE/rain.dll" "win64-dll/rain.dll" || exit 1
+mv "$RELEASE/librain.a" "win64-dll/rain.lib" || exit 1
 
-if [ -z "$STANDALONE" ]; then
-	qmake -set STANDALONE 0
-else
-	qmake -set STANDALONE 1
+qmake -set DLL 0
+make clean && make -j $NCPUS
+make clean && make -j $NCPUS
+if [ $? != 0 ] ; then
+	exit
 fi
-if [ -z "$SO" ]; then
-	qmake -set DLL 0
-else
-	qmake -set DLL 1
-fi
+mv "$RELEASE/librain.a" "win64-mingw/librain.a" || exit 1
 
-qmake -spec linux-g++-64 && make -j $NCPUS
+qmake -set DLL 0
+qmake -spec linux-g++-64
+make clean && make -j $NCPUS
 if [ $? != 0 ] ; then
   exit
 fi
-if [ -z "$SO" ]; then
-	mv librain.a lin64
-else
-	mv librain.so lin64
+mv librain.a lin64
+
+qmake -set DLL 1
+qmake -spec linux-g++-64
+make clean && make -j $NCPUS
+if [ $? != 0 ] ; then
+  exit
 fi
+mv librain.so lin64
 
 make distclean > /dev/null
