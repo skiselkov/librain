@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# CDDL HEADER START
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+# CDDL HEADER END
+
+# Copyright 2019 Saso Kiselkov. All rights reserved.
+
+HEADERS=(
+	librain_common.h
+	librain.h
+	obj8.h
+	surf_ice.h
+)
+
+if ! [ -d lin64 ]; then
+	echo "Run ./build-win-lin to assemble Windows and Linux builds" >&2
+	exit 1
+fi
+
+if ! [ -d mac64 ]; then
+	echo "Run ./build-mac to assemble Mac build" >&2
+	exit 1
+fi
+
+mkdir -p librain/include librain/librain-shaders
+cp ../README.md librain
+cp ${HEADERS} librain/include
+cp ../shaders/bin/*.glsl* ../shaders/bin/*.spv* librain/librain-shaders
+cp -r win64-dll win64-mingw mac64 lin64 librain
+rm -f librain.zip
+zip -r librain.zip librain
+rm -r librain

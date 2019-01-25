@@ -4,9 +4,11 @@ qmake/Makefile.Release
 qmake/debug
 qmake/lin64
 qmake/rain_resource.rc
-qmake/win64
+qmake/win64-dll
+qmake/win64-mingw
 qmake/.qmake.stash
 qmake/Makefile
 qmake/librain.o
 qmake/mac64/
 qmake/obj8.o
+qmake/librain.zip
