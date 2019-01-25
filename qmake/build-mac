@@ -18,39 +18,26 @@
 # We'll try to build on N+1 CPUs we have available. The extra +1 is to allow
 # for one make instance to be blocking on disk.
 NCPUS=$(( $(sysctl -n hw.ncpu) + 1 ))
-SO=""
 
-while getopts "sS" opt; do
-	case "$opt" in
-	s)
-		SO=1
-		;;
-	S)
-		STANDALONE=1
-		;;
-	esac
-done
+rm -rf mac64
+mkdir -p mac64
 
-rm -rf mac32 mac64
-mkdir -p mac32 mac64
+qmake -set STANDALONE 1
 
 make distclean > /dev/null
-if [ -z "$STANDALONE" ]; then
-	qmake -set STANDALONE 0
-else
-	qmake -set STANDALONE 1
-fi
-if [ -z "$SO" ]; then
-	qmake -set DLL 0
-else
-	qmake -set DLL 1
-fi
-qmake -spec macx-clang && make -j $NCPUS
+
+qmake -set DLL 0
+qmake -spec macx-clang
+make clean && make -j $NCPUS
 if [ $? != 0 ] ; then
-  exit
+	exit
 fi
-if [ -z "$SO" ]; then
-	mv librain.a mac64
-else
-	mv librain.dylib mac64
+mv librain.a mac64
+
+qmake -set DLL 1
+qmake -spec macx-clang
+make clean && make -j $NCPUS
+if [ $? != 0 ] ; then
+	exit
 fi
+mv librain.dylib mac64
