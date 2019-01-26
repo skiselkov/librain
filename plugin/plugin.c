@@ -190,7 +190,7 @@ pre_init_validate(void)
 		if (glass_data[i].obj_data.obj == NULL) {
 			logMsg("librain init error: you have set "
 			    "librain/num_glass_use = %d, but "
-			    "librain/glass[%d]/obj is not loaded.",
+			    "librain/glass_%d/obj is not loaded.",
 			    num_glass_use, i);
 			return (B_FALSE);
 		}
@@ -364,86 +364,86 @@ glass_data_init(unsigned glass_i)
 
 	gd->glass = glass;
 
-	snprintf(prefix, sizeof (prefix), "librain/glass[%d]/obj", glass_i);
+	snprintf(prefix, sizeof (prefix), "librain/glass_%d/obj", glass_i);
 	obj_data_init(&gd->obj_data, prefix);
 
 	dr_create_f64(&gd->drs.slant_factor, &glass->slant_factor, B_TRUE,
-	    "librain/glass[%d]/slant_factor", glass_i);
+	    "librain/glass_%d/slant_factor", glass_i);
 
 	dr_create_f64(&gd->drs.thrust_point_x, &glass->thrust_point.x, B_TRUE,
-	    "librain/glass[%d]/thrust_point/x", glass_i);
+	    "librain/glass_%d/thrust_point/x", glass_i);
 	dr_create_f64(&gd->drs.thrust_point_y, &glass->thrust_point.y, B_TRUE,
-	    "librain/glass[%d]/thrust_point/y", glass_i);
+	    "librain/glass_%d/thrust_point/y", glass_i);
 	dr_create_f64(&gd->drs.thrust_factor, &glass->thrust_factor, B_TRUE,
-	    "librain/glass[%d]/thrust_factor", glass_i);
+	    "librain/glass_%d/thrust_factor", glass_i);
 	dr_create_f64(&gd->drs.max_thrust, &glass->max_thrust, B_TRUE,
-	    "librain/glass[%d]/max_thrust", glass_i);
+	    "librain/glass_%d/max_thrust", glass_i);
 	gd->drs.max_thrust.write_cb = max_thrust_validator;
 
 	dr_create_f64(&gd->drs.gravity_point_x, &glass->gravity_point.x, B_TRUE,
-	    "librain/glass[%d]/gravity_point/x", glass_i);
+	    "librain/glass_%d/gravity_point/x", glass_i);
 	dr_create_f64(&gd->drs.gravity_point_y, &glass->gravity_point.y, B_TRUE,
-	    "librain/glass[%d]/gravity_point/y", glass_i);
+	    "librain/glass_%d/gravity_point/y", glass_i);
 	dr_create_f64(&gd->drs.gravity_factor, &glass->gravity_factor, B_TRUE,
-	    "librain/glass[%d]/gravity_factor", glass_i);
+	    "librain/glass_%d/gravity_factor", glass_i);
 
 	dr_create_f64(&gd->drs.wind_point_x, &glass->wind_point.x, B_TRUE,
-	    "librain/glass[%d]/wind_point/x", glass_i);
+	    "librain/glass_%d/wind_point/x", glass_i);
 	dr_create_f64(&gd->drs.wind_point_y, &glass->wind_point.y, B_TRUE,
-	    "librain/glass[%d]/wind_point/y", glass_i);
+	    "librain/glass_%d/wind_point/y", glass_i);
 	dr_create_f64(&gd->drs.wind_factor, &glass->wind_factor, B_TRUE,
-	    "librain/glass[%d]/wind_factor", glass_i);
+	    "librain/glass_%d/wind_factor", glass_i);
 	dr_create_f64(&gd->drs.wind_normal, &glass->wind_normal, B_TRUE,
-	    "librain/glass[%d]/wind_normal", glass_i);
+	    "librain/glass_%d/wind_normal", glass_i);
 
 	dr_create_f64(&gd->drs.max_tas, &glass->max_tas, B_TRUE,
-	    "librain/glass[%d]/max_tas", glass_i);
+	    "librain/glass_%d/max_tas", glass_i);
 	gd->drs.max_tas.write_cb = max_tas_validator;
 
 	dr_create_f(&gd->drs.therm_inertia, &glass->therm_inertia, B_TRUE,
-	    "librain/glass[%d]/therm_inertia", glass_i);
+	    "librain/glass_%d/therm_inertia", glass_i);
 	gd->drs.therm_inertia.write_cb = therm_inertia_validator;
 
 	dr_create_vf(&gd->drs.heat_zones, glass->heat_zones,
 	    sizeof (glass->heat_zones) / sizeof (float), B_TRUE,
-	    "librain/glass[%d]/heat_zones", glass_i);
+	    "librain/glass_%d/heat_zones", glass_i);
 	dr_create_vf(&gd->drs.heat_tgt_temps, glass->heat_tgt_temps,
 	    sizeof (glass->heat_tgt_temps) / sizeof (float), B_TRUE,
-	    "librain/glass[%d]/heat_tgt_temps", glass_i);
+	    "librain/glass_%d/heat_tgt_temps", glass_i);
 	dr_create_f(&gd->drs.cabin_temp, &glass->cabin_temp, B_TRUE,
-	    "librain/glass[%d]/cabin_temp", glass_i);
+	    "librain/glass_%d/cabin_temp", glass_i);
 	gd->drs.cabin_temp.write_cb = cabin_temp_validator;
 
 	dr_create_vf(&gd->drs.hot_air_src, glass->hot_air_src,
 	    sizeof (glass->hot_air_src) / sizeof (float), B_TRUE,
-	    "librain/glass[%d]/hot_air_src", glass_i);
+	    "librain/glass_%d/hot_air_src", glass_i);
 	dr_create_vf(&gd->drs.hot_air_radius, glass->hot_air_radius,
 	    sizeof (glass->hot_air_radius) / sizeof (float), B_TRUE,
-	    "librain/glass[%d]/hot_air_radius", glass_i);
+	    "librain/glass_%d/hot_air_radius", glass_i);
 	dr_create_vf(&gd->drs.hot_air_temp, glass->hot_air_temp,
 	    sizeof (glass->hot_air_temp) / sizeof (float), B_TRUE,
-	    "librain/glass[%d]/hot_air_temp", glass_i);
+	    "librain/glass_%d/hot_air_temp", glass_i);
 
 	for (int i = 0; i < MAX_WIPERS; i++) {
 		dr_create_f64(&gd->drs.wiper_pivot_x[i],
 		    &glass->wiper_pivot[i].x, B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/pivot/x", glass_i, i);
+		    "librain/glass_%d/wiper_%d/pivot/x", glass_i, i);
 		dr_create_f64(&gd->drs.wiper_pivot_y[i],
 		    &glass->wiper_pivot[i].y, B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/pivot/y", glass_i, i);
+		    "librain/glass_%d/wiper_%d/pivot/y", glass_i, i);
 		dr_create_f64(&gd->drs.wiper_radius_outer[i],
 		    &glass->wiper_radius_outer[i], B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/radius_outer", glass_i, i);
+		    "librain/glass_%d/wiper_%d/radius_outer", glass_i, i);
 		dr_create_f64(&gd->drs.wiper_radius_inner[i],
 		    &glass->wiper_radius_inner[i], B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/radius_inner", glass_i, i);
+		    "librain/glass_%d/wiper_%d/radius_inner", glass_i, i);
 		dr_create_f64(&gd->drs.wiper_angle[i],
 		    &gd->wiper_angle[i], B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/angle", glass_i, i);
+		    "librain/glass_%d/wiper_%d/angle", glass_i, i);
 		gd->drs.wiper_angle[i].write_cb = angle_validator;
 		dr_create_i(&gd->drs.wiper_moving[i],
 		    (int *)&gd->wiper_moving[i], B_TRUE,
-		    "librain/glass[%d]/wiper[%d]/moving", glass_i, i);
+		    "librain/glass_%d/wiper_%d/moving", glass_i, i);
 	}
 
 	/* sensible defaults */
@@ -611,7 +611,7 @@ XPluginStart(char *name, char *sig, char *desc)
 	for (int i = 0; i < MAX_Z_DEPTH_OBJS; i++) {
 		char prefix[64];
 
-		snprintf(prefix, sizeof (prefix), "librain/z_depth_obj[%d]", i);
+		snprintf(prefix, sizeof (prefix), "librain/z_depth_obj_%d", i);
 		obj_data_init(&z_depth_objs[i], prefix);
 	}
 
