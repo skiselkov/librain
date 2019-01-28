@@ -16,9 +16,11 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 #extension GL_GOOGLE_include_directive: require
 
+#include "consts.glsl"
+#include "droplets_data.h"
 #include "util.glsl"
 #include "noise.glsl"
 
@@ -47,8 +49,6 @@ layout(location = 46) uniform float	wiper_pos_prev[MAX_WIPERS];
 
 layout(location = 0) out vec4	color_out;
 
-const float max_depth = 3.0;
-const float min_depth = 0.01;
 const float precip_fact = 0.1;
 const float gravity_factor = 0.25;
 const float precip_scale_fact = 0.0117;
@@ -114,14 +114,16 @@ read_depth(vec2 pos)
 void
 main()
 {
-	float old_depth, depth, prev_depth, new_depth;
+	float old_depth, prev_depth;
+	float new_depth = 0.0;
+	float depth = 0.0;
 	vec2 tex_sz = textureSize(tex, 0);
 	vec2 prev_pos;
 	vec2 tp_dir, gp_dir, wp_dir, rand_dir;
 	vec4 old_val;
 	float r = 0.0, g = 0.0, b = 0.0, a = 0.0;
 	float blowaway_fact;
-	bool water_added;
+	bool water_added = false;
 	vec2 tex_coord = gl_FragCoord.xy / tex_sz;
 	float temp = texture(temp_tex, tex_coord).r * temp_scale_fact;
 	float temp_flow_coeff;
@@ -147,9 +149,6 @@ main()
 	    droplet_gen_check(gl_FragCoord.xy + vec2(0.0, -1.0))) {
 		new_depth = max_depth / 3.0;
 		water_added = true;
-	} else {
-		new_depth = 0.0;
-		water_added = false;
 	}
 
 	depth += new_depth;
@@ -190,9 +189,7 @@ main()
 		depth = clamp(depth, 0.0, old_water -
 		    max_depth * mix(0.005, 0.01, temp_flow_coeff));
 	}
-
-	if (depth < min_depth)
-		depth = 0.0;
+	depth = max(depth, min_depth);
 
 	/*
 	 * Figure out where along the wiper's area of smear we are located.

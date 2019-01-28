@@ -95,6 +95,11 @@ extern "C" {
  *	any temporary resources that will not be required anymore.
  */
 
+typedef struct {
+	bool_t		use_compute;
+	unsigned	num_droplets;
+} librain_qual_t;
+
 /*
  * This structure configures a single glass "surface" for librain and tells
  * it how to move water around on it in response to various factors. It
@@ -204,6 +209,10 @@ extern "C" {
  *                          [0.5,-2]
  */
 typedef struct {
+	/*
+	 * Optional name for debugging purposes.
+	 */
+	const char	*name;
 	/*
 	 * Each glass surface has an associated OBJ object which it is
 	 * projected onto. Please note that librain doesn't render
@@ -421,6 +430,8 @@ typedef struct {
 	 * If a wiper is unused, leave this set to 0.
 	 */
 	double		wiper_radius_inner[MAX_WIPERS];
+
+	librain_qual_t	qual;
 } librain_glass_t;
 
 /*
@@ -438,6 +449,7 @@ LIBRAIN_EXPORT void librain_draw_z_depth(obj8_t *obj,
     const char **z_depth_group_ids);
 LIBRAIN_EXPORT void librain_draw_exec(void);
 LIBRAIN_EXPORT void librain_draw_finish(void);
+LIBRAIN_EXPORT void librain_set_enabled(bool_t flag);
 
 /*
  * Wiper control.
@@ -452,6 +464,7 @@ LIBRAIN_EXPORT void librain_get_pvm(mat4 pvm);
 LIBRAIN_EXPORT GLuint librain_get_screenshot_tex(void);
 LIBRAIN_EXPORT void librain_refresh_screenshot(void);
 LIBRAIN_EXPORT bool_t librain_reload_gl_progs(void);
+LIBRAIN_EXPORT void librain_set_low_res(bool_t flag);
 
 /*
  * Debugging support.

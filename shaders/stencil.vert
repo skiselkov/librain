@@ -18,19 +18,18 @@
 
 #version 460 core
 
-layout(location = 0) uniform mat4	pvm;
+layout(location = 0) in vec3	vtx_pos;
+layout(location = 1) in vec3	vtx_norm;
+layout(location = 2) in vec2	vtx_tex0;
 
-layout(location = 0) in vec3		vtx_pos;
-layout(location = 1) in vec3		vtx_norm;
-layout(location = 2) in vec2		vtx_tex0;
+layout(location = 0) out vec3	tex_norm;
+layout(location = 1) out vec2	tex_coord;
 
-layout(location = 0) out vec3		tex_norm;
-layout(location = 1) out vec2		tex_coord;
 
 void
 main()
 {
-	tex_norm = vtx_norm;
+	tex_norm = vec3(0.0);
 	tex_coord = vtx_tex0;
-	gl_Position = pvm * vec4(vtx_pos, 1.0);
+	gl_Position = vec4((vtx_tex0 * 2.0) - 1.0, 0.0, 1.0);
 }

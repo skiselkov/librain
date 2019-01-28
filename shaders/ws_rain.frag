@@ -16,12 +16,15 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 #extension GL_GOOGLE_include_directive: require
 
+#include "consts.glsl"
+#include "droplets_data.h"
 #include "util.glsl"
 
 #define	MAX_WIPERS	2
+#define	RAIN_DEBUG	0
 
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	norm_tex;
@@ -37,11 +40,12 @@ layout(location = 21) uniform float	wiper_pos[MAX_WIPERS];
 layout(location = 0) in vec3		tex_norm;
 layout(location = 1) in vec2		tex_coord;
 
-layout(location = 0) out vec4	color_out;
+layout(location = 0) out vec4		color_out;
 
-const float	displace_lim = 200.0;
+#if	!COMPUTE_VARIANT
+const vec2	displace_lim = vec2(200.0);
 const float	darkening_fact = 800.0;
-const float	max_depth = 3.0;
+#endif	/* !COMPUTE_VARIANT */
 
 vec4
 get_pixel(vec2 pos)
@@ -75,12 +79,23 @@ check_wiper(int i)
 void
 main()
 {
+#if	COMPUTE_VARIANT
+	vec2 screenshot_sz = textureSize(screenshot_tex, 0);
+	const vec2 displace_lim = screenshot_sz.yx / 10.0;
+	float darkening_fact = max(displace_lim.x, displace_lim.y);
+#endif
 	float depth = texture(depth_tex, tex_coord).r;
-	vec2 displace = (texture(norm_tex, tex_coord).xy - 0.5) *
-	    displace_lim * (max_depth - depth);
+	vec2 norm_v = (2.0 * texture(norm_tex, tex_coord).xy) - 1.0;
+	vec2 displace = norm_v * displace_lim;
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
+	float displace_fract = length(displace) / darkening_fact;
 
-	bg_pixel *= (1 - pow(length(displace) / darkening_fact, 1.8));
+#if	RAIN_DEBUG
+	color_out = vec4(depth, 0.0, 0.0, 1.0);
+	return;
+#endif
+
+	bg_pixel *= (1.0 - POW2(displace_fract / 2.0));
 
 	color_out = vec4(bg_pixel.rgb, 1.0);
 

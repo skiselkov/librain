@@ -13,24 +13,20 @@
  * CDDL HEADER END
 */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
-#version 460 core
+#ifndef	_CONSTS_GLSL_
+#define	_CONSTS_GLSL_
 
-layout(location = 0) uniform mat4	pvm;
+#define	M_PI	radians(180)
 
-layout(location = 0) in vec3		vtx_pos;
-layout(location = 1) in vec3		vtx_norm;
-layout(location = 2) in vec2		vtx_tex0;
+#if	COMPUTE_VARIANT
+const float max_depth = 1.0;
+#else
+const float max_depth = 3.0;
+#endif
 
-layout(location = 0) out vec3		tex_norm;
-layout(location = 1) out vec2		tex_coord;
+const float min_depth = 0.001;
 
-void
-main()
-{
-	tex_norm = vtx_norm;
-	tex_coord = vtx_tex0;
-	gl_Position = pvm * vec4(vtx_pos, 1.0);
-}
+#endif	/* _CONSTS_GLSL_ */

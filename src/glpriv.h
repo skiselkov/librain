@@ -38,12 +38,13 @@ extern "C" {
 		} \
 	} while (0)
 
-static void setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data,
-    GLint mag_filter, GLint min_filter) UNUSED_ATTR;
+static void setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt,
+    GLsizei width, GLsizei height, GLenum format, GLenum type,
+    const GLvoid *data, GLint mag_filter, GLint min_filter) UNUSED_ATTR;
 static void setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data) UNUSED_ATTR;
-static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex) UNUSED_ATTR;
+static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth,
+    GLuint stencil, bool_t depth_stencil_combo) UNUSED_ATTR;
 static bool_t reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
     UNUSED_ATTR;
 static char	*shaderpath	UNUSED_ATTR;
@@ -51,11 +52,11 @@ static char	*shaderpath	UNUSED_ATTR;
 static char	*shaderpath = NULL;
 
 static void
-setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
+setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data,
     GLint mag_filter, GLint min_filter)
 {
-	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, tex);
 
 	if (mag_filter != 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
@@ -67,42 +68,89 @@ setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
 	}
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0, format,
-	    type, data);
+	if (GLEW_ARB_texture_storage) {
+		/*
+		 * On AMD, we MUST specify the mipmapping level
+		 * explicitly, otherwise glGenerateMipmaps can hang.
+		 */
+		glTexStorage2D(GL_TEXTURE_2D, miplevels, int_fmt,
+		    width, height);
+		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height,
+		    0, format, type, data);
+		if (data != NULL&& miplevels > 0)
+			glGenerateMipmap(GL_TEXTURE_2D);
+	} else {
+		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0,
+		    format, type, data);
+		for (GLint i = 1; i <= miplevels; i++) {
+			glTexImage2D(GL_TEXTURE_2D, i, int_fmt,
+			    MAX(width >> i, 1), MAX(height >> i, 1),
+			    0, format, type, NULL);
+		}
+		if (miplevels > 0 && data != NULL)
+			glGenerateMipmap(GL_TEXTURE_2D);
+	}
 }
 
 static void
-setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data)
+setup_texture(GLuint tex, GLint int_fmt, GLsizei width, GLsizei height,
+    GLenum format, GLenum type, const GLvoid *data)
 {
-	setup_texture_filter(tex, int_fmt, width,
-	    height, format, type, data, GL_LINEAR, GL_LINEAR);
+	setup_texture_filter(tex, 0, int_fmt, width, height, format,
+	    type, data, GL_LINEAR, GL_LINEAR);
 }
 
 static void
-setup_color_fbo_for_tex(GLuint fbo, GLuint tex)
+setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth, GLuint stencil,
+    bool_t depth_stencil_combo)
 {
 	glBindFramebufferEXT(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 	    GL_TEXTURE_2D, tex, 0);
+	if (depth_stencil_combo) {
+		ASSERT(depth != 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER,
+		    GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth, 0);
+	} else {
+		if (depth != 0) {
+			glFramebufferTexture2D(GL_FRAMEBUFFER,
+			    GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth, 0);
+		}
+		if (stencil != 0) {
+			glFramebufferTexture2D(GL_FRAMEBUFFER,
+			    GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, stencil, 0);
+		}
+	}
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
 	    GL_FRAMEBUFFER_COMPLETE);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
+	    GL_STENCIL_BUFFER_BIT);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, 0);
 }
 
 static bool_t
 reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
 {
-	GLuint new_prog;
+	GLint new_prog;
 
 	ASSERT(shaderpath != NULL);
 	new_prog = shader_prog_from_info(shaderpath, info);
 	if (new_prog == 0)
 		return (B_FALSE);
-	if (*prog != 0)
+	if (*prog != 0 && new_prog != *prog)
 		glDeleteProgram(*prog);
 	*prog = new_prog;
 
 	return (B_TRUE);
+}
+
+static inline void
+gl_state_cleanup(void)
+{
+	if (GLEW_VERSION_3_0)
+		glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 #ifdef	__cplusplus

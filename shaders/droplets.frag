@@ -13,24 +13,22 @@
  * CDDL HEADER END
 */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
 #version 460 core
+#extension GL_GOOGLE_include_directive: require
 
-layout(location = 0) uniform mat4	pvm;
+#include "consts.glsl"
 
-layout(location = 0) in vec3		vtx_pos;
-layout(location = 1) in vec3		vtx_norm;
-layout(location = 2) in vec2		vtx_tex0;
+layout(early_fragment_tests) in;
 
-layout(location = 0) out vec3		tex_norm;
-layout(location = 1) out vec2		tex_coord;
+layout(location = 0) in float	dist_ratio;
+
+layout(location = 0) out vec4	color_out;
 
 void
 main()
 {
-	tex_norm = vtx_norm;
-	tex_coord = vtx_tex0;
-	gl_Position = pvm * vec4(vtx_pos, 1.0);
+	color_out = vec4(max_depth, 0, 0, dist_ratio);
 }
