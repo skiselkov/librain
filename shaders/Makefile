@@ -29,12 +29,15 @@ SPVS = \
     ice_blur.frag.spv \
     rain_stage1.frag.spv \
     rain_stage2.frag.spv \
+    rain_stage2_comp.frag.spv \
     ws_rain.frag.spv \
-    ws_smudge.frag.spv
+    ws_smudge.frag.spv \
+    droplets.comp.spv
 
 OUTDIR=bin
 SPIRVX_TGT_VERSION=120
 SPIRVX_420_VERSION=420
+SPIRVX_430_VERSION=430
 
 GLSLANG=glslang
 GLSL_CLEANUP=./glsl_cleanup.sh
@@ -54,7 +57,7 @@ define BUILD_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
 	$(VERB) $(GLSLANG) $(2) -G -o $@ $^
 
-	$(call logMsg,\	[SPIRVX]\	$(@:%.$(1).spv=%.$(1).glsl))
+	$(call logMsg,\	[SPIRVX]\	$@)
 	$(VERB) spirv-cross --version $(SPIRVX_TGT_VERSION) \
 	    --extension GL_EXT_gpu_shader4 \
 	    --output $(@:%.$(1).spv=%.$(1).glsl) $@
@@ -64,6 +67,15 @@ define BUILD_SHADER
 	$(VERB) spirv-cross --version $(SPIRVX_420_VERSION) \
 	    --output $(@:%.$(1).spv=%.$(1).glsl420) $@
 	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl420)
+endef
+
+define BUILD_COMP_SHADER
+	$(call logMsg,-n \	[GLSLANG]\	)
+	$(VERB) $(GLSLANG) $(2) -G -S comp -o $@ $^
+
+	$(call logMsg,\	[SPIRVX 4.30]\	$(@:%.$(1).spv=%.$(1).glsl430))
+	$(VERB) spirv-cross --version $(SPIRVX_430_VERSION) \
+	    --output $(@:%.$(1).spv=%.$(1).glsl430) $@
 endef
 
 SPVS_OUT=$(addprefix $(OUTDIR)/,$(SPVS))
@@ -90,6 +102,12 @@ $(OUTDIR)/%.vert.spv : %.vert
 
 $(OUTDIR)/%.frag.spv : %.frag
 	$(call BUILD_SHADER,frag)
+
+$(OUTDIR)/%.comp.spv : %.glsl
+	$(call BUILD_COMP_SHADER,comp)
+
+$(OUTDIR)/rain_stage2_comp.frag.spv : rain_stage2.frag
+	$(call BUILD_SHADER,frag,-DCOMPUTE_VARIANT=1)
 
 $(addprefix $(OUTDIR)/,$(SPVS)) : | $(OUTDIR)
 

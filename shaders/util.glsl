@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
 #ifndef	_UTIL_GLSL_
@@ -21,6 +21,11 @@
 
 #define	C2KELVIN(c)	((c) + 273.15)
 #define	POW2(x)		((x) * (x))
+#define	POW3(x)		((x) * (x) * (x))
+#define	POW4(x)		(POW2(x) * POW2(x))
+
+#define	FILTER_IN(old_val, new_val, d_t, lag) \
+	old_val += ((new_val) - (old_val)) * ((d_t) / (lag))
 
 float
 fx_lin(float x, float x1, float y1, float x2, float y2)
@@ -43,6 +48,12 @@ float
 iter_fract(float x, float start, float end)
 {
 	return ((x - start) / (end - start));
+}
+
+vec2
+vec2_norm_right(vec2 v)
+{
+	return (vec2(v.y, -v.x));
 }
 
 #endif	/* _UTIL_GLSL_ */

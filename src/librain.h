@@ -452,6 +452,7 @@ LIBRAIN_EXPORT void librain_get_pvm(mat4 pvm);
 LIBRAIN_EXPORT GLuint librain_get_screenshot_tex(void);
 LIBRAIN_EXPORT void librain_refresh_screenshot(void);
 LIBRAIN_EXPORT bool_t librain_reload_gl_progs(void);
+LIBRAIN_EXPORT void librain_set_low_res(bool_t flag);
 
 /*
  * Debugging support.

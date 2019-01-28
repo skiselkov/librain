@@ -37,10 +37,12 @@ layout(location = 21) uniform float	wiper_pos[MAX_WIPERS];
 layout(location = 0) in vec3		tex_norm;
 layout(location = 1) in vec2		tex_coord;
 
-layout(location = 0) out vec4	color_out;
+layout(location = 0) out vec4		color_out;
 
-const float	displace_lim = 200.0;
-const float	darkening_fact = 800.0;
+const float	displace_lim = 50.0;
+//const float	displace_lim = 200.0;
+const float	darkening_fact = 500.0;
+//const float	darkening_fact = 800.0;
 const float	max_depth = 3.0;
 
 vec4
@@ -92,4 +94,8 @@ main()
 			}
 		}
 	}
+
+#if 0
+	color_out = vec4(depth, 0.0, 0.0, 1.0);
+#endif
 }
