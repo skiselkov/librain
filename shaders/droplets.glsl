@@ -20,6 +20,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "affine.glsl"
+#include "droplet_designs.glsl"
 #include "noise.glsl"
 #include "util.glsl"
 
@@ -28,11 +29,12 @@
  */
 #define	DROPLET_WG_SIZE		1024
 #define	IMG_SZ			2048.0
+#define	IMG_SZ_i		2048
 
 #define	MAX_DROPLET_SZ		120.0
 #define	NUM_DROPLET_HISTORY	8
 
-#define	MAX_DRAG_STATIC		4.0
+#define	MAX_DRAG_STATIC		7.5
 #define	MIN_DRAG_STATIC		0.0
 #define	COEFF_DRAG_DYN		1.0
 
@@ -54,7 +56,7 @@
 
 layout(local_size_x = DROPLET_WG_SIZE) in;
 
-layout(location = 0, r16f) uniform restrict image2D depth_tex;
+layout(location = 0, r8) uniform restrict image2D depth_tex;
 layout(location = 1) uniform float cur_t;
 layout(location = 2) uniform float d_t;
 layout(location = 3) uniform float rand_seed;
@@ -83,76 +85,15 @@ layout(binding = 0) buffer droplet_data {
 	droplet_data_t	d[];
 } droplets;
 
-#define	PX(_x, _y, _d)	ivec3(_x, _y, _d)
-#define	ROW_OF_1(y)	PX(0, y, 1)
-#define	ROW_OF_3(y)	PX(-1, y, 1), PX(0, y, 2), PX(1, y, 1)
-#define	ROW_OF_5(y)	PX(-2, y, 1), PX(-1, y, 2), PX(0, y, 3), \
-	PX(1, y, 2), PX(2, y, 1)
-#define	ROW_OF_7(y)	PX(-3, y, 1), PX(-2, y, 1), PX(-1, y, 2), \
-    PX(0, y, 3), PX(1, y, 2), PX(2, y, 1), PX(3, y, 1)
-
-#define	ROW_OF_9(y)	PX(-4, y, 1), PX(-3, y, 2), PX(-2, y, 3), \
-    PX(-1, y, 3), PX(0, y, 3), PX(1, y, 3), \
-    PX(2, y, 3), PX(3, y, 2), PX(4, y, 1)
-
-const ivec3 droplet_style1[] = ivec3[](
-    ROW_OF_1(1),
-    ROW_OF_3(0),
-    ROW_OF_1(-1)
-);
-
-const ivec3 droplet_style2[] = ivec3[](
-    ROW_OF_3(2),
-    ROW_OF_5(1),
-    ROW_OF_5(0),
-    ROW_OF_5(-1),
-    ROW_OF_3(-2)
-);
-
-const ivec3 droplet_style3[] = ivec3[](
-    ROW_OF_1(5),
-    ROW_OF_1(4),
-    ROW_OF_3(3),
-    ROW_OF_5(2),
-    ROW_OF_7(1),
-    ROW_OF_7(0),
-    ROW_OF_7(-1),
-    ROW_OF_5(-2),
-    ROW_OF_3(-3)
-);
-
-const ivec3 droplet_style3_tail[] = ivec3[](
-    ROW_OF_1(-7),
-    ROW_OF_1(-6),
-    ROW_OF_3(-5),
-    ROW_OF_3(-4)
-);
-
-const ivec3 droplet_style4[] = ivec3[](
-    ROW_OF_5(4),
-    ROW_OF_7(3),
-    ROW_OF_9(2),
-    ROW_OF_9(1),
-    ROW_OF_9(0),
-    ROW_OF_9(-1),
-    ROW_OF_9(-2),
-    ROW_OF_7(-3),
-    ROW_OF_5(-4)
-);
-
-const ivec3 droplet_style4_tail[] = ivec3[](
-    ROW_OF_1(-9),
-    ROW_OF_1(-8),
-    ROW_OF_3(-7),
-    ROW_OF_3(-6),
-    ROW_OF_5(-5)
-);
-
 void
 depth_store(ivec2 pos, float depth)
 {
-	vec4 pixel = imageLoad(depth_tex, pos);
-	imageStore(depth_tex, pos, pixel + vec4(depth, 0.0, 0.0, 0.0));
+	vec4 pixel;
+
+	pos = clamp(pos, 0, IMG_SZ_i - 1);
+	pixel = imageLoad(depth_tex, pos);
+	imageStore(depth_tex, pos,
+	    vec4(min(depth + pixel.x, 1.0), 0.0, 0.0, 0.0));
 }
 
 vec2
@@ -215,7 +156,7 @@ droplet_move()
 	F = F_a + F_d_d + F_d_s;
 	DROPLET.velocity += F * d_t;
 
-	if (gold_noise(DROPLET.pos[0], rand_seed) > 0.98)
+	if (rand_val > 0.98)
 		bump_droplet(velocity);
 
 	new_pos = DROPLET.pos[0] + DROPLET.velocity * d_t;
@@ -237,6 +178,8 @@ droplet_move()
 	if (DROPLET.streamer) {
 		float lag = 0.1 +
 		    (gl_LocalInvocationIndex / (15.0 * DROPLET_WG_SIZE));
+		FILTER_IN(DROPLET.pos[7], DROPLET.pos[6], d_t, lag);
+		FILTER_IN(DROPLET.pos[6], DROPLET.pos[5], d_t, lag);
 		FILTER_IN(DROPLET.pos[5], DROPLET.pos[4], d_t, lag);
 		FILTER_IN(DROPLET.pos[4], DROPLET.pos[3], d_t, lag);
 		FILTER_IN(DROPLET.pos[3], DROPLET.pos[2], d_t, lag);
@@ -258,13 +201,13 @@ droplet_init_velocity()
 	 * Pre-initialize the velocity as if the droplet had been accelerating
 	 * for 1 second in the direction of the relative wind & thrust.
 	 */
-	F_g = normalize(DROPLET.pos[0] - gravity_point) * gravity_force;
+/*	F_g = normalize(DROPLET.pos[0] - gravity_point) * gravity_force;
 	F_t = normalize(DROPLET.pos[0] - thrust_point) * thrust_force;
 	F_w = normalize(DROPLET.pos[0] - wind_point) * wind_force;
 	F_a = F_g + F_t + F_w;
 	if (length(F_a) > MIN_SPD_PREINIT_FORCE)
 		DROPLET.velocity = F_a * 0.5;
-	else
+	else*/
 		DROPLET.velocity = vec2(0.0);
 }
 
@@ -300,16 +243,16 @@ droplet_paint()
 {
 #define DROPLET_PAINT_I(_pixels) \
 	for (int i = 0, n = _pixels.length(); i < n; i++) { \
-		depth_store(img_pos + ivec2(_pixels[i]), _pixels[i].z); \
+		depth_store(img_pos + ivec2(_pixels[i].pos), \
+		    _pixels[i].depth); \
 	}
 #define DROPLET_PAINT_TAIL(_pixels) \
 	if (velocity > 0.005) { \
 		float angle = dir2hdg(DROPLET.pos[0] - DROPLET.pos[1]); \
 		mat3 m = mat3_rotate(mat3(1.0), -angle); \
 		for (int i = 0, n = _pixels.length(); i < n; i++) { \
-			vec2 p = vec2(m * vec3(_pixels[i].x, _pixels[i].y, \
-			    1.0)); \
-			depth_store(ivec2(img_pos + p), _pixels[i].z); \
+			vec2 p = vec2(m * vec3(_pixels[i].pos, 1.0)); \
+			depth_store(ivec2(img_pos + p), _pixels[i].depth); \
 		} \
 	}
 
@@ -322,16 +265,23 @@ droplet_paint()
 	bool fast_droplet = (velocity > FAST_SPD_LIM);
 
 	img_pos = ivec2(DROPLET.pos[0] * IMG_SZ);
-	if (DROPLET.quant < 0.05 * MAX_DROPLET_SZ || DROPLET.streamer) {
+	if (DROPLET.quant < 0.05 * MAX_DROPLET_SZ) {
 		DROPLET_PAINT_I(droplet_style1);
-	} else if (DROPLET.quant < 0.25 * MAX_DROPLET_SZ || very_fast_droplet) {
+	} else if (DROPLET.quant < 0.1 * MAX_DROPLET_SZ || very_fast_droplet ||
+	    DROPLET.streamer) {
 		DROPLET_PAINT_I(droplet_style2);
-	} else if (DROPLET.quant < 0.5 * MAX_DROPLET_SZ || fast_droplet) {
+	} else if (DROPLET.quant < 0.2 * MAX_DROPLET_SZ) {
 		DROPLET_PAINT_I(droplet_style3);
 		DROPLET_PAINT_TAIL(droplet_style3_tail);
-	} else {
+	} else if (DROPLET.quant < 0.3 * MAX_DROPLET_SZ || fast_droplet) {
 		DROPLET_PAINT_I(droplet_style4);
 		DROPLET_PAINT_TAIL(droplet_style4_tail);
+	} else if (DROPLET.quant < 0.4 * MAX_DROPLET_SZ) {
+		DROPLET_PAINT_I(droplet_style5);
+		DROPLET_PAINT_TAIL(droplet_style5_tail);
+	} else {
+		DROPLET_PAINT_I(droplet_style6);
+		DROPLET_PAINT_TAIL(droplet_style6_tail);
 	}
 
 	if (!DROPLET.streamer)
@@ -366,29 +316,37 @@ droplet_paint()
 	back_v_norm = normalize(back_v) * 0.5;
 	right = vec2_norm_right(back_v_norm);
 	left = -right;
-	if (very_fast_droplet) {
+/*	if (very_fast_droplet) {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
 			depth_store(img_pos + ivec2(v), 1.0);
 		}
-	} else {
+	} else {*/
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
 			depth_store(img_pos + ivec2(v), 2.0);
 			depth_store(img_pos + ivec2(v + left), 1.0);
+			depth_store(img_pos + ivec2(v + 2.0 * left), 0.5);
+			depth_store(img_pos + ivec2(v + right), 1.0);
+			depth_store(img_pos + ivec2(v + 2.0 * right), 0.5);
 		}
-	}
+//	}
 
 #define	PAINT_TRAIL_1(i1, i2, depth) \
 	img_pos = ivec2(DROPLET.pos[i1] * IMG_SZ); \
 	back_v = (DROPLET.pos[i2] - DROPLET.pos[i1]) * IMG_SZ; \
 	back_v_len = length(back_v); \
 	back_v_norm = normalize(back_v) * 0.5; \
-	for (vec2 v = back_v_norm; length(v) < back_v_len; v += back_v_norm) \
-		depth_store(img_pos + ivec2(v), depth);
+	for (vec2 v = back_v_norm; length(v) < back_v_len; v += back_v_norm) { \
+		depth_store(img_pos + ivec2(v), depth); \
+		depth_store(img_pos + ivec2(v + left), depth / 2.0); \
+		depth_store(img_pos + ivec2(v + right), depth / 2.0); \
+	}
 	PAINT_TRAIL_1(2, 3, 1.0);
 	PAINT_TRAIL_1(3, 4, 0.5);
-	PAINT_TRAIL_1(4, 5, 0.25);
+	PAINT_TRAIL_1(4, 5, 0.3);
+	PAINT_TRAIL_1(5, 6, 0.2);
+	PAINT_TRAIL_1(6, 7, 0.1);
 }
 
 void

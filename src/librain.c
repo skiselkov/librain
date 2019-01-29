@@ -50,8 +50,9 @@
 #define	NUM_DROPLETS		16384
 #define	DROPLET_WG_SIZE		1024
 CTASSERT(NUM_DROPLETS % DROPLET_WG_SIZE == 0);
-#define	MIN_DROPLET_SZ_MIN	5.0
-#define	MIN_DROPLET_SZ_MAX	40.0
+#define	MAX_DROPLET_SZ		120
+#define	MIN_DROPLET_SZ_MIN	20.0
+#define	MIN_DROPLET_SZ_MAX	80.0
 
 #define	NUM_DROPLET_HISTORY	8
 
@@ -116,6 +117,8 @@ static shader_info_t rain_stage2_frag_info =
 static shader_info_t rain_stage2_comp_frag_info =
     { .filename = "rain_stage2_comp.frag.spv" };
 static shader_info_t ws_rain_frag_info = { .filename = "ws_rain.frag.spv" };
+static shader_info_t ws_rain_comp_frag_info =
+    { .filename = "ws_rain_comp.frag.spv" };
 static shader_info_t ws_smudge_frag_info = { .filename = "ws_smudge.frag.spv" };
 static shader_info_t nil_frag_info = { .filename = "nil.frag.spv" };
 static shader_info_t droplets_comp_info = { .filename = "droplets.comp.spv" };
@@ -148,6 +151,12 @@ static shader_prog_info_t ws_rain_prog_info = {
     .progname = "ws_rain",
     .vert = &generic_vert_info,
     .frag = &ws_rain_frag_info
+};
+
+static shader_prog_info_t ws_rain_comp_prog_info = {
+    .progname = "ws_rain_comp",
+    .vert = &generic_vert_info,
+    .frag = &ws_rain_comp_frag_info
 };
 
 static shader_prog_info_t ws_smudge_prog_info = {
@@ -608,8 +617,7 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
 
 	glActiveTexture(GL_TEXTURE0);
 	XPLMBindTexture2d(depth_tex, GL_TEXTURE_2D);
-	glBindImageTexture(0, depth_tex, 0, GL_FALSE, 0, GL_WRITE_ONLY,
-	    GL_R16F);
+	glBindImageTexture(0, depth_tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 	glUniform1i(glGetUniformLocation(prog, "depth_tex"), 0);
 
 	glUniform1f(glGetUniformLocation(prog, "cur_t"), cur_t);
@@ -624,7 +632,8 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
 	glUniform2f(glGetUniformLocation(prog, "thrust_point"),
 	    gi->glass->thrust_point.x, gi->glass->thrust_point.y);
 	glUniform1f(glGetUniformLocation(prog, "thrust_force"), thrust_force);
-	glUniform1f(glGetUniformLocation(prog, "precip_intens"), precip_intens);
+	glUniform1f(glGetUniformLocation(prog, "precip_intens"),
+	    sqrt(precip_intens));
 	glUniform1f(glGetUniformLocation(prog, "min_droplet_sz"),
 	    min_droplet_sz);
 
@@ -1146,14 +1155,23 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	glGenTextures(2, gi->water_depth_tex);
 	glGenFramebuffers(2, gi->water_depth_fbo);
 	for (int i = 0; i < 2; i++) {
-		setup_texture(gi->water_depth_tex[i], GL_R16F,
-		    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H, GL_RED,
-		    GL_FLOAT, NULL);
+		if (use_compute) {
+			setup_texture(gi->water_depth_tex[i], GL_R8,
+			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H, GL_RED,
+			    GL_UNSIGNED_BYTE, NULL);
+			IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
+			    glass, NULL, 0, GL_R8, GL_UNSIGNED_BYTE,
+			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H));
+		} else {
+			setup_texture(gi->water_depth_tex[i], GL_R16F,
+			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H, GL_RED,
+			    GL_FLOAT, NULL);
+			IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
+			    glass, NULL, 0, GL_R16F, GL_FLOAT,
+			    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H));
+		}
 		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
 		    gi->water_depth_tex[i]);
-		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
-		    glass, NULL, 0, GL_RED, GL_FLOAT,
-		    WATER_DEPTH_TEX_W, WATER_DEPTH_TEX_H));
 	}
 	glutils_init_2D_quads(&gi->water_depth_quads, water_depth_pos, NULL, 4);
 
@@ -1216,9 +1234,17 @@ glass_info_fini(glass_info_t *gi)
 			    WS_TEMP_TEX_H));
 		}
 		if (gi->water_depth_tex[0] != 0) {
-			IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_water_depth_tex,
-			    gi->glass, GL_RED, GL_FLOAT, WATER_DEPTH_TEX_W,
-			    WATER_DEPTH_TEX_H));
+			if (use_compute) {
+				IF_TEXSZ(TEXSZ_FREE_INSTANCE(
+				    librain_water_depth_tex, gi->glass, GL_R8,
+				    GL_UNSIGNED_BYTE, WATER_DEPTH_TEX_W,
+				    WATER_DEPTH_TEX_H));
+			} else {
+				IF_TEXSZ(TEXSZ_FREE_INSTANCE(
+				    librain_water_depth_tex, gi->glass, GL_R16F,
+				    GL_FLOAT, WATER_DEPTH_TEX_W,
+				    WATER_DEPTH_TEX_H));
+			}
 		}
 	}
 	if (gi->water_norm_tex != 0) {
@@ -1295,12 +1321,15 @@ water_effects_fini(void)
 bool_t
 librain_reload_gl_progs(void)
 {
+	const shader_prog_info_t *the_ws_rain_prog_info =
+	    (use_compute ? &ws_rain_comp_prog_info : &ws_rain_prog_info);
+
 	return (reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info) &&
 	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) &&
 	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) &&
 	    reload_gl_prog(&rain_stage2_comp_prog,
 	    &rain_stage2_comp_prog_info) &&
-	    reload_gl_prog(&ws_rain_prog, &ws_rain_prog_info) &&
+	    reload_gl_prog(&ws_rain_prog, the_ws_rain_prog_info) &&
 	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) &&
 	    reload_gl_prog(&z_depth_prog, &z_depth_prog_info) &&
 	    (!use_compute ||

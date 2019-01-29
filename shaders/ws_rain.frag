@@ -22,6 +22,7 @@
 #include "util.glsl"
 
 #define	MAX_WIPERS	2
+#define	RAIN_DEBUG	0
 
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	norm_tex;
@@ -39,11 +40,15 @@ layout(location = 1) in vec2		tex_coord;
 
 layout(location = 0) out vec4		color_out;
 
-const float	displace_lim = 50.0;
-//const float	displace_lim = 200.0;
-const float	darkening_fact = 500.0;
-//const float	darkening_fact = 800.0;
+#if	COMPUTE_VARIANT
+const vec2	displace_lim = vec2(50.0, 75.0);
+const float	darkening_fact = 200.0;
+const float	max_depth = 1.5;
+#else	/* !COMPUTE_VARIANT */
+const vec2	displace_lim = vec2(200.0);
+const float	darkening_fact = 800.0;
 const float	max_depth = 3.0;
+#endif	/* !COMPUTE_VARIANT */
 
 vec4
 get_pixel(vec2 pos)
@@ -81,8 +86,9 @@ main()
 	vec2 displace = (texture(norm_tex, tex_coord).xy - 0.5) *
 	    displace_lim * (max_depth - depth);
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
+	float darkening_fract = length(displace) / darkening_fact;
 
-	bg_pixel *= (1 - pow(length(displace) / darkening_fact, 1.8));
+	bg_pixel *= (1.0 - POW2(darkening_fract));
 
 	color_out = vec4(bg_pixel.rgb, 1.0);
 
@@ -95,7 +101,7 @@ main()
 		}
 	}
 
-#if 0
+#if	RAIN_DEBUG
 	color_out = vec4(depth, 0.0, 0.0, 1.0);
 #endif
 }

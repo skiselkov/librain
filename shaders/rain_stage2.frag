@@ -40,7 +40,11 @@ layout(location = 15) uniform float	window_ice;
 
 layout(location = 0) out vec4	color_out;
 
+#if	COMPUTE_VARIANT
+const float max_depth = 1.0;
+#else
 const float max_depth = 3.0;
+#endif
 const float temp_scale_fact = 400.0;
 const float water_liquid_temp = C2KELVIN(2);
 const float water_frozen_temp = C2KELVIN(-2);
@@ -75,16 +79,16 @@ main()
 	depth_here = read_depth(gl_FragCoord.xy);
 	depth_left = (read_depth(gl_FragCoord.xy + vec2(-1.0, 0.0)) * 0.5) +
 	    (read_depth(gl_FragCoord.xy + vec2(-2.0, 0.0)) * 0.25) +
-	    depth_here * 0.25;
+	    (read_depth(gl_FragCoord.xy + vec2(-3.0, 0.0)) * 0.25);
 	depth_right = (read_depth(gl_FragCoord.xy + vec2(1.0, 0.0)) * 0.5) +
 	    (read_depth(gl_FragCoord.xy + vec2(2.0, 0.0)) * 0.25) +
-	    depth_here * 0.25;
+	    (read_depth(gl_FragCoord.xy + vec2(3.0, 0.0)) * 0.25);
 	depth_up = (read_depth(gl_FragCoord.xy + vec2(0.0, 1.0)) * 0.5) +
 	    (read_depth(gl_FragCoord.xy + vec2(0.0, 2.0)) * 0.25) +
-	    depth_here * 0.25;
+	    (read_depth(gl_FragCoord.xy + vec2(0.0, 3.0)) * 0.25);
 	depth_down = (read_depth(gl_FragCoord.xy + vec2(0.0, -1.0)) * 0.5) +
 	    (read_depth(gl_FragCoord.xy + vec2(0.0, -2.0)) * 0.25) +
-	    depth_here * 0.25;
+	    (read_depth(gl_FragCoord.xy + vec2(0.0, -3.0)) * 0.25);
 #else	/* !COMPUTE_VARIANT */
 	vec2 thrust_v = (gl_FragCoord.xy - tp);
 	thrust_v /= length(thrust_v);

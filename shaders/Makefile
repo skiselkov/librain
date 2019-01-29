@@ -31,6 +31,7 @@ SPVS = \
     rain_stage2.frag.spv \
     rain_stage2_comp.frag.spv \
     ws_rain.frag.spv \
+    ws_rain_comp.frag.spv \
     ws_smudge.frag.spv \
     droplets.comp.spv
 
@@ -106,7 +107,7 @@ $(OUTDIR)/%.frag.spv : %.frag
 $(OUTDIR)/%.comp.spv : %.glsl
 	$(call BUILD_COMP_SHADER,comp)
 
-$(OUTDIR)/rain_stage2_comp.frag.spv : rain_stage2.frag
+$(OUTDIR)/%_comp.frag.spv : %.frag
 	$(call BUILD_SHADER,frag,-DCOMPUTE_VARIANT=1)
 
 $(addprefix $(OUTDIR)/,$(SPVS)) : | $(OUTDIR)
