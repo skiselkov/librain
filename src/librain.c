@@ -39,6 +39,7 @@
 
 #include "glpriv.h"
 #include "librain.h"
+#include "../shaders/droplets_data.h"
 
 #define	RAIN_DRAW_TIMEOUT	15	/* seconds */
 #define	DFL_VP_SIZE		16	/* pixels */
@@ -48,25 +49,10 @@
 #define	WIPER_SMEAR_DELAY	0.5	/* secs */
 
 #define	NUM_DROPLETS		16384
-#define	DROPLET_WG_SIZE		1024
 CTASSERT(NUM_DROPLETS % DROPLET_WG_SIZE == 0);
 #define	MAX_DROPLET_SZ		120
 #define	MIN_DROPLET_SZ_MIN	20.0
 #define	MIN_DROPLET_SZ_MAX	80.0
-
-#define	NUM_DROPLET_HISTORY	8
-
-typedef struct {
-	/* 0-bit boundary */
-	vec2	pos[NUM_DROPLET_HISTORY];
-	/* 512-bit boundary */
-	vec2	velocity;
-	float	quant;
-	float	regen_t;
-	float	F_d_s_len;
-	float	bump_sz;
-	bool_t	streamer;
-} droplet_data_t;
 
 TEXSZ_MK_TOKEN(librain_water_depth_tex);
 TEXSZ_MK_TOKEN(librain_water_norm_tex);
@@ -225,7 +211,7 @@ typedef struct {
 
 #define	WS_TEMP_TEX_W		256
 #define	WS_TEMP_TEX_H		256
-#define	WS_TEMP_COMP_INTVAL	(1.0 / 15.0)	/* 20 fps */
+#define	WS_TEMP_COMP_INTVAL	(1.0 / 15.0)	/* 15 fps */
 	float			last_ws_temp_t;
 	GLuint			ws_temp_tex[2];
 	GLuint			ws_temp_fbo[2];
@@ -591,17 +577,21 @@ rain_stage1_comp_legacy(const glass_info_t *gi, double d_t, float rand_seed)
 }
 
 static void
-rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
-    float rand_seed)
+rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t)
 {
 #define	GRAVITY_SCALE_FACTOR	0.2
 	GLuint prog = droplets_prog;
 	GLuint depth_tex = gi->water_depth_tex[!gi->water_depth_cur];
+	GLuint ws_temp_tex = gi->ws_temp_tex[gi->ws_temp_cur];
 	double gravity_force, wind_force, thrust_force;
 	float min_droplet_sz;
+	float rand_seed[NUM_RANDOM_SEEDS];
 
 	if (precip_intens == 0.0)
 		return;
+
+	for (int i = 0; i < NUM_RANDOM_SEEDS; i++)
+		rand_seed[i] = (crc64_rand() % 1000000) / 1000000.0;
 
 	gravity_force = GRAVITY_SCALE_FACTOR * (1.5 - gi->glass->slant_factor);
 
@@ -620,9 +610,14 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
 	glBindImageTexture(0, depth_tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 	glUniform1i(glGetUniformLocation(prog, "depth_tex"), 0);
 
+	glActiveTexture(GL_TEXTURE1);
+	XPLMBindTexture2d(ws_temp_tex, GL_TEXTURE_2D);
+	glUniform1i(glGetUniformLocation(prog, "ws_temp_tex"), 0);
+
 	glUniform1f(glGetUniformLocation(prog, "cur_t"), cur_t);
 	glUniform1f(glGetUniformLocation(prog, "d_t"), d_t);
-	glUniform1f(glGetUniformLocation(prog, "rand_seed"), rand_seed);
+	glUniform1fv(glGetUniformLocation(prog, "rand_seed"), NUM_RANDOM_SEEDS,
+	    rand_seed);
 	glUniform2f(glGetUniformLocation(prog, "gravity_point"),
 	    gi->glass->gravity_point.x, gi->glass->gravity_point.y);
 	glUniform1f(glGetUniformLocation(prog, "gravity_force"), gravity_force);
@@ -633,9 +628,11 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
 	    gi->glass->thrust_point.x, gi->glass->thrust_point.y);
 	glUniform1f(glGetUniformLocation(prog, "thrust_force"), thrust_force);
 	glUniform1f(glGetUniformLocation(prog, "precip_intens"),
-	    sqrt(precip_intens));
+	    pow(precip_intens, 0.7));
 	glUniform1f(glGetUniformLocation(prog, "min_droplet_sz"),
 	    min_droplet_sz);
+	glUniform1f(glGetUniformLocation(prog, "le_temp"),
+	    C2KELVIN(dr_getf(&drs.le_temp)));
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, gi->droplets_ssbo);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, gi->droplets_ssbo);
@@ -647,6 +644,7 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t,
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	glUseProgram(0);
+	glActiveTexture(GL_TEXTURE0);
 }
 
 static void
@@ -672,7 +670,7 @@ rain_stage1_comp(glass_info_t *gi)
 	if (!use_compute)
 		rain_stage1_comp_legacy(gi, d_t, rand_seed);
 	else
-		rain_stage1_comp_compute(gi, cur_t, d_t, rand_seed);
+		rain_stage1_comp_compute(gi, cur_t, d_t);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);

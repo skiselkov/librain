@@ -20,6 +20,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "affine.glsl"
+#include "droplets_data.h"
 #include "droplet_designs.glsl"
 #include "noise.glsl"
 #include "util.glsl"
@@ -27,12 +28,10 @@
 /*
  * This must match what's in librain.c!
  */
-#define	DROPLET_WG_SIZE		1024
 #define	IMG_SZ			2048.0
 #define	IMG_SZ_i		2048
 
 #define	MAX_DROPLET_SZ		120.0
-#define	NUM_DROPLET_HISTORY	8
 
 #define	MAX_DRAG_STATIC		7.5
 #define	MIN_DRAG_STATIC		0.0
@@ -59,27 +58,17 @@ layout(local_size_x = DROPLET_WG_SIZE) in;
 layout(location = 0, r8) uniform restrict image2D depth_tex;
 layout(location = 1) uniform float cur_t;
 layout(location = 2) uniform float d_t;
-layout(location = 3) uniform float rand_seed;
-layout(location = 4) uniform vec2 gravity_point;
-layout(location = 5) uniform float gravity_force;
-layout(location = 6) uniform vec2 wind_point;
-layout(location = 7) uniform float wind_force;
-layout(location = 8) uniform vec2 thrust_point;
-layout(location = 9) uniform float thrust_force;
-layout(location = 10) uniform float precip_intens;
-layout(location = 11) uniform float min_droplet_sz;
-
-struct droplet_data_t {
-	/* 0-bit boundary */
-	vec2	pos[NUM_DROPLET_HISTORY];
-	/* 512-bit boundary */
-	vec2	velocity;
-	float	quant;
-	float	regen_t;
-	float	F_d_s_len;
-	float	bump_sz;
-	bool	streamer;
-};
+layout(location = 3) uniform vec2 gravity_point;
+layout(location = 4) uniform float gravity_force;
+layout(location = 5) uniform vec2 wind_point;
+layout(location = 6) uniform float wind_force;
+layout(location = 7) uniform vec2 thrust_point;
+layout(location = 8) uniform float thrust_force;
+layout(location = 9) uniform float precip_intens;
+layout(location = 10) uniform float min_droplet_sz;
+layout(location = 11) uniform sampler2D ws_temp_tex;
+layout(location = 12) uniform float le_temp;	/* Kelvin */
+layout(location = 30) uniform float rand_seed[NUM_RANDOM_SEEDS];
 
 layout(binding = 0) buffer droplet_data {
 	droplet_data_t	d[];
@@ -115,9 +104,26 @@ droplet_forces_integrate()
 void
 bump_droplet(float velocity)
 {
-	float rand_val = gold_noise(DROPLET.pos[0], rand_seed + 1.0);
-	float scale = 22.0 / IMG_SZ;
+	const float bump_sz_slow = 22.0;
+	const float bump_sz_fast = 140.0;
+	const float velocity_mul = 0.3;
+	const float bump_check_rate = 1.0;
+	const float bump_prob_min = 0.25;
+	const float bump_prob_max = 0.75;
+	float rand_val, scale, bump_prob, velocity_clamped;
+
+	if (cur_t - DROPLET.bump_t < bump_check_rate)
+		return;
+	DROPLET.bump_t = cur_t;
+	velocity_clamped = clamp(velocity, 0.0, 1.0);
+	bump_prob = mix(bump_prob_min, bump_prob_max, velocity_clamped);
+	if (gold_noise(DROPLET.pos[0], rand_seed[0]) < (1.0 - bump_prob))
+		return;
+	rand_val = gold_noise(DROPLET.pos[0], rand_seed[1]);
+	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) / IMG_SZ;
+
 	DROPLET.bump_sz = scale * (rand_val - 0.5);
+	DROPLET.velocity *= velocity_mul;
 }
 
 void
@@ -142,11 +148,10 @@ droplet_move()
 	F_d_s_len = mix(MAX_DRAG_STATIC, MIN_DRAG_STATIC, coeff_vel) /
 	    max(DROPLET.quant, 1.0);
 	FILTER_IN(DROPLET.F_d_s_len, F_d_s_len, d_t, 0.5);
-	rand_val = gold_noise(DROPLET.pos[0], rand_seed);
+	rand_val = gold_noise(DROPLET.pos[0], rand_seed[2]);
 	prob = mix(MIN_RANDOM_DROP_RATE, MAX_RANDOM_DROP_RATE, precip_intens);
-	if (rand_val > prob) {
+	if (rand_val > prob)
 		DROPLET.F_d_s_len = 0.0;
-	}
 
 	if (DROPLET.F_d_s_len < length(F_a))
 		F_d_s = normalize(F_a) * (-DROPLET.F_d_s_len);
@@ -155,9 +160,7 @@ droplet_move()
 
 	F = F_a + F_d_d + F_d_s;
 	DROPLET.velocity += F * d_t;
-
-	if (rand_val > 0.98)
-		bump_droplet(velocity);
+	bump_droplet(velocity);
 
 	new_pos = DROPLET.pos[0] + DROPLET.velocity * d_t;
 
@@ -195,27 +198,13 @@ droplet_move()
 void
 droplet_init_velocity()
 {
-	vec2 F_g, F_t, F_w, F_a;
-
-	/*
-	 * Pre-initialize the velocity as if the droplet had been accelerating
-	 * for 1 second in the direction of the relative wind & thrust.
-	 */
-/*	F_g = normalize(DROPLET.pos[0] - gravity_point) * gravity_force;
-	F_t = normalize(DROPLET.pos[0] - thrust_point) * thrust_force;
-	F_w = normalize(DROPLET.pos[0] - wind_point) * wind_force;
-	F_a = F_g + F_t + F_w;
-	if (length(F_a) > MIN_SPD_PREINIT_FORCE)
-		DROPLET.velocity = F_a * 0.5;
-	else*/
-		DROPLET.velocity = vec2(0.0);
+	DROPLET.velocity = vec2(0.0);
 }
 
 void
 droplet_regen()
 {
-	vec2 coord;
-	vec2 droplet_pos;
+	vec2 coord, droplet_pos;
 	float droplet_sz_ratio;
 
 	if (cur_t - DROPLET.regen_t < REGEN_DELAY)
@@ -223,15 +212,16 @@ droplet_regen()
 	DROPLET.regen_t = cur_t;
 
 	coord = vec2(gl_GlobalInvocationID);
-	if (gold_noise(coord, rand_seed + cur_t) > precip_intens)
+	if (gold_noise(coord, rand_seed[3]) > precip_intens)
 		return;
 
-	droplet_pos = vec2(gold_noise(coord, rand_seed),
-	    gold_noise(coord, rand_seed + 1.0));
+	droplet_pos = vec2(gold_noise(coord, rand_seed[4]),
+	    gold_noise(coord, rand_seed[5]));
 	for (int i = 0; i < NUM_DROPLET_HISTORY; i++)
 		DROPLET.pos[i] = droplet_pos;
-	droplet_sz_ratio = gold_noise(coord, rand_seed + 2.0);
+	droplet_sz_ratio = gold_noise(coord, rand_seed[6]);
 	DROPLET.quant = mix(min_droplet_sz, MAX_DROPLET_SZ, droplet_sz_ratio);
+	DROPLET.bump_sz = 0.0;
 
 	droplet_init_velocity();
 
@@ -316,12 +306,12 @@ droplet_paint()
 	back_v_norm = normalize(back_v) * 0.5;
 	right = vec2_norm_right(back_v_norm);
 	left = -right;
-/*	if (very_fast_droplet) {
+	if (very_fast_droplet) {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
 			depth_store(img_pos + ivec2(v), 1.0);
 		}
-	} else {*/
+	} else {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
 			depth_store(img_pos + ivec2(v), 2.0);
@@ -330,7 +320,7 @@ droplet_paint()
 			depth_store(img_pos + ivec2(v + right), 1.0);
 			depth_store(img_pos + ivec2(v + 2.0 * right), 0.5);
 		}
-//	}
+	}
 
 #define	PAINT_TRAIL_1(i1, i2, depth) \
 	img_pos = ivec2(DROPLET.pos[i1] * IMG_SZ); \
@@ -349,12 +339,26 @@ droplet_paint()
 	PAINT_TRAIL_1(6, 7, 0.1);
 }
 
+bool
+droplet_should_exist()
+{
+	if (DROPLET.quant <= 0.0)
+		return (false);
+	if (DROPLET.streamer) {
+		return (DROPLET.pos[NUM_DROPLET_HISTORY - 1].x > 0.0 &&
+		    DROPLET.pos[NUM_DROPLET_HISTORY - 1].x < 1.0 &&
+		    DROPLET.pos[NUM_DROPLET_HISTORY - 1].y > 0.0 &&
+		    DROPLET.pos[NUM_DROPLET_HISTORY - 1].y < 1.0);
+	} else {
+		return (DROPLET.pos[0].x > 0.0 && DROPLET.pos[0].x < 1.0 &&
+		    DROPLET.pos[0].y > 0.0 && DROPLET.pos[0].y < 1.0);
+	}
+}
+
 void
 main(void)
 {
-	if (DROPLET.quant > 0.0 &&
-	    DROPLET.pos[0].x > 0.0 && DROPLET.pos[0].x < 1.0 &&
-	    DROPLET.pos[0].y > 0.0 && DROPLET.pos[0].y < 1.0) {
+	if (droplet_should_exist()) {
 		droplets.d[gl_GlobalInvocationID.x].quant -= d_t;
 		droplet_move();
 		droplet_paint();
