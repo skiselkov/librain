@@ -423,11 +423,22 @@ typedef struct {
 	double		wiper_radius_inner[MAX_WIPERS];
 } librain_glass_t;
 
+typedef enum {
+	/* 1024x1024, OpenGL 2.1 shader */
+	LIBRAIN_QUAL_LOW,
+	/* 1024x1024, OpenGL 4.4 compute shader, 4096 droplets */
+	LIBRAIN_QUAL_MED,
+	/* 2048x2048, OpenGL 4.4 compute shader, 8192 droplets */
+	LIBRAIN_QUAL_HIGH,
+	/* 2048x2048, OpenGL 4.4 compute shader, 16384 droplets */
+	LIBRAIN_QUAL_ULTRA
+} librain_qual_t;
+
 /*
  * Initialization & teardown functions. See librain.c for more information.
  */
 LIBRAIN_EXPORT bool_t librain_init(const char *the_shaderpath,
-    const librain_glass_t *glass, size_t num);
+    const librain_glass_t *glass, size_t num, librain_qual_t qual);
 LIBRAIN_EXPORT void librain_fini(void);
 
 /*
