@@ -35,7 +35,7 @@ STRUCT(droplet_data_t, {
 	float	bump_t;
 	float	F_d_s_len;
 	float	bump_sz;
-	float	temp;		/* Kelvin */
+	float	tail_angle;	/* Kelvin */
 	bool	streamer;
 });
 

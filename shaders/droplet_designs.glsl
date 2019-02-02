@@ -120,7 +120,8 @@ const droplet_pixel_t droplet_style5_tail[] = droplet_pixel_t[](
     ROW_OF_3(-8),
     ROW_OF_5(-7),
     ROW_OF_5(-6),
-    ROW_OF_5(-5)
+    ROW_OF_5(-5),
+    ROW_OF_5(-4)
 );
 
 const droplet_pixel_t droplet_style6[] = droplet_pixel_t[](
@@ -148,7 +149,8 @@ const droplet_pixel_t droplet_style6_tail[] = droplet_pixel_t[](
     ROW_OF_5(-10),
     ROW_OF_7(-9),
     ROW_OF_9(-8),
-    ROW_OF_9(-7)
+    ROW_OF_9(-7),
+    ROW_OF_9(-6)
 );
 
 #endif	/* _DROPLET_DESIGNS_GLSL_ */

@@ -56,18 +56,19 @@
 layout(local_size_x = DROPLET_WG_SIZE) in;
 
 layout(location = 0, r8) uniform restrict image2D depth_tex;
-layout(location = 1) uniform float cur_t;
-layout(location = 2) uniform float d_t;
-layout(location = 3) uniform vec2 gravity_point;
-layout(location = 4) uniform float gravity_force;
-layout(location = 5) uniform vec2 wind_point;
-layout(location = 6) uniform float wind_force;
-layout(location = 7) uniform vec2 thrust_point;
-layout(location = 8) uniform float thrust_force;
-layout(location = 9) uniform float precip_intens;
-layout(location = 10) uniform float min_droplet_sz;
-layout(location = 11) uniform sampler2D ws_temp_tex;
+layout(location = 1) uniform sampler2D ws_temp_tex;
+layout(location = 2) uniform float cur_t;
+layout(location = 3) uniform float d_t;
+layout(location = 4) uniform vec2 gravity_point;
+layout(location = 5) uniform float gravity_force;
+layout(location = 6) uniform vec2 wind_point;
+layout(location = 7) uniform float wind_force;
+layout(location = 8) uniform vec2 thrust_point;
+layout(location = 9) uniform float thrust_force;
+layout(location = 10) uniform float precip_intens;
+layout(location = 11) uniform float min_droplet_sz;
 layout(location = 12) uniform float le_temp;	/* Kelvin */
+
 layout(location = 30) uniform float rand_seed[NUM_RANDOM_SEEDS];
 
 layout(binding = 0) buffer droplet_data {
@@ -104,8 +105,8 @@ droplet_forces_integrate()
 void
 bump_droplet(float velocity)
 {
-	const float bump_sz_slow = 22.0;
-	const float bump_sz_fast = 140.0;
+	const float bump_sz_slow = 40.0;
+	const float bump_sz_fast = 160.0;
 	const float velocity_mul = 0.3;
 	const float bump_check_rate = 1.0;
 	const float bump_prob_min = 0.25;
@@ -196,9 +197,19 @@ droplet_move()
 }
 
 void
-droplet_init_velocity()
+droplet_init_velocity(vec2 droplet_pos)
 {
 	DROPLET.velocity = vec2(0.0);
+
+	/* gravity, thrust and wind */
+	vec2 F_a, F_g, F_t, F_w;
+
+	F_g = normalize(droplet_pos - gravity_point) * gravity_force;
+	F_t = normalize(droplet_pos - thrust_point) * thrust_force;
+	F_w = normalize(droplet_pos - wind_point) * wind_force;
+	F_a = (F_g + F_t + F_w);
+	if (length(F_a) > 0.0)
+		DROPLET.tail_angle = dir2hdg(F_a);
 }
 
 void
@@ -223,7 +234,7 @@ droplet_regen()
 	DROPLET.quant = mix(min_droplet_sz, MAX_DROPLET_SZ, droplet_sz_ratio);
 	DROPLET.bump_sz = 0.0;
 
-	droplet_init_velocity();
+	droplet_init_velocity(droplet_pos);
 
 	DROPLET.streamer = ((gl_GlobalInvocationID.x & 3) == 0);
 }
@@ -237,12 +248,16 @@ droplet_paint()
 		    _pixels[i].depth); \
 	}
 #define DROPLET_PAINT_TAIL(_pixels) \
-	if (velocity > 0.005) { \
+	if (velocity > 0.0) { \
+		float velocity_fract = clamp(velocity * 100.0, 0.0, 1.0); \
+		float alpha = mix(0.0, 1.0, velocity_fract); \
 		float angle = dir2hdg(DROPLET.pos[0] - DROPLET.pos[1]); \
-		mat3 m = mat3_rotate(mat3(1.0), -angle); \
+		FILTER_IN(DROPLET.tail_angle, angle, d_t, 0.2); \
+		mat3 m = mat3_rotate(mat3(1.0), -DROPLET.tail_angle); \
 		for (int i = 0, n = _pixels.length(); i < n; i++) { \
 			vec2 p = vec2(m * vec3(_pixels[i].pos, 1.0)); \
-			depth_store(ivec2(img_pos + p), _pixels[i].depth); \
+			depth_store(ivec2(img_pos + p), \
+			    _pixels[i].depth * alpha); \
 		} \
 	}
 
@@ -287,6 +302,7 @@ droplet_paint()
 		    v += back_v_norm) {
 			depth_store(img_pos + ivec2(v), 2.0);
 			depth_store(img_pos + ivec2(v + left), 1.0);
+			depth_store(img_pos + ivec2(v + right), 2.0);
 		}
 	} else {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
@@ -294,8 +310,10 @@ droplet_paint()
 			depth_store(img_pos + ivec2(v), 3.0);
 			depth_store(img_pos + ivec2(v + left), 2.0);
 			depth_store(img_pos + ivec2(v + 2.0 * left), 1.0);
+			depth_store(img_pos + ivec2(v + 3.0 * left), 0.5);
 			depth_store(img_pos + ivec2(v + right), 2.0);
 			depth_store(img_pos + ivec2(v + 2.0 * right), 1.0);
+			depth_store(img_pos + ivec2(v + 3.0 * right), 0.5);
 		}
 	}
 

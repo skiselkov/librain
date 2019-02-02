@@ -77,6 +77,7 @@ static GLuint	screenshot_fbo = 0;
 static GLint	old_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static GLint	new_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static float	last_rain_t = 0;
+static bool_t	rain_enabled = B_TRUE;
 
 static GLint	z_depth_prog = 0;
 static GLint	ws_temp_prog = 0;
@@ -534,7 +535,7 @@ wiper_setup_prog(const glass_info_t *gi, GLuint prog)
 }
 
 static void
-rain_stage1_comp_legacy(const glass_info_t *gi, double d_t, float rand_seed)
+rain_stage1_comp_legacy(glass_info_t *gi, double d_t, float rand_seed)
 {
 	glUseProgram(rain_stage1_prog);
 
@@ -659,7 +660,6 @@ rain_stage1_comp(glass_info_t *gi)
 		gi->last_stage1_t = cur_t;
 	d_t = cur_t - gi->last_stage1_t;
 
-
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER,
@@ -735,6 +735,13 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	/* Make sure we only run the computations once per frame */
 	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
 		return (1);
+	if (!rain_enabled) {
+		for (size_t i = 0; i < num_glass_infos; i++) {
+			glass_info_t *gi = &glass_infos[i];
+			gi->last_stage1_t = dr_getf(&drs.sim_time);
+		}
+		return (1);
+	}
 
 	glutils_disable_all_client_state();
 	for (size_t i = 0; i < num_glass_infos; i++) {
@@ -1004,6 +1011,12 @@ librain_draw_finish(void)
 		glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 		saved_vp[0] = saved_vp[1] = saved_vp[2] = saved_vp[3] = -1;
 	}
+}
+
+void
+librain_set_enabled(bool_t flag)
+{
+	rain_enabled = flag;
 }
 
 static void

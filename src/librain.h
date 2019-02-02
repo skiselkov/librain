@@ -438,6 +438,7 @@ LIBRAIN_EXPORT void librain_draw_z_depth(obj8_t *obj,
     const char **z_depth_group_ids);
 LIBRAIN_EXPORT void librain_draw_exec(void);
 LIBRAIN_EXPORT void librain_draw_finish(void);
+LIBRAIN_EXPORT void librain_set_enabled(bool_t flag);
 
 /*
  * Wiper control.
