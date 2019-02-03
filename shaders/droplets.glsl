@@ -16,22 +16,14 @@
  * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 #extension GL_GOOGLE_include_directive: require
 
 #include "affine.glsl"
 #include "droplets_data.h"
-#include "droplet_designs.glsl"
+#include "droplets_designs.glsl"
 #include "noise.glsl"
 #include "util.glsl"
-
-/*
- * This must match what's in librain.c!
- */
-#define	IMG_SZ			2048.0
-#define	IMG_SZ_i		2048
-
-#define	MAX_DROPLET_SZ		120.0
 
 #define	MAX_DRAG_STATIC		7.5
 #define	MIN_DRAG_STATIC		0.0
@@ -47,13 +39,10 @@
 
 #define	FAST_SPD_LIM		0.1	/* tex/sec */
 #define	VERY_FAST_SPD_LIM	0.2	/* tex/sec */
-/*
- * Below this combined thrust & wind force, don't pre-init droplets as
- * moving (as it can result in droplets creeping up the windshield - yikes!).
- */
-#define	MIN_SPD_PREINIT_FORCE	0.1
 
 layout(local_size_x = DROPLET_WG_SIZE) in;
+
+layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 1024;
 
 layout(location = 0, r8) uniform restrict image2D depth_tex;
 layout(location = 1) uniform sampler2D ws_temp_tex;
@@ -80,7 +69,7 @@ depth_store(ivec2 pos, float depth)
 {
 	vec4 pixel;
 
-	pos = clamp(pos, 0, IMG_SZ_i - 1);
+	pos = clamp(pos, ivec2(0), ivec2(DEPTH_TEX_SZ - 1));
 	pixel = imageLoad(depth_tex, pos);
 	imageStore(depth_tex, pos,
 	    vec4(min(depth + pixel.x, 1.0), 0.0, 0.0, 0.0));
@@ -121,7 +110,7 @@ bump_droplet(float velocity)
 	if (gold_noise(DROPLET.pos[0], rand_seed[0]) < (1.0 - bump_prob))
 		return;
 	rand_val = gold_noise(DROPLET.pos[0], rand_seed[1]);
-	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) / IMG_SZ;
+	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) / DEPTH_TEX_SZ;
 
 	DROPLET.bump_sz = scale * (rand_val - 0.5);
 	DROPLET.velocity *= velocity_mul;
@@ -269,7 +258,7 @@ droplet_paint()
 	bool very_fast_droplet = (velocity > VERY_FAST_SPD_LIM);
 	bool fast_droplet = (velocity > FAST_SPD_LIM);
 
-	img_pos = ivec2(DROPLET.pos[0] * IMG_SZ);
+	img_pos = ivec2(DROPLET.pos[0] * DEPTH_TEX_SZ);
 	if (DROPLET.quant < 0.05 * MAX_DROPLET_SZ) {
 		DROPLET_PAINT_I(droplet_style1);
 	} else if (DROPLET.quant < 0.1 * MAX_DROPLET_SZ || very_fast_droplet ||
@@ -292,7 +281,7 @@ droplet_paint()
 	if (!DROPLET.streamer)
 		return;
 
-	back_v = (DROPLET.pos[1] - DROPLET.pos[0]) * IMG_SZ;
+	back_v = (DROPLET.pos[1] - DROPLET.pos[0]) * DEPTH_TEX_SZ;
 	back_v_len = length(back_v);
 	back_v_norm = normalize(back_v) * 0.5;
 	right = vec2_norm_right(back_v_norm);
@@ -317,9 +306,8 @@ droplet_paint()
 		}
 	}
 
-
-	img_pos = ivec2(DROPLET.pos[1] * IMG_SZ);
-	back_v = (DROPLET.pos[2] - DROPLET.pos[1]) * IMG_SZ;
+	img_pos = ivec2(DROPLET.pos[1] * DEPTH_TEX_SZ);
+	back_v = (DROPLET.pos[2] - DROPLET.pos[1]) * DEPTH_TEX_SZ;
 	back_v_len = length(back_v);
 	back_v_norm = normalize(back_v) * 0.5;
 	right = vec2_norm_right(back_v_norm);
@@ -341,8 +329,8 @@ droplet_paint()
 	}
 
 #define	PAINT_TRAIL_1(i1, i2, depth) \
-	img_pos = ivec2(DROPLET.pos[i1] * IMG_SZ); \
-	back_v = (DROPLET.pos[i2] - DROPLET.pos[i1]) * IMG_SZ; \
+	img_pos = ivec2(DROPLET.pos[i1] * DEPTH_TEX_SZ); \
+	back_v = (DROPLET.pos[i2] - DROPLET.pos[i1]) * DEPTH_TEX_SZ; \
 	back_v_len = length(back_v); \
 	back_v_norm = normalize(back_v) * 0.5; \
 	for (vec2 v = back_v_norm; length(v) < back_v_len; v += back_v_norm) { \

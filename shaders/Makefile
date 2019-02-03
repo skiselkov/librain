@@ -29,11 +29,17 @@ SPVS = \
     ice_blur.frag.spv \
     rain_stage1.frag.spv \
     rain_stage2.frag.spv \
-    rain_stage2_comp.frag.spv \
     ws_rain.frag.spv \
     ws_rain_comp.frag.spv \
     ws_smudge.frag.spv \
     droplets.comp.spv
+
+#    rain_stage2_1024_1024.frag.spv \
+#    rain_stage2_1024_2048.frag.spv \
+#    rain_stage2_2048_1024.frag.spv \
+#    rain_stage2_2048_2048.frag.spv \
+#    droplets_1024.comp.spv \
+#    droplets_2048.comp.spv
 
 OUTDIR=bin
 SPIRVX_TGT_VERSION=120
@@ -41,6 +47,7 @@ SPIRVX_420_VERSION=420
 SPIRVX_430_VERSION=430
 
 GLSLANG=glslang
+SPIRVX=spirv-cross
 GLSL_CLEANUP=./glsl_cleanup.sh
 
 ifeq ($(V),1)
@@ -56,26 +63,26 @@ endif
 
 define BUILD_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
-	$(VERB) $(GLSLANG) $(2) -G -o $@ $^
+	$(VERB) $(GLSLANG) $(2) -G460 -o $@ $^
 
 	$(call logMsg,\	[SPIRVX]\	$@)
-	$(VERB) spirv-cross --version $(SPIRVX_TGT_VERSION) \
+	$(VERB) $(SPIRVX) --version $(SPIRVX_TGT_VERSION) \
 	    --extension GL_EXT_gpu_shader4 \
 	    --output $(@:%.$(1).spv=%.$(1).glsl) $@
 	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl)
 
 	$(call logMsg,\	[SPIRVX 4.20]\	$(@:%.$(1).spv=%.$(1).glsl420))
-	$(VERB) spirv-cross --version $(SPIRVX_420_VERSION) \
+	$(VERB) $(SPIRVX) --version $(SPIRVX_420_VERSION) \
 	    --output $(@:%.$(1).spv=%.$(1).glsl420) $@
 	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl420)
 endef
 
 define BUILD_COMP_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
-	$(VERB) $(GLSLANG) $(2) -G -S comp -o $@ $^
+	$(VERB) $(GLSLANG) $(2) -G460 -S comp -o $@ $^
 
 	$(call logMsg,\	[SPIRVX 4.30]\	$(@:%.$(1).spv=%.$(1).glsl430))
-	$(VERB) spirv-cross --version $(SPIRVX_430_VERSION) \
+	$(VERB) $(SPIRVX) --version $(SPIRVX_430_VERSION) \
 	    --output $(@:%.$(1).spv=%.$(1).glsl430) $@
 endef
 
@@ -109,6 +116,20 @@ $(OUTDIR)/%.comp.spv : %.glsl
 
 $(OUTDIR)/%_comp.frag.spv : %.frag
 	$(call BUILD_SHADER,frag,-DCOMPUTE_VARIANT=1)
+
+#$(OUTDIR)/rain_stage2_1024_1024.frag.spv : rain_stage2.frag
+#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=1024 -DDEPTH_TEX_SZ=1024)
+#$(OUTDIR)/rain_stage2_1024_2048.frag.spv : rain_stage2.frag
+#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=1024 -DDEPTH_TEX_SZ=2048)
+#$(OUTDIR)/rain_stage2_2048_1024.frag.spv : rain_stage2.frag
+#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=2048 -DDEPTH_TEX_SZ=1024)
+#$(OUTDIR)/rain_stage2_2048_2048.frag.spv : rain_stage2.frag
+#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=2048 -DDEPTH_TEX_SZ=2048)
+
+#$(OUTDIR)/droplets_1024.comp.spv : droplets.glsl
+#	$(call BUILD_COMP_SHADER,comp,-DDEPTH_TEX_SZ=1024)
+#$(OUTDIR)/droplets_2048.comp.spv : droplets.glsl
+#	$(call BUILD_COMP_SHADER,comp,-DDEPTH_TEX_SZ=2048)
 
 $(addprefix $(OUTDIR)/,$(SPVS)) : | $(OUTDIR)
 

@@ -24,6 +24,12 @@
 #define	DROPLET_WG_SIZE		1024
 #define	NUM_DROPLET_HISTORY	8
 #define	NUM_RANDOM_SEEDS	8
+#define	MAX_DROPLET_SZ		120
+#define	MIN_DROPLET_SZ_MIN	20.0
+#define	MIN_DROPLET_SZ_MAX	80.0
+
+#define	DEPTH_TEX_SZ_CONSTANT_ID	0
+#define	NORM_TEX_SZ_CONSTANT_ID		1
 
 STRUCT(droplet_data_t, {
 	/* 0-bit boundary */

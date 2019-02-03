@@ -298,17 +298,21 @@ surf_ice_fini(surf_ice_t *surf)
 bool_t
 surf_ice_reload_gl_progs(void)
 {
-	return (reload_gl_prog(&norm_prog, &norm_prog_info) &&
-	    reload_gl_prog(&render_prog, &render_prog_info) &&
-	    reload_gl_prog(&blur_prog, &blur_prog_info) &&
-	    reload_gl_prog(&point_depth_add_prog, &point_depth_add_prog_info) &&
-	    reload_gl_prog(&point_depth_rem_prog, &point_depth_rem_prog_info) &&
+	return (reload_gl_prog(&norm_prog, &norm_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&render_prog, &render_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&blur_prog, &blur_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&point_depth_add_prog,
+	    &point_depth_add_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&point_depth_rem_prog,
+	    &point_depth_rem_prog_info, NULL, NULL, NULL) &&
 	    reload_gl_prog(&point_depth_deice_prog,
-	    &point_depth_deice_prog_info) &&
-	    reload_gl_prog(&line_depth_add_prog, &line_depth_add_prog_info) &&
-	    reload_gl_prog(&line_depth_rem_prog, &line_depth_rem_prog_info) &&
+	    &point_depth_deice_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&line_depth_add_prog,
+	    &line_depth_add_prog_info, NULL, NULL, NULL) &&
+	    reload_gl_prog(&line_depth_rem_prog,
+	    &line_depth_rem_prog_info, NULL, NULL, NULL) &&
 	    reload_gl_prog(&line_depth_deice_prog,
-	    &line_depth_deice_prog_info));
+	    &line_depth_deice_prog_info, NULL, NULL, NULL));
 }
 
 static void

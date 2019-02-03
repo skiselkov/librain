@@ -16,7 +16,7 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 
 /* render pass inputs */
 layout(location = 10) uniform sampler2D	depth;

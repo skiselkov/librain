@@ -48,10 +48,6 @@
 #define	PRECIP_ICE_TEMP_THRESH	4	/* Celsius */
 #define	WIPER_SMEAR_DELAY	0.5	/* secs */
 
-#define	MAX_DROPLET_SZ		120
-#define	MIN_DROPLET_SZ_MIN	20.0
-#define	MIN_DROPLET_SZ_MAX	80.0
-
 TEXSZ_MK_TOKEN(librain_water_depth_tex);
 TEXSZ_MK_TOKEN(librain_water_norm_tex);
 TEXSZ_MK_TOKEN(librain_ws_temp_tex);
@@ -81,7 +77,6 @@ static GLint	z_depth_prog = 0;
 static GLint	ws_temp_prog = 0;
 static GLint	rain_stage1_prog = 0;
 static GLint	rain_stage2_prog = 0;
-static GLint	rain_stage2_comp_prog = 0;
 static GLint	ws_rain_prog = 0;
 static GLint	ws_smudge_prog = 0;
 
@@ -99,8 +94,6 @@ static shader_info_t rain_stage1_frag_info =
     { .filename = "rain_stage1.frag.spv" };
 static shader_info_t rain_stage2_frag_info =
     { .filename = "rain_stage2.frag.spv" };
-static shader_info_t rain_stage2_comp_frag_info =
-    { .filename = "rain_stage2_comp.frag.spv" };
 static shader_info_t ws_rain_frag_info = { .filename = "ws_rain.frag.spv" };
 static shader_info_t ws_rain_comp_frag_info =
     { .filename = "ws_rain_comp.frag.spv" };
@@ -124,12 +117,6 @@ static shader_prog_info_t rain_stage2_prog_info = {
     .progname = "rain_stage2",
     .vert = &generic_vert_info,
     .frag = &rain_stage2_frag_info
-};
-
-static shader_prog_info_t rain_stage2_comp_prog_info = {
-    .progname = "rain_stage2_comp",
-    .vert = &generic_vert_info,
-    .frag = &rain_stage2_comp_frag_info
 };
 
 static shader_prog_info_t ws_rain_prog_info = {
@@ -702,8 +689,7 @@ static void
 rain_stage2_comp(glass_info_t *gi)
 {
 	GLint old_fbo;
-	GLuint prog =
-	    (use_compute() ? rain_stage2_comp_prog : rain_stage2_prog);
+	GLuint prog = rain_stage2_prog;
 
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
 
@@ -1335,8 +1321,6 @@ water_effects_fini(void)
 	DESTROY_OP(ws_temp_prog, 0, glDeleteProgram(ws_temp_prog));
 	DESTROY_OP(rain_stage1_prog, 0, glDeleteProgram(rain_stage1_prog));
 	DESTROY_OP(rain_stage2_prog, 0, glDeleteProgram(rain_stage2_prog));
-	DESTROY_OP(rain_stage2_comp_prog, 0,
-	    glDeleteProgram(rain_stage2_comp_prog));
 	DESTROY_OP(ws_rain_prog, 0, glDeleteProgram(ws_rain_prog));
 	DESTROY_OP(ws_smudge_prog, 0, glDeleteProgram(ws_smudge_prog));
 	DESTROY_OP(z_depth_prog, 0, glDeleteProgram(z_depth_prog));
@@ -1355,17 +1339,36 @@ librain_reload_gl_progs(void)
 {
 	const shader_prog_info_t *the_ws_rain_prog_info =
 	    (use_compute() ? &ws_rain_comp_prog_info : &ws_rain_prog_info);
+	GLuint depth_tex_sz = water_depth_tex_sz();
+	GLuint norm_tex_sz = water_norm_tex_sz();
 
-	return (reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info) &&
-	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) &&
-	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) &&
-	    reload_gl_prog(&rain_stage2_comp_prog,
-	    &rain_stage2_comp_prog_info) &&
-	    reload_gl_prog(&ws_rain_prog, the_ws_rain_prog_info) &&
-	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) &&
-	    reload_gl_prog(&z_depth_prog, &z_depth_prog_info) &&
-	    (!use_compute() ||
-	    reload_gl_prog(&droplets_prog, &droplets_prog_info)));
+	printf("depth_tex_sz: %d   norm_tex_sz: %d\n",
+	    depth_tex_sz, norm_tex_sz);
+
+	const shader_spec_const_t sc_stage2_frag[] = {
+	    {B_FALSE, DEPTH_TEX_SZ_CONSTANT_ID, depth_tex_sz},
+	    {B_FALSE, NORM_TEX_SZ_CONSTANT_ID, norm_tex_sz},
+	    {B_TRUE}
+	};
+	const shader_spec_const_t sc_droplets_comp[] = {
+	    {B_FALSE, DEPTH_TEX_SZ_CONSTANT_ID, depth_tex_sz},
+	    {B_TRUE}
+	};
+
+	return (reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info,
+	    NULL, NULL, NULL) &&
+	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info,
+	    NULL, NULL, NULL) &&
+	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info,
+	    NULL, sc_stage2_frag, NULL) &&
+	    reload_gl_prog(&ws_rain_prog, the_ws_rain_prog_info,
+	    NULL, NULL, NULL) &&
+	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info,
+	    NULL, NULL, NULL) &&
+	    reload_gl_prog(&z_depth_prog, &z_depth_prog_info,
+	    NULL, NULL, NULL) &&
+	    (!use_compute() || reload_gl_prog(&droplets_prog,
+	    &droplets_prog_info, NULL, NULL, sc_droplets_comp)));
 }
 
 bool_t

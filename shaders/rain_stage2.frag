@@ -16,19 +16,15 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 #extension GL_GOOGLE_include_directive: require
 
-#if	COMPUTE_VARIANT
-#define	MY_TEX_SZ	2048.0
-#define	TEX_SZ		2048.0
-#else
-#define	MY_TEX_SZ	1024.0
-#define	TEX_SZ		1024.0
-#endif
-
+#include "droplets_data.h"
 #include "noise.glsl"
 #include "util.glsl"
+
+layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 2048;
+layout(constant_id = NORM_TEX_SZ_CONSTANT_ID) const int NORM_TEX_SZ = 2048;
 
 layout(location = 10) uniform sampler2D	tex;
 layout(location = 11) uniform sampler2D	temp_tex;
@@ -52,7 +48,7 @@ const float water_frozen_temp = C2KELVIN(-2);
 float
 read_depth(vec2 pos)
 {
-	return (texture(tex, pos / TEX_SZ).r);
+	return (texture(tex, pos / DEPTH_TEX_SZ).r);
 }
 
 void
@@ -60,7 +56,7 @@ main()
 {
 	float depth_left, depth_right, depth_up, depth_down, depth_here;
 	float d_lr, d_ud;
-	float temp = texture(temp_tex, gl_FragCoord.xy / MY_TEX_SZ).r *
+	float temp = texture(temp_tex, gl_FragCoord.xy / NORM_TEX_SZ).r *
 	    temp_scale_fact;
 	vec2 ice_displace = vec2(0.0);
 	float window_ice_fact = sqrt(min(window_ice, 1.0));

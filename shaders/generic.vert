@@ -16,7 +16,7 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 
 layout(location = 0) uniform mat4	pvm;
 

@@ -16,7 +16,7 @@
  * Copyright 2018 Saso Kiselkov. All rights reserved.
  */
 
-#version 460
+#version 460 core
 #extension GL_GOOGLE_include_directive: require
 
 #include "util.glsl"
