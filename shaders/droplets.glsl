@@ -20,6 +20,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "affine.glsl"
+#include "consts.glsl"
 #include "droplets_data.h"
 #include "droplets_designs.glsl"
 #include "noise.glsl"
@@ -36,13 +37,15 @@
 	(0.5 + (gl_GlobalInvocationID.x / float(DROPLET_WG_SIZE)))
 
 #define	DROPLET			(droplets.d[gl_GlobalInvocationID.x])
+#define	VERTEX(_idx)	\
+	(vertices.v[gl_GlobalInvocationID.x * VTX_PER_DROPLET + (_idx)])
 
 #define	FAST_SPD_LIM		0.1	/* tex/sec */
 #define	VERY_FAST_SPD_LIM	0.2	/* tex/sec */
 
 layout(local_size_x = DROPLET_WG_SIZE) in;
 
-layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 1024;
+layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 2048;
 
 layout(location = 0, r8) uniform restrict image2D depth_tex;
 layout(location = 1) uniform sampler2D ws_temp_tex;
@@ -60,9 +63,13 @@ layout(location = 12) uniform float le_temp;	/* Kelvin */
 
 layout(location = 30) uniform float rand_seed[NUM_RANDOM_SEEDS];
 
-layout(binding = 0) buffer droplet_data {
+layout(binding = DROPLETS_SSBO_BINDING) buffer droplet_data {
 	droplet_data_t	d[];
 } droplets;
+
+layout(binding = VERTICES_SSBO_BINDING) buffer droplet_vtx {
+	droplet_vtx_t	v[];
+} vertices;
 
 void
 depth_store(ivec2 pos, float depth)
@@ -110,7 +117,8 @@ bump_droplet(float velocity)
 	if (gold_noise(DROPLET.pos[0], rand_seed[0]) < (1.0 - bump_prob))
 		return;
 	rand_val = gold_noise(DROPLET.pos[0], rand_seed[1]);
-	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) / DEPTH_TEX_SZ;
+	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) /
+	    DEPTH_TEX_SZ;
 
 	DROPLET.bump_sz = scale * (rand_val - 0.5);
 	DROPLET.velocity *= velocity_mul;
@@ -188,10 +196,10 @@ droplet_move()
 void
 droplet_init_velocity(vec2 droplet_pos)
 {
-	DROPLET.velocity = vec2(0.0);
-
 	/* gravity, thrust and wind */
 	vec2 F_a, F_g, F_t, F_w;
+
+	DROPLET.velocity = vec2(0.0);
 
 	F_g = normalize(droplet_pos - gravity_point) * gravity_force;
 	F_t = normalize(droplet_pos - thrust_point) * thrust_force;
@@ -229,6 +237,26 @@ droplet_regen()
 }
 
 void
+fast_line(vec2 p1, vec2 p2, float width, float depth1, float depth2)
+{
+	vec2 dp = p2 - p1;
+	float dp_len = length(dp);
+	vec2 dir = normalize(dp);
+	vec2 right = vec2_norm_right(dir);
+
+	for (float l = -width; l <= width; l += 1.0) {
+		vec2 ps = p1 + right * l;
+		float len;
+
+		for (vec2 p = vec2(0.0); (len = length(p)) <= dp_len;
+		    p += dir) {
+			float depth = mix(depth1, depth2, len / dp_len);
+			depth_store(ivec2(ps + p), depth);
+		}
+	}
+}
+
+void
 droplet_paint()
 {
 #define DROPLET_PAINT_I(_pixels) \
@@ -261,8 +289,8 @@ droplet_paint()
 	img_pos = ivec2(DROPLET.pos[0] * DEPTH_TEX_SZ);
 	if (DROPLET.quant < 0.05 * MAX_DROPLET_SZ) {
 		DROPLET_PAINT_I(droplet_style1);
-	} else if (DROPLET.quant < 0.1 * MAX_DROPLET_SZ || very_fast_droplet ||
-	    DROPLET.streamer) {
+	} else if (DROPLET.quant < 0.1 * MAX_DROPLET_SZ
+	    /* || very_fast_droplet || DROPLET.streamer*/) {
 		DROPLET_PAINT_I(droplet_style2);
 	} else if (DROPLET.quant < 0.2 * MAX_DROPLET_SZ) {
 		DROPLET_PAINT_I(droplet_style3);
@@ -281,6 +309,23 @@ droplet_paint()
 	if (!DROPLET.streamer)
 		return;
 
+	fast_line(vec2(DROPLET.pos[0] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[1] * DEPTH_TEX_SZ), 2.0, 1.0, 0.8);
+	fast_line(vec2(DROPLET.pos[1] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[2] * DEPTH_TEX_SZ), 2.0, 0.8, 0.6);
+	fast_line(vec2(DROPLET.pos[2] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[3] * DEPTH_TEX_SZ), 2.0, 0.6, 0.4);
+	fast_line(vec2(DROPLET.pos[3] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[4] * DEPTH_TEX_SZ), 2.0, 0.4, 0.3);
+	fast_line(vec2(DROPLET.pos[4] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[5] * DEPTH_TEX_SZ), 2.0, 0.3, 0.25);
+	fast_line(vec2(DROPLET.pos[5] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[6] * DEPTH_TEX_SZ), 2.0, 0.25, 0.2);
+	fast_line(vec2(DROPLET.pos[6] * DEPTH_TEX_SZ),
+	    vec2(DROPLET.pos[7] * DEPTH_TEX_SZ), 0.0, 0.2, 0.0);
+
+#if 0
+
 	back_v = (DROPLET.pos[1] - DROPLET.pos[0]) * DEPTH_TEX_SZ;
 	back_v_len = length(back_v);
 	back_v_norm = normalize(back_v) * 0.5;
@@ -289,20 +334,20 @@ droplet_paint()
 	if (very_fast_droplet) {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
-			depth_store(img_pos + ivec2(v), 2.0);
-			depth_store(img_pos + ivec2(v + left), 1.0);
-			depth_store(img_pos + ivec2(v + right), 2.0);
+			depth_store(img_pos + ivec2(v), 1.0);
+			depth_store(img_pos + ivec2(v + left), 0.8);
+			depth_store(img_pos + ivec2(v + right), 0.8);
 		}
 	} else {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
-			depth_store(img_pos + ivec2(v), 3.0);
-			depth_store(img_pos + ivec2(v + left), 2.0);
-			depth_store(img_pos + ivec2(v + 2.0 * left), 1.0);
-			depth_store(img_pos + ivec2(v + 3.0 * left), 0.5);
-			depth_store(img_pos + ivec2(v + right), 2.0);
-			depth_store(img_pos + ivec2(v + 2.0 * right), 1.0);
-			depth_store(img_pos + ivec2(v + 3.0 * right), 0.5);
+			depth_store(img_pos + ivec2(v), 1.0);
+			depth_store(img_pos + ivec2(v + left), 0.9);
+			depth_store(img_pos + ivec2(v + 2.0 * left), 0.7);
+			depth_store(img_pos + ivec2(v + 3.0 * left), 0.25);
+			depth_store(img_pos + ivec2(v + right), 0.9);
+			depth_store(img_pos + ivec2(v + 2.0 * right), 0.7);
+			depth_store(img_pos + ivec2(v + 3.0 * right), 0.25);
 		}
 	}
 
@@ -320,11 +365,11 @@ droplet_paint()
 	} else {
 		for (vec2 v = back_v_norm; length(v) < back_v_len;
 		    v += back_v_norm) {
-			depth_store(img_pos + ivec2(v), 2.0);
-			depth_store(img_pos + ivec2(v + left), 1.0);
-			depth_store(img_pos + ivec2(v + 2.0 * left), 0.5);
-			depth_store(img_pos + ivec2(v + right), 1.0);
-			depth_store(img_pos + ivec2(v + 2.0 * right), 0.5);
+			depth_store(img_pos + ivec2(v), 1.0);
+			depth_store(img_pos + ivec2(v + left), 0.5);
+			depth_store(img_pos + ivec2(v + 2.0 * left), 0.25);
+			depth_store(img_pos + ivec2(v + right), 0.5);
+			depth_store(img_pos + ivec2(v + 2.0 * right), 0.25);
 		}
 	}
 
@@ -343,6 +388,38 @@ droplet_paint()
 	PAINT_TRAIL_1(4, 5, 0.3);
 	PAINT_TRAIL_1(5, 6, 0.2);
 	PAINT_TRAIL_1(6, 7, 0.1);
+#endif
+}
+
+#define	VTX_ANGLE(i)	(2.0 * M_PI * smoothstep(0.0, VTX_PER_DROPLET - 1, i))
+const vec2 vtx_pos[VTX_PER_DROPLET - 1] = vec2[VTX_PER_DROPLET - 1](
+    vec2(sin(VTX_ANGLE(0)), cos(VTX_ANGLE(0))),
+    vec2(sin(VTX_ANGLE(1)), cos(VTX_ANGLE(1))),
+    vec2(sin(VTX_ANGLE(2)), cos(VTX_ANGLE(2))),
+    vec2(sin(VTX_ANGLE(3)), cos(VTX_ANGLE(3))),
+    vec2(sin(VTX_ANGLE(4)), cos(VTX_ANGLE(4))),
+    vec2(sin(VTX_ANGLE(5)), cos(VTX_ANGLE(5))),
+    vec2(sin(VTX_ANGLE(6)), cos(VTX_ANGLE(6))),
+    vec2(sin(VTX_ANGLE(7)), cos(VTX_ANGLE(7))),
+    vec2(sin(VTX_ANGLE(8)), cos(VTX_ANGLE(8)))
+);
+
+void
+droplet_vtx_construct(void)
+{
+	float quant_fract = sqrt(DROPLET.quant / MAX_DROPLET_SZ);
+	float radius = (15.0 * quant_fract) / DEPTH_TEX_SZ;
+
+	for (int i = 0; i < VTX_PER_DROPLET - 1; i++) {
+		VERTEX(i).pos = vtx_pos[i] * radius;
+		VERTEX(i).ctr = DROPLET.pos[0];
+		VERTEX(i).radius = radius;
+		VERTEX(i).size = radius;
+	}
+	VERTEX(VTX_PER_DROPLET - 1).pos = vec2(0.0);
+	VERTEX(VTX_PER_DROPLET - 1).ctr = DROPLET.pos[0];
+	VERTEX(VTX_PER_DROPLET - 1).radius = 0.0;
+	VERTEX(VTX_PER_DROPLET - 1).size = radius;
 }
 
 bool
@@ -367,7 +444,8 @@ main(void)
 	if (droplet_should_exist()) {
 		droplets.d[gl_GlobalInvocationID.x].quant -= d_t;
 		droplet_move();
-		droplet_paint();
+//		droplet_paint();
+		droplet_vtx_construct();
 	} else {
 		/* Regen droplet at new location */
 		droplet_regen();

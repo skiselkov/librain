@@ -32,6 +32,8 @@ SPVS = \
     ws_rain.frag.spv \
     ws_rain_comp.frag.spv \
     ws_smudge.frag.spv \
+    droplets.vert.spv \
+    droplets.frag.spv \
     droplets.comp.spv
 
 #    rain_stage2_1024_1024.frag.spv \

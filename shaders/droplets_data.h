@@ -31,18 +31,35 @@
 #define	DEPTH_TEX_SZ_CONSTANT_ID	0
 #define	NORM_TEX_SZ_CONSTANT_ID		1
 
+#define	DROPLETS_SSBO_BINDING		0
+#define	VERTICES_SSBO_BINDING		1
+
 STRUCT(droplet_data_t, {
-	/* 0-bit boundary */
-	vec2	pos[NUM_DROPLET_HISTORY];
-	/* 512-bit boundary */
-	vec2	velocity;
-	float	quant;
-	float	regen_t;
-	float	bump_t;
-	float	F_d_s_len;
-	float	bump_sz;
-	float	tail_angle;	/* Kelvin */
-	bool	streamer;
+	vec2	pos[NUM_DROPLET_HISTORY];	/* 8 x 64 bits */
+	/* 128-bit boundary */
+	vec2	velocity;	/* 64-bit */
+	float	quant;		/* 32-bit */
+	float	regen_t;	/* 32-bit */
+	/* 128-bit boundary */
+	float	bump_t;		/* 32-bit */
+	float	F_d_s_len;	/* 32-bit */
+	float	bump_sz;	/* 32-bit */
+	float	tail_angle;	/* 32-bit, Kelvin */
+	/* 128-bit boundary */
+	bool	streamer;	/* 32-bit */
+});
+
+#define	VTX_PER_DROPLET		10
+#define	FACES_PER_DROPLET	(VTX_PER_DROPLET - 1)
+
+STRUCT(droplet_vtx_t, {
+	vec2	pos;	/* 64-bit */
+	vec2	ctr;	/* 64-bit */
+	/* 128-bit boundary */
+	float	radius;	/* 32-bit */
+	float	size;	/* 32-bit */
+	float	pad[2];	/* 96-bit */
+	/* 128-bit boundary */
 });
 
 #endif	/* _DROPLETS_DATA_H_ */

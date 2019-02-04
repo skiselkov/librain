@@ -19,6 +19,8 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
+#include "consts.glsl"
+#include "droplets_data.h"
 #include "util.glsl"
 #include "noise.glsl"
 
@@ -47,8 +49,6 @@ layout(location = 46) uniform float	wiper_pos_prev[MAX_WIPERS];
 
 layout(location = 0) out vec4	color_out;
 
-const float max_depth = 3.0;
-const float min_depth = 0.01;
 const float precip_fact = 0.1;
 const float gravity_factor = 0.25;
 const float precip_scale_fact = 0.0117;

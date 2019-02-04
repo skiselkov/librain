@@ -17,6 +17,9 @@
  */
 
 #version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "consts.glsl"
 
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	screenshot_tex;
@@ -28,7 +31,6 @@ layout(location = 1) in vec2		tex_coord;
 
 layout(location = 0) out vec4		color_out;
 
-const float	max_depth = 3.0;
 const float	kernel[25] = float[25](
 	0.01, 0.02, 0.04, 0.02, 0.01,
 	0.02, 0.04, 0.08, 0.04, 0.02,

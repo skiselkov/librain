@@ -19,6 +19,7 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
+#include "consts.glsl"
 #include "droplets_data.h"
 #include "noise.glsl"
 #include "util.glsl"
@@ -36,11 +37,6 @@ layout(location = 15) uniform float	window_ice;
 
 layout(location = 0) out vec4	color_out;
 
-#if	COMPUTE_VARIANT
-const float max_depth = 1.0;
-#else
-const float max_depth = 3.0;
-#endif
 const float temp_scale_fact = 400.0;
 const float water_liquid_temp = C2KELVIN(2);
 const float water_frozen_temp = C2KELVIN(-2);

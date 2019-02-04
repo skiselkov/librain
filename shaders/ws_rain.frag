@@ -19,6 +19,8 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
+#include "consts.glsl"
+#include "droplets_data.h"
 #include "util.glsl"
 
 #define	MAX_WIPERS	2
@@ -40,14 +42,9 @@ layout(location = 1) in vec2		tex_coord;
 
 layout(location = 0) out vec4		color_out;
 
-#if	COMPUTE_VARIANT
-//const vec2	displace_lim = vec2(50.0, 150.0);
-//const float	darkening_fact = 250.0;
-const float	max_depth = 1.5;
-#else	/* !COMPUTE_VARIANT */
+#if	!COMPUTE_VARIANT
 const vec2	displace_lim = vec2(200.0);
 const float	darkening_fact = 800.0;
-const float	max_depth = 3.0;
 #endif	/* !COMPUTE_VARIANT */
 
 vec4
@@ -84,12 +81,12 @@ main()
 {
 #if	COMPUTE_VARIANT
 	vec2 screenshot_sz = textureSize(screenshot_tex, 0);
-	vec2 displace_lim = screenshot_sz.yx / 10.0;
+	const vec2 displace_lim = screenshot_sz.yx / 10.0;
 	float darkening_fact = length(displace_lim) * 10.0;
 #endif
 	float depth = texture(depth_tex, tex_coord).r;
 	vec2 displace = (texture(norm_tex, tex_coord).xy - 0.5) *
-	    displace_lim * (max_depth - depth);
+	    displace_lim * (depth / max_depth);
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
 	float darkening_fract = length(displace) / darkening_fact;
 
