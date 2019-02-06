@@ -36,9 +36,12 @@
 #define	REGEN_DELAY	\
 	(0.5 + (gl_GlobalInvocationID.x / float(DROPLET_WG_SIZE)))
 
-#define	DROPLET			(droplets.d[gl_GlobalInvocationID.x])
+#define	DROPLET_ID	(gl_GlobalInvocationID.x)
+#define	DROPLET		(droplets.d[DROPLET_ID])
 #define	VERTEX(_idx)	\
-	(vertices.v[gl_GlobalInvocationID.x * VTX_PER_DROPLET + (_idx)])
+	(vertices.v[DROPLET_ID * VTX_PER_DROPLET + (_idx)])
+#define	TAIL(_idx)	\
+	(tails.t[DROPLET_ID * NUM_DROPLET_HISTORY + (_idx)])
 
 #define	FAST_SPD_LIM		0.1	/* tex/sec */
 #define	VERY_FAST_SPD_LIM	0.2	/* tex/sec */
@@ -71,6 +74,12 @@ layout(binding = VERTICES_SSBO_BINDING) buffer droplet_vtx {
 	droplet_vtx_t	v[];
 } vertices;
 
+layout(binding = TAILS_SSBO_BINDING) buffer droplet_tails {
+	droplet_tail_t	t[];
+} tails;
+
+void droplet_tail_construct(void);
+
 void
 depth_store(ivec2 pos, float depth)
 {
@@ -99,28 +108,30 @@ droplet_forces_integrate()
 }
 
 void
-bump_droplet(float velocity)
+bump_droplet(void)
 {
-	const float bump_sz_slow = 40.0;
-	const float bump_sz_fast = 160.0;
-	const float velocity_mul = 0.3;
-	const float bump_check_rate = 1.0;
+	const float bump_sz_slow = 60.0;
+	const float bump_sz_fast = 1.0;
+	const float spd_fract = smoothstep(0.0, 0.2, DROPLET.spd);
+	const float velocity_mul = 0.3;//, 0.8, spd_fract);
+	const float bump_check_rate =
+	    mix(0.2, 0.1, smoothstep(0.0, 0.2, DROPLET.spd));
 	const float bump_prob_min = 0.25;
 	const float bump_prob_max = 0.75;
-	float rand_val, scale, bump_prob, velocity_clamped;
+	float rand_val, scale, bump_prob, spd_clamped;
 
 	if (cur_t - DROPLET.bump_t < bump_check_rate)
 		return;
 	DROPLET.bump_t = cur_t;
-	velocity_clamped = clamp(velocity, 0.0, 1.0);
-	bump_prob = mix(bump_prob_min, bump_prob_max, velocity_clamped);
+	spd_clamped = clamp(DROPLET.spd, 0.0, 1.0);
+	bump_prob = mix(bump_prob_min, bump_prob_max, spd_clamped);
 	if (gold_noise(DROPLET.pos[0], rand_seed[0]) < (1.0 - bump_prob))
 		return;
 	rand_val = gold_noise(DROPLET.pos[0], rand_seed[1]);
-	scale = mix(bump_sz_slow, bump_sz_fast, velocity_clamped) /
-	    DEPTH_TEX_SZ;
+	scale = mix(bump_sz_slow, bump_sz_fast, spd_clamped) / DEPTH_TEX_SZ;
 
 	DROPLET.bump_sz = scale * (rand_val - 0.5);
+	DROPLET.bump_rate = gold_noise(DROPLET.pos[0], rand_seed[1]);
 	DROPLET.velocity *= velocity_mul;
 }
 
@@ -138,10 +149,10 @@ droplet_move()
 	float F_d_s_len, coeff_vel;
 	float rel_quant = DROPLET.quant / MAX_DROPLET_SZ;
 	vec2 new_pos;
-	float velocity = length(DROPLET.velocity);
+	float spd = length(DROPLET.velocity);
 	float rand_val, prob;
 
-	coeff_vel = clamp(velocity, 0.0, 0.01);
+	coeff_vel = clamp(spd, 0.0, 0.01);
 
 	F_d_s_len = mix(MAX_DRAG_STATIC, MIN_DRAG_STATIC, coeff_vel) /
 	    max(DROPLET.quant, 1.0);
@@ -158,39 +169,50 @@ droplet_move()
 
 	F = F_a + F_d_d + F_d_s;
 	DROPLET.velocity += F * d_t;
-	bump_droplet(velocity);
+	bump_droplet();
 
 	new_pos = DROPLET.pos[0] + DROPLET.velocity * d_t;
 
 	if (DROPLET.bump_sz > 0.0) {
 		vec2 velocity_norm = vec2_norm_right(DROPLET.velocity);
-		float bump_sz = min(velocity * d_t, DROPLET.bump_sz);
+		float bump_sz = min(spd * d_t * DROPLET.bump_rate,
+		    DROPLET.bump_sz);
 
 		DROPLET.bump_sz -= bump_sz;
 		new_pos += normalize(velocity_norm) * bump_sz;
 	} else if (DROPLET.bump_sz < 0.0) {
 		vec2 velocity_norm = vec2_norm_right(DROPLET.velocity);
-		float bump_sz = max(-velocity * d_t, DROPLET.bump_sz);
+		float bump_sz = max(-spd * d_t, DROPLET.bump_sz);
 
 		DROPLET.bump_sz -= bump_sz;
 		new_pos += normalize(velocity_norm) * bump_sz;
 	}
 
 	if (DROPLET.streamer) {
+		if (cur_t - DROPLET.tail_upd_t > 0.1) {
+			for (int i = NUM_DROPLET_HISTORY - 1; i > 0; i--)
+				DROPLET.pos[i] = DROPLET.pos[i - 1];
+			DROPLET.tail_upd_t = cur_t;
+		}
+/*
 		float lag = 0.1 +
 		    (gl_LocalInvocationIndex / (15.0 * DROPLET_WG_SIZE));
-		FILTER_IN(DROPLET.pos[7], DROPLET.pos[6], d_t, lag);
-		FILTER_IN(DROPLET.pos[6], DROPLET.pos[5], d_t, lag);
-		FILTER_IN(DROPLET.pos[5], DROPLET.pos[4], d_t, lag);
-		FILTER_IN(DROPLET.pos[4], DROPLET.pos[3], d_t, lag);
-		FILTER_IN(DROPLET.pos[3], DROPLET.pos[2], d_t, lag);
-		FILTER_IN(DROPLET.pos[2], DROPLET.pos[1], d_t, lag);
-		FILTER_IN(DROPLET.pos[1], DROPLET.pos[0], d_t, lag);
+		for (int i = NUM_DROPLET_HISTORY - 1; i > 0; i--) {
+			FILTER_IN(DROPLET.pos[i], DROPLET.pos[i - 1], d_t, lag);
+		}
+*/
 		DROPLET.pos[0] = new_pos;
 	} else {
-		DROPLET.pos[1] = DROPLET.pos[0];
+		for (int i = NUM_DROPLET_HISTORY - 1; i > 0; i--)
+			DROPLET.pos[i] = DROPLET.pos[0];
 		DROPLET.pos[0] = new_pos;
 	}
+
+	if (length(DROPLET.pos[0] - DROPLET.pos[1]) > 0.0001) {
+		vec2 tail_v = DROPLET.pos[0] - DROPLET.pos[1];
+		FILTER_IN(DROPLET.tail_v, tail_v, d_t, 0.2);
+	}
+	FILTER_IN(DROPLET.spd, spd, d_t, 0.2);
 }
 
 void
@@ -199,18 +221,20 @@ droplet_init_velocity(vec2 droplet_pos)
 	/* gravity, thrust and wind */
 	vec2 F_a, F_g, F_t, F_w;
 
-	DROPLET.velocity = vec2(0.0);
 
 	F_g = normalize(droplet_pos - gravity_point) * gravity_force;
 	F_t = normalize(droplet_pos - thrust_point) * thrust_force;
 	F_w = normalize(droplet_pos - wind_point) * wind_force;
 	F_a = (F_g + F_t + F_w);
+
+	DROPLET.velocity = F_a * gold_noise(droplet_pos, rand_seed[3]);
+
 	if (length(F_a) > 0.0)
-		DROPLET.tail_angle = dir2hdg(F_a);
+		DROPLET.tail_angle = -dir2hdg(F_a);
 }
 
 void
-droplet_regen()
+droplet_regen(void)
 {
 	vec2 coord, droplet_pos;
 	float droplet_sz_ratio;
@@ -220,20 +244,23 @@ droplet_regen()
 	DROPLET.regen_t = cur_t;
 
 	coord = vec2(gl_GlobalInvocationID);
-	if (gold_noise(coord, rand_seed[3]) > precip_intens)
+	if (gold_noise(coord, rand_seed[4]) > precip_intens)
 		return;
 
-	droplet_pos = vec2(gold_noise(coord, rand_seed[4]),
-	    gold_noise(coord, rand_seed[5]));
+	droplet_pos = vec2(gold_noise(coord, rand_seed[5]),
+	    gold_noise(coord, rand_seed[6]));
 	for (int i = 0; i < NUM_DROPLET_HISTORY; i++)
 		DROPLET.pos[i] = droplet_pos;
-	droplet_sz_ratio = gold_noise(coord, rand_seed[6]);
+	droplet_sz_ratio = gold_noise(coord, rand_seed[7]);
 	DROPLET.quant = mix(min_droplet_sz, MAX_DROPLET_SZ, droplet_sz_ratio);
 	DROPLET.bump_sz = 0.0;
 
 	droplet_init_velocity(droplet_pos);
 
-	DROPLET.streamer = ((gl_GlobalInvocationID.x & 3) == 0);
+	DROPLET.streamer = ((gl_GlobalInvocationID.x & 7) == 0);
+
+	for (int i = 0; i < NUM_DROPLET_HISTORY; i++)
+		TAIL(i).pos = vec2(0.0);
 }
 
 void
@@ -391,27 +418,37 @@ droplet_paint()
 #endif
 }
 
-#define	VTX_ANGLE(i)	(2.0 * M_PI * smoothstep(0.0, VTX_PER_DROPLET - 1, i))
-const vec2 vtx_pos[VTX_PER_DROPLET - 1] = vec2[VTX_PER_DROPLET - 1](
-    vec2(sin(VTX_ANGLE(0)), cos(VTX_ANGLE(0))),
-    vec2(sin(VTX_ANGLE(1)), cos(VTX_ANGLE(1))),
-    vec2(sin(VTX_ANGLE(2)), cos(VTX_ANGLE(2))),
-    vec2(sin(VTX_ANGLE(3)), cos(VTX_ANGLE(3))),
-    vec2(sin(VTX_ANGLE(4)), cos(VTX_ANGLE(4))),
-    vec2(sin(VTX_ANGLE(5)), cos(VTX_ANGLE(5))),
-    vec2(sin(VTX_ANGLE(6)), cos(VTX_ANGLE(6))),
-    vec2(sin(VTX_ANGLE(7)), cos(VTX_ANGLE(7))),
-    vec2(sin(VTX_ANGLE(8)), cos(VTX_ANGLE(8)))
+#define	VTX_ANGLE(i)	(2.0 * M_PI * LINSTEP(0, FACES_PER_DROPLET, i))
+const vec3 vtx_pos[VTX_PER_DROPLET - 1] = vec3[VTX_PER_DROPLET - 1](
+    vec3(sin(VTX_ANGLE(0)), cos(VTX_ANGLE(0)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(1)), cos(VTX_ANGLE(1)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(2)), cos(VTX_ANGLE(2)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(3)), cos(VTX_ANGLE(3)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(4)), cos(VTX_ANGLE(4)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(5)), cos(VTX_ANGLE(5)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(6)), cos(VTX_ANGLE(6)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(7)), cos(VTX_ANGLE(7)) - 0.75, 1.0),
+    vec3(sin(VTX_ANGLE(8)), cos(VTX_ANGLE(8)) - 0.75, 1.0)
 );
 
 void
 droplet_vtx_construct(void)
 {
 	float quant_fract = sqrt(DROPLET.quant / MAX_DROPLET_SZ);
-	float radius = (15.0 * quant_fract) / DEPTH_TEX_SZ;
+	float radius = (10.0 * quant_fract) / DEPTH_TEX_SZ;
+	float spd_fract = LINSTEP(0.0, 0.05, DROPLET.spd);
+	vec2 scale_factor =
+	    mix(vec2(1.0, 1.0), vec2(0.8, 2.0), spd_fract) * radius;
+	float angle = 0.0;
+	mat3 xform;
+
+	if (DROPLET.tail_v != vec2(0.0))
+		angle = -dir2hdg(DROPLET.tail_v);
+
+	xform = mat3_rotate(mat3_scale(mat3(1.0), scale_factor), angle);
 
 	for (int i = 0; i < VTX_PER_DROPLET - 1; i++) {
-		VERTEX(i).pos = vtx_pos[i] * radius;
+		VERTEX(i).pos = vec2((xform * vtx_pos[i]));
 		VERTEX(i).ctr = DROPLET.pos[0];
 		VERTEX(i).radius = radius;
 		VERTEX(i).size = radius;
@@ -422,8 +459,18 @@ droplet_vtx_construct(void)
 	VERTEX(VTX_PER_DROPLET - 1).size = radius;
 }
 
+void
+droplet_tail_construct(void)
+{
+	for (int i = 0; i < NUM_DROPLET_HISTORY; i++) {
+		TAIL(i).pos = DROPLET.pos[i];
+		TAIL(i).quant =
+		    DROPLET.quant * (1.0 - (float(i) / NUM_DROPLET_HISTORY));
+	}
+}
+
 bool
-droplet_should_exist()
+droplet_should_exist(void)
 {
 	if (DROPLET.quant <= 0.0)
 		return (false);
@@ -444,8 +491,9 @@ main(void)
 	if (droplet_should_exist()) {
 		droplets.d[gl_GlobalInvocationID.x].quant -= d_t;
 		droplet_move();
-//		droplet_paint();
 		droplet_vtx_construct();
+		if (DROPLET.streamer)
+			droplet_tail_construct();
 	} else {
 		/* Regen droplet at new location */
 		droplet_regen();

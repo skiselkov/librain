@@ -80,13 +80,13 @@ static float	last_run_t = 0;
 static GLint	z_depth_prog = 0;
 
 static shader_info_t generic_vert_info = { .filename = "generic.vert.spv" };
-static shader_info_t generic_vert_glsl_info =
-    { .filename = "generic.vert.glsl420" };
 static shader_info_t ws_temp_frag_info = { .filename = "ws_temp.frag.spv" };
 static shader_info_t rain_stage1_frag_info =
     { .filename = "rain_stage1.frag.spv" };
 static shader_info_t rain_stage2_frag_info =
-    { .filename = "rain_stage2.frag.glsl420" };
+    { .filename = "rain_stage2.frag.spv" };
+static shader_info_t rain_stage2_comp_frag_info =
+    { .filename = "rain_stage2_comp.frag.spv" };
 static shader_info_t ws_rain_frag_info = { .filename = "ws_rain.frag.spv" };
 static shader_info_t ws_rain_comp_frag_info =
     { .filename = "ws_rain_comp.frag.spv" };
@@ -95,6 +95,8 @@ static shader_info_t nil_frag_info = { .filename = "nil.frag.spv" };
 static shader_info_t droplets_comp_info = { .filename = "droplets.comp.spv" };
 static shader_info_t droplets_vert_info = { .filename = "droplets.vert.spv" };
 static shader_info_t droplets_frag_info = { .filename = "droplets.frag.spv" };
+static shader_info_t tails_vert_info = { .filename = "tails.vert.spv" };
+static shader_info_t tails_frag_info = { .filename = "tails.frag.spv" };
 
 static shader_prog_info_t ws_temp_prog_info = {
     .progname = "ws_temp",
@@ -110,8 +112,14 @@ static shader_prog_info_t rain_stage1_prog_info = {
 
 static shader_prog_info_t rain_stage2_prog_info = {
     .progname = "rain_stage2",
-    .vert = &generic_vert_glsl_info,
+    .vert = &generic_vert_info,
     .frag = &rain_stage2_frag_info
+};
+
+static shader_prog_info_t rain_stage2_comp_prog_info = {
+    .progname = "rain_stage2",
+    .vert = &generic_vert_info,
+    .frag = &rain_stage2_comp_frag_info
 };
 
 static shader_prog_info_t ws_rain_prog_info = {
@@ -148,6 +156,12 @@ static shader_prog_info_t droplets_paint_prog_info = {
     .progname = "droplets_paint",
     .vert = &droplets_vert_info,
     .frag = &droplets_frag_info
+};
+
+static shader_prog_info_t tails_prog_info = {
+    .progname = "tails",
+    .vert = &tails_vert_info,
+    .frag = &tails_frag_info
 };
 
 static mat4 glob_pvm = GLM_MAT4_IDENTITY;
@@ -193,6 +207,9 @@ typedef struct {
 	GLuint			vertices_vao;
 	GLuint			vertices_vtx_buf;
 	GLuint			vertices_idx_buf;
+	GLuint			tails_vao;
+	GLuint			tails_vtx_buf;
+	GLuint			tails_idx_buf;
 
 	vect2_t			gp;
 	vect2_t			tp;
@@ -214,6 +231,7 @@ typedef struct {
 
 	GLint			droplets_prog;
 	GLint			droplets_paint_prog;
+	GLint			tails_prog;
 
 	librain_qual_t		qual;
 
@@ -626,18 +644,20 @@ rain_stage1_compute_move(const glass_info_t *gi, double cur_t, double d_t)
 	    DROPLETS_SSBO_BINDING, gi->droplets_ssbo);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
 	    VERTICES_SSBO_BINDING, gi->vertices_vtx_buf);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+	    TAILS_SSBO_BINDING, gi->tails_vtx_buf);
 
 	glDispatchCompute(gi->qual.num_droplets / DROPLET_WG_SIZE, 1, 1);
 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, DROPLETS_SSBO_BINDING, 0);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, VERTICES_SSBO_BINDING, 0);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, TAILS_SSBO_BINDING, 0);
 }
 
 static void
 rain_stage1_compute_paint(const glass_info_t *gi)
 {
-	GLuint prog = gi->droplets_paint_prog;
-	size_t num_elem = gi->qual.num_droplets * FACES_PER_DROPLET * 3;
+	size_t num_elem;
 
 	glDepthMask(GL_FALSE);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER,
@@ -645,13 +665,21 @@ rain_stage1_compute_paint(const glass_info_t *gi)
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glUseProgram(prog);
-
+	glUseProgram(gi->droplets_paint_prog);
 	glBindVertexArray(gi->vertices_vao);
 	glBindBuffer(GL_ARRAY_BUFFER, gi->vertices_vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->vertices_idx_buf);
-
+	num_elem = gi->qual.num_droplets * FACES_PER_DROPLET * 3;
 	glDrawElements(GL_TRIANGLES, num_elem, GL_UNSIGNED_INT, NULL);
+
+	glUseProgram(gi->tails_prog);
+	glBindVertexArray(gi->tails_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, gi->tails_vtx_buf);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->tails_idx_buf);
+	num_elem = gi->qual.num_droplets * NUM_DROPLET_TAIL_SEGS * 2;
+	glLineWidth(STREAMER_WIDTH);
+	glDrawElements(GL_LINES, num_elem, GL_UNSIGNED_INT, NULL);
+	glLineWidth(1);
 
 	glBindVertexArray(0);
 	glDepthMask(GL_TRUE);
@@ -662,9 +690,10 @@ rain_stage1_comp_compute(const glass_info_t *gi, double cur_t, double d_t)
 {
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 	rain_stage1_compute_move(gi, cur_t, d_t);
-	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+	glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
+	    GL_ELEMENT_ARRAY_BARRIER_BIT |
+	    GL_SHADER_STORAGE_BARRIER_BIT);
 	rain_stage1_compute_paint(gi);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -1171,8 +1200,11 @@ glass_info_init_compute_phys(glass_info_t *gi)
 	size_t droplet_bytes = gi->qual.num_droplets * sizeof (droplet_data_t);
 	size_t vertex_bytes = gi->qual.num_droplets * VTX_PER_DROPLET *
 	    sizeof (droplet_vtx_t);
+	size_t tails_bytes = gi->qual.num_droplets * NUM_DROPLET_HISTORY *
+	    sizeof (droplet_tail_t);
 	droplet_data_t *droplets = safe_calloc(1, droplet_bytes);
 	droplet_vtx_t *vertices = safe_calloc(1, vertex_bytes);
+	droplet_tail_t *tails = safe_calloc(1, tails_bytes);
 
 	for (unsigned i = 0; i < gi->qual.num_droplets; i++) {
 		droplets[i].regen_t = cur_t;
@@ -1191,14 +1223,21 @@ glass_info_init_compute_phys(glass_info_t *gi)
 	glBufferData(GL_SHADER_STORAGE_BUFFER, vertex_bytes, vertices,
 	    GL_DYNAMIC_DRAW);
 
+	glGenBuffers(1, &gi->tails_vtx_buf);
+	VERIFY(gi->tails_vtx_buf != 0);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, gi->tails_vtx_buf);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, tails_bytes, tails,
+	    GL_DYNAMIC_DRAW);
+
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 	free(droplets);
 	free(vertices);
+	free(tails);
 }
 
 static void
-glass_info_init_compute_visual(glass_info_t *gi)
+glass_info_init_compute_visual_droplets(glass_info_t *gi)
 {
 	GLuint prog = gi->droplets_paint_prog;
 	GLint pos_loc, ctr_loc, radius_loc, size_loc;
@@ -1260,12 +1299,75 @@ glass_info_init_compute_visual(glass_info_t *gi)
 			face[2] = d * VTX_PER_DROPLET + VTX_PER_DROPLET - 1;
 		}
 	}
-	for (unsigned i = 0; i < index_bytes / sizeof (*indices); i++) {
-		if (i % 3 == 0)
+
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
+	    GL_STATIC_DRAW);
+
+	glBindVertexArray(0);
+
+	free(indices);
+}
+
+static void
+glass_info_init_compute_visual_tails(glass_info_t *gi)
+{
+	GLuint prog = gi->tails_prog;
+	GLint pos_loc, quant_loc;
+	size_t index_bytes = sizeof (GLuint) * gi->qual.num_droplets *
+	    NUM_DROPLET_TAIL_SEGS * 2;
+	GLuint *indices = safe_malloc(index_bytes);
+	const GLuint *end =
+	    &indices[gi->qual.num_droplets * NUM_DROPLET_TAIL_SEGS * 2];
+
+	ASSERT(prog != 0);
+
+	glGenVertexArrays(1, &gi->tails_vao);
+	VERIFY(gi->tails_vao != 0);
+	glBindVertexArray(gi->tails_vao);
+
+	VERIFY(gi->tails_vtx_buf != 0);
+	glGenBuffers(1, &gi->tails_idx_buf);
+	VERIFY(gi->tails_idx_buf != 0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, gi->tails_vtx_buf);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->tails_idx_buf);
+
+	pos_loc = glGetAttribLocation(prog, "pos");
+	if (pos_loc != -1) {
+		glEnableVertexAttribArray(pos_loc);
+		glVertexAttribPointer(pos_loc, 2, GL_FLOAT, GL_FALSE,
+		    sizeof (droplet_tail_t),
+		    (void *)(offsetof(droplet_tail_t, pos)));
+	}
+	quant_loc = glGetAttribLocation(prog, "quant");
+	if (quant_loc != -1) {
+		glEnableVertexAttribArray(quant_loc);
+		glVertexAttribPointer(quant_loc, 1, GL_FLOAT, GL_FALSE,
+		    sizeof (droplet_tail_t),
+		    (void *)(offsetof(droplet_tail_t, quant)));
+	}
+
+	for (unsigned d = 0; d < gi->qual.num_droplets; d++) {
+		GLuint *droplet = &indices[d * NUM_DROPLET_TAIL_SEGS * 2];
+		GLuint p = d * NUM_DROPLET_HISTORY;
+
+		for (unsigned t = 0; t < NUM_DROPLET_TAIL_SEGS; t++) {
+			GLuint *seg = &droplet[t * 2];
+
+			ASSERT3P(seg, <, end);
+			seg[0] = p + t;
+			seg[1] = p + t + 1;
+			ASSERT3U(seg[0], <,
+			    gi->qual.num_droplets * NUM_DROPLET_HISTORY);
+			ASSERT3U(seg[1], <,
+			    gi->qual.num_droplets * NUM_DROPLET_HISTORY);
+		}
+	}
+
+	for (int i = 0; i < 30 * 10; i++) {
+		if (i % 30 == 0)
 			printf("\n");
 		printf("%d ", indices[i]);
-		if (i > 60)
-			break;
 	}
 
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
@@ -1274,6 +1376,13 @@ glass_info_init_compute_visual(glass_info_t *gi)
 	glBindVertexArray(0);
 
 	free(indices);
+}
+
+static void
+glass_info_init_compute_visual(glass_info_t *gi)
+{
+	glass_info_init_compute_visual_droplets(gi);
+	glass_info_init_compute_visual_tails(gi);
 }
 
 static void
@@ -1415,6 +1524,7 @@ glass_info_fini(glass_info_t *gi)
 	DESTROY_OP(gi->droplets_prog, 0, glDeleteProgram(gi->droplets_prog));
 	DESTROY_OP(gi->droplets_paint_prog, 0,
 	    glDeleteProgram(gi->droplets_paint_prog));
+	DESTROY_OP(gi->tails_prog, 0, glDeleteProgram(gi->tails_prog));
 
 	for (int i = 0; i < 2; i++) {
 		if (gi->ws_temp_tex[0] != 0) {
@@ -1472,12 +1582,20 @@ glass_info_fini(glass_info_t *gi)
 
 	DESTROY_OP(gi->droplets_ssbo, 0,
 	    glDeleteBuffers(1, &gi->droplets_ssbo));
+
 	DESTROY_OP(gi->vertices_vao, 0,
 	    glDeleteVertexArrays(1, &gi->vertices_vao));
 	DESTROY_OP(gi->vertices_vtx_buf, 0,
 	    glDeleteBuffers(1, &gi->vertices_vtx_buf));
 	DESTROY_OP(gi->vertices_idx_buf, 0,
 	    glDeleteBuffers(1, &gi->vertices_idx_buf));
+
+	DESTROY_OP(gi->tails_vao, 0,
+	    glDeleteVertexArrays(1, &gi->tails_vao));
+	DESTROY_OP(gi->tails_vtx_buf, 0,
+	    glDeleteBuffers(1, &gi->tails_vtx_buf));
+	DESTROY_OP(gi->tails_idx_buf, 0,
+	    glDeleteBuffers(1, &gi->tails_idx_buf));
 }
 
 static bool_t
@@ -1513,6 +1631,9 @@ glass_info_reload_gl_progs(glass_info_t *gi)
 	const shader_prog_info_t *the_ws_rain_prog_info =
 	    (gi->qual.use_compute ? &ws_rain_comp_prog_info :
 	    &ws_rain_prog_info);
+	const shader_prog_info_t *the_rain_stage2_prog_info =
+	    (gi->qual.use_compute ? &rain_stage2_comp_prog_info :
+	    &rain_stage2_prog_info);
 
 	const shader_spec_const_t sc_stage2_frag[] = {
 	    {B_FALSE, DEPTH_TEX_SZ_CONSTANT_ID, gi->qual.depth_tex_sz},
@@ -1528,7 +1649,7 @@ glass_info_reload_gl_progs(glass_info_t *gi)
 	    NULL, NULL, NULL) &&
 	    reload_gl_prog(&gi->rain_stage1_prog, &rain_stage1_prog_info,
 	    NULL, NULL, NULL) &&
-	    reload_gl_prog(&gi->rain_stage2_prog, &rain_stage2_prog_info,
+	    reload_gl_prog(&gi->rain_stage2_prog, the_rain_stage2_prog_info,
 	    NULL, sc_stage2_frag, NULL) &&
 	    reload_gl_prog(&gi->ws_rain_prog, the_ws_rain_prog_info,
 	    NULL, NULL, NULL) &&
@@ -1537,7 +1658,9 @@ glass_info_reload_gl_progs(glass_info_t *gi)
 	    (!gi->qual.use_compute || reload_gl_prog(&gi->droplets_prog,
 	    &droplets_prog_info, NULL, NULL, sc_droplets_comp)) &&
 	    (!gi->qual.use_compute || reload_gl_prog(&gi->droplets_paint_prog,
-	    &droplets_paint_prog_info, NULL, NULL, NULL)));
+	    &droplets_paint_prog_info, NULL, NULL, NULL)) &&
+	    (!gi->qual.use_compute || reload_gl_prog(&gi->tails_prog,
+	    &tails_prog_info, NULL, NULL, NULL)));
 }
 
 bool_t

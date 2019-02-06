@@ -27,7 +27,7 @@ mat3_translate(mat3 m, vec2 offset)
 	    0.0, 1.0, 0.0,
 	    offset.x, offset.y, 1.0
 	);
-	return (m * offset_mat);
+	return (offset_mat * m);
 }
 
 mat3
@@ -38,7 +38,7 @@ mat3_scale(mat3 m, vec2 scale)
 	    0.0, scale.y, 0.0,
 	    0.0, 0.0, 1.0
 	);
-	return (m * scale_mat);
+	return (scale_mat * m);
 }
 
 mat3
@@ -51,7 +51,7 @@ mat3_rotate(mat3 m, float theta)
 	    -sin_theta, cos_theta, 0.0,
 	    0.0, 0.0, 1.0
 	);
-	return (m * rotate_mat);
+	return (rotate_mat * m);
 }
 
 #endif	/* _AFFINE_GLSL_ */

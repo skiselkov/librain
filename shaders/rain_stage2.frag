@@ -50,7 +50,7 @@ read_depth(vec2 pos)
 void
 main()
 {
-	float depth_left, depth_right, depth_up, depth_down, depth_here;
+	float depth_left, depth_right, depth_up, depth_down;
 	float d_lr, d_ud;
 	float temp = texture(temp_tex, gl_FragCoord.xy / NORM_TEX_SZ).r *
 	    temp_scale_fact;
@@ -68,19 +68,14 @@ main()
 	}
 
 #if	COMPUTE_VARIANT
-	depth_here = read_depth(gl_FragCoord.xy);
-	depth_left = (read_depth(gl_FragCoord.xy + vec2(-1.0, 0.0)) * 0.5) +
-	    (read_depth(gl_FragCoord.xy + vec2(-2.0, 0.0)) * 0.25) +
-	    (read_depth(gl_FragCoord.xy + vec2(-3.0, 0.0)) * 0.25);
-	depth_right = (read_depth(gl_FragCoord.xy + vec2(1.0, 0.0)) * 0.5) +
-	    (read_depth(gl_FragCoord.xy + vec2(2.0, 0.0)) * 0.25) +
-	    (read_depth(gl_FragCoord.xy + vec2(3.0, 0.0)) * 0.25);
-	depth_up = (read_depth(gl_FragCoord.xy + vec2(0.0, 1.0)) * 0.5) +
-	    (read_depth(gl_FragCoord.xy + vec2(0.0, 2.0)) * 0.25) +
-	    (read_depth(gl_FragCoord.xy + vec2(0.0, 3.0)) * 0.25);
-	depth_down = (read_depth(gl_FragCoord.xy + vec2(0.0, -1.0)) * 0.5) +
-	    (read_depth(gl_FragCoord.xy + vec2(0.0, -2.0)) * 0.25) +
-	    (read_depth(gl_FragCoord.xy + vec2(0.0, -3.0)) * 0.25);
+	depth_left = (read_depth(gl_FragCoord.xy + vec2(-1.0, 0.0)) * 0.67) +
+	    (read_depth(gl_FragCoord.xy + vec2(-2.0, 0.0)) * 0.33);
+	depth_right = (read_depth(gl_FragCoord.xy + vec2(1.0, 0.0)) * 0.67) +
+	    (read_depth(gl_FragCoord.xy + vec2(2.0, 0.0)) * 0.33);
+	depth_up = (read_depth(gl_FragCoord.xy + vec2(0.0, 1.0)) * 0.67) +
+	    (read_depth(gl_FragCoord.xy + vec2(0.0, 2.0)) * 0.33);
+	depth_down = (read_depth(gl_FragCoord.xy + vec2(0.0, -1.0)) * 0.67) +
+	    (read_depth(gl_FragCoord.xy + vec2(0.0, -2.0)) * 0.33);
 #else	/* !COMPUTE_VARIANT */
 	vec2 thrust_v = (gl_FragCoord.xy - tp);
 	thrust_v /= length(thrust_v);

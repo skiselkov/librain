@@ -29,12 +29,15 @@ SPVS = \
     ice_blur.frag.spv \
     rain_stage1.frag.spv \
     rain_stage2.frag.spv \
+    rain_stage2_comp.frag.spv \
     ws_rain.frag.spv \
     ws_rain_comp.frag.spv \
     ws_smudge.frag.spv \
     droplets.vert.spv \
     droplets.frag.spv \
-    droplets.comp.spv
+    droplets.comp.spv \
+    tails.vert.spv \
+    tails.frag.spv
 
 #    rain_stage2_1024_1024.frag.spv \
 #    rain_stage2_1024_2048.frag.spv \

@@ -26,6 +26,10 @@
 
 #define	FILTER_IN(old_val, new_val, d_t, lag) \
 	old_val += ((new_val) - (old_val)) * ((d_t) / (lag))
+#define	LINSTEP(edge0, edge1, x) \
+	clamp((float(x) - float(edge0)) / (float(edge1) - float(edge0)), \
+	    0.0, 1.0)
+
 
 float
 fx_lin(float x, float x1, float y1, float x2, float y2)
@@ -42,6 +46,28 @@ dir2hdg(vec2 v)
 		return (radians(180) - asin(v.x / length(v)));
 	else
 		return (radians(-180) - asin(v.x / length(v)));
+}
+
+float
+rel_hdg(float hdg1, float hdg2)
+{
+	if (hdg1 > hdg2) {
+		if (hdg1 > hdg2 + 180)
+			return (radians(360) - hdg1 + hdg2);
+		else
+			return (-(hdg1 - hdg2));
+	} else {
+		if (hdg2 > hdg1 + radians(180))
+			return (-(radians(360) - hdg2 + hdg1));
+		else
+			return (hdg2 - hdg1);
+	}
+}
+
+float
+normalize_rot(float angle)
+{
+	return (mod(angle, radians(180)));
 }
 
 float

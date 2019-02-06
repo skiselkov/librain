@@ -82,15 +82,20 @@ main()
 #if	COMPUTE_VARIANT
 	vec2 screenshot_sz = textureSize(screenshot_tex, 0);
 	const vec2 displace_lim = screenshot_sz.yx / 10.0;
-	float darkening_fact = length(displace_lim) * 10.0;
+	float darkening_fact = max(displace_lim.x, displace_lim.y);
 #endif
 	float depth = texture(depth_tex, tex_coord).r;
-	vec2 displace = (texture(norm_tex, tex_coord).xy - 0.5) *
-	    displace_lim * (depth / max_depth);
+	vec2 norm_v = (2.0 * texture(norm_tex, tex_coord).xy) - 1.0;
+	vec2 displace = norm_v * displace_lim;// * (depth / max_depth);
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
-	float darkening_fract = length(displace) / darkening_fact;
+	float displace_fract = length(displace) / darkening_fact;
 
-	bg_pixel *= (1.0 - POW2(darkening_fract));
+#if	RAIN_DEBUG
+	color_out = vec4(depth, 0.0, 0.0, 1.0);
+	return;
+#endif
+
+	bg_pixel *= (1.0 - POW2(displace_fract / 2.0));
 
 	color_out = vec4(bg_pixel.rgb, 1.0);
 
@@ -102,8 +107,4 @@ main()
 			}
 		}
 	}
-
-#if	RAIN_DEBUG
-	color_out = vec4(depth, 0.0, 0.0, 1.0);
-#endif
 }

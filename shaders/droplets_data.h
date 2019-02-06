@@ -22,7 +22,8 @@
 #include "glsl_hdrs.h"
 
 #define	DROPLET_WG_SIZE		1024
-#define	NUM_DROPLET_HISTORY	8
+#define	NUM_DROPLET_HISTORY	32
+#define	NUM_DROPLET_TAIL_SEGS	(NUM_DROPLET_HISTORY - 1)
 #define	NUM_RANDOM_SEEDS	8
 #define	MAX_DROPLET_SZ		120
 #define	MIN_DROPLET_SZ_MIN	20.0
@@ -33,20 +34,30 @@
 
 #define	DROPLETS_SSBO_BINDING		0
 #define	VERTICES_SSBO_BINDING		1
+#define	TAILS_SSBO_BINDING		2
+
+#define	STREAMER_WIDTH			20
 
 STRUCT(droplet_data_t, {
-	vec2	pos[NUM_DROPLET_HISTORY];	/* 8 x 64 bits */
+	vec2	pos[NUM_DROPLET_HISTORY];	/* 32 x 64 bits */
 	/* 128-bit boundary */
 	vec2	velocity;	/* 64-bit */
 	float	quant;		/* 32-bit */
 	float	regen_t;	/* 32-bit */
 	/* 128-bit boundary */
+	vec2	tail_v;		/* 64-bit */
 	float	bump_t;		/* 32-bit */
 	float	F_d_s_len;	/* 32-bit */
+	/* 128-bit boundary */
 	float	bump_sz;	/* 32-bit */
-	float	tail_angle;	/* 32-bit, Kelvin */
+	float	bump_rate;	/* 32-bit */
+	float	tail_angle;	/* 32-bit, radians */
+	float	spd;		/* 32-bit */
 	/* 128-bit boundary */
 	bool	streamer;	/* 32-bit */
+	float	tail_upd_t;	/* 32-bit */
+	float	pad[2];		/* 3x 32-bit */
+	/* 128-bit boundary */
 });
 
 #define	VTX_PER_DROPLET		10
@@ -59,6 +70,13 @@ STRUCT(droplet_vtx_t, {
 	float	radius;	/* 32-bit */
 	float	size;	/* 32-bit */
 	float	pad[2];	/* 96-bit */
+	/* 128-bit boundary */
+});
+
+STRUCT(droplet_tail_t, {
+	vec2	pos;	/* 64-bit */
+	float	quant;	/* 32-bit */
+	float	pad;	/* 32-bit */
 	/* 128-bit boundary */
 });
 
