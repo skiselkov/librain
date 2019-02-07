@@ -44,9 +44,8 @@ static void setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
 static void setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data) UNUSED_ATTR;
 static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex) UNUSED_ATTR;
-static bool_t reload_gl_prog(GLint *prog, const shader_prog_info_t *info,
-    const shader_spec_const_t *sc_vert, const shader_spec_const_t *sc_frag,
-    const shader_spec_const_t *sc_comp) UNUSED_ATTR;
+static bool_t reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
+    UNUSED_ATTR;
 static char	*shaderpath	UNUSED_ATTR;
 
 static char	*shaderpath = NULL;
@@ -91,33 +90,12 @@ setup_color_fbo_for_tex(GLuint fbo, GLuint tex)
 }
 
 static bool_t
-reload_gl_prog(GLint *prog, const shader_prog_info_t *in_info,
-    const shader_spec_const_t *sc_vert, const shader_spec_const_t *sc_frag,
-    const shader_spec_const_t *sc_comp)
+reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
 {
 	GLuint new_prog;
-	shader_info_t vert, frag, comp;
-	shader_prog_info_t info;
-
-	memcpy(&info, in_info, sizeof (info));
-	if (info.vert != NULL) {
-		memcpy(&vert, info.vert, sizeof (vert));
-		vert.spec_const = sc_vert;
-		info.vert = &vert;
-	}
-	if (info.frag != NULL) {
-		memcpy(&frag, info.frag, sizeof (frag));
-		frag.spec_const = sc_frag;
-		info.frag = &frag;
-	}
-	if (info.comp != NULL) {
-		memcpy(&comp, info.comp, sizeof (comp));
-		comp.spec_const = sc_comp;
-		info.comp = &comp;
-	}
 
 	ASSERT(shaderpath != NULL);
-	new_prog = shader_prog_from_info(shaderpath, &info);
+	new_prog = shader_prog_from_info(shaderpath, info);
 	if (new_prog == 0)
 		return (B_FALSE);
 	if (*prog != 0)

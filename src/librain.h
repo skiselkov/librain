@@ -97,8 +97,6 @@ extern "C" {
 
 typedef struct {
 	bool_t		use_compute;
-	unsigned	depth_tex_sz;
-	unsigned	norm_tex_sz;
 	unsigned	num_droplets;
 } librain_qual_t;
 
@@ -211,6 +209,10 @@ typedef struct {
  *                          [0.5,-2]
  */
 typedef struct {
+	/*
+	 * Optional name for debugging purposes.
+	 */
+	const char	*name;
 	/*
 	 * Each glass surface has an associated OBJ object which it is
 	 * projected onto. Please note that librain doesn't render

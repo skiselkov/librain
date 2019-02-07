@@ -54,4 +54,15 @@ mat3_rotate(mat3 m, float theta)
 	return (rotate_mat * m);
 }
 
+mat3
+mat3_rotate_dir(mat3 m, vec2 dir)
+{
+	mat3 rotate_mat = mat3(
+	    dir.y, -dir.x, 0.0,
+	    dir.x, dir.y, 0.0,
+	    0.0, 0.0, 1.0
+	);
+	return (rotate_mat * m);
+}
+
 #endif	/* _AFFINE_GLSL_ */

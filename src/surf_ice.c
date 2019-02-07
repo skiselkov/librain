@@ -298,21 +298,17 @@ surf_ice_fini(surf_ice_t *surf)
 bool_t
 surf_ice_reload_gl_progs(void)
 {
-	return (reload_gl_prog(&norm_prog, &norm_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&render_prog, &render_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&blur_prog, &blur_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&point_depth_add_prog,
-	    &point_depth_add_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&point_depth_rem_prog,
-	    &point_depth_rem_prog_info, NULL, NULL, NULL) &&
+	return (reload_gl_prog(&norm_prog, &norm_prog_info) &&
+	    reload_gl_prog(&render_prog, &render_prog_info) &&
+	    reload_gl_prog(&blur_prog, &blur_prog_info) &&
+	    reload_gl_prog(&point_depth_add_prog, &point_depth_add_prog_info) &&
+	    reload_gl_prog(&point_depth_rem_prog, &point_depth_rem_prog_info) &&
 	    reload_gl_prog(&point_depth_deice_prog,
-	    &point_depth_deice_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&line_depth_add_prog,
-	    &line_depth_add_prog_info, NULL, NULL, NULL) &&
-	    reload_gl_prog(&line_depth_rem_prog,
-	    &line_depth_rem_prog_info, NULL, NULL, NULL) &&
+	    &point_depth_deice_prog_info) &&
+	    reload_gl_prog(&line_depth_add_prog, &line_depth_add_prog_info) &&
+	    reload_gl_prog(&line_depth_rem_prog, &line_depth_rem_prog_info) &&
 	    reload_gl_prog(&line_depth_deice_prog,
-	    &line_depth_deice_prog_info, NULL, NULL, NULL));
+	    &line_depth_deice_prog_info));
 }
 
 static void
@@ -419,6 +415,8 @@ render_blur(surf_ice_t *surf, double blur_radius)
 	GLint old_fbo;
 	int vp[4];
 
+	glutils_debug_push(0, "ice_render_blur(%s)", surf->name);
+
 	/* motion blur is rarely used, so lazy alloc the objects */
 	if (priv->blur_tex[0] == 0) {
 		glGenTextures(2, priv->blur_tex);
@@ -446,6 +444,8 @@ render_blur(surf_ice_t *surf, double blur_radius)
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
+
+	glutils_debug_pop();
 }
 
 static void
@@ -599,10 +599,14 @@ surf_ice_render(surf_ice_t *surf, double ice, bool_t deice_on,
 		return;
 	}
 
+	glutils_debug_push(0, "surf_ice_render(%s)", surf->name);
+
 	act_ice_state_resync(surf, ice);
 
 	if (visible)
 		render_obj(surf, blur_radius);
+
+	glutils_debug_pop();
 }
 
 void
@@ -614,6 +618,8 @@ surf_ice_clear(surf_ice_t *surf)
 
 	ASSERT(priv != NULL);
 	priv->prev_ice = 0;
+
+	glutils_debug_push(0, "surf_ice_clear(%s)", surf->name);
 
 	memset(depth_buf, 0, sizeof (depth_buf));
 	memset(norm_buf, 0, sizeof (norm_buf));
@@ -635,6 +641,8 @@ surf_ice_clear(surf_ice_t *surf)
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, surf->w, surf->h, 0,
 		    GL_RG, GL_UNSIGNED_BYTE, norm_buf);
 	}
+
+	glutils_debug_pop();
 }
 
 bool_t

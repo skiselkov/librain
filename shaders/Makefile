@@ -39,13 +39,6 @@ SPVS = \
     tails.vert.spv \
     tails.frag.spv
 
-#    rain_stage2_1024_1024.frag.spv \
-#    rain_stage2_1024_2048.frag.spv \
-#    rain_stage2_2048_1024.frag.spv \
-#    rain_stage2_2048_2048.frag.spv \
-#    droplets_1024.comp.spv \
-#    droplets_2048.comp.spv
-
 OUTDIR=bin
 SPIRVX_TGT_VERSION=120
 SPIRVX_420_VERSION=420

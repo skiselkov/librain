@@ -48,6 +48,7 @@ typedef enum {
 typedef struct surf_ice_impl_s surf_ice_impl_t;
 
 typedef struct {
+	const char		*name;	/* optional */
 	unsigned		w;	/* pixels */
 	unsigned		h;	/* pixels */
 	surf_ice_src_type_t	src;

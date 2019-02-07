@@ -22,7 +22,7 @@
 #include "glsl_hdrs.h"
 
 #define	DROPLET_WG_SIZE		1024
-#define	NUM_DROPLET_HISTORY	32
+#define	NUM_DROPLET_HISTORY	48
 #define	NUM_DROPLET_TAIL_SEGS	(NUM_DROPLET_HISTORY - 1)
 #define	NUM_RANDOM_SEEDS	8
 #define	MAX_DROPLET_SZ		120
@@ -51,12 +51,13 @@ STRUCT(droplet_data_t, {
 	/* 128-bit boundary */
 	float	bump_sz;	/* 32-bit */
 	float	bump_rate;	/* 32-bit */
+	float	bump_rate_upd_t;/* 32-bit */
 	float	tail_angle;	/* 32-bit, radians */
-	float	spd;		/* 32-bit */
 	/* 128-bit boundary */
+	float	spd;		/* 32-bit */
 	bool	streamer;	/* 32-bit */
 	float	tail_upd_t;	/* 32-bit */
-	float	pad[2];		/* 3x 32-bit */
+	float	pad;		/* 32-bit */
 	/* 128-bit boundary */
 });
 

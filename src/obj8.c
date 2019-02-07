@@ -90,6 +90,9 @@ typedef struct obj8_cmd_s {
 struct obj8_s {
 	char		*filename;
 
+	GLuint		last_prog;
+	GLint		pvm_loc;
+	GLuint		vao;
 	void		*vtx_table;
 	GLuint		vtx_buf;
 	unsigned	vtx_cap;
@@ -631,6 +634,12 @@ upload_data(obj8_t *obj)
 		/* Make sure outside GL errors don't confuse us */
 		(void) glGetError();
 
+		if (GLEW_VERSION_3_0) {
+			glGenVertexArrays(1, &obj->vao);
+			VERIFY(obj->vao != 0);
+			glBindVertexArray(obj->vao);
+		}
+
 		glGenBuffers(1, &obj->vtx_buf);
 		glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 		glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap *
@@ -650,6 +659,9 @@ upload_data(obj8_t *obj)
 		    obj->filename, 0, obj->idx_cap * sizeof (GLuint)));
 		free(obj->idx_table);
 		obj->idx_table = NULL;
+
+		if (obj->vao != 0)
+			glBindVertexArray(0);
 	}
 	return (!obj->load_error);
 }
@@ -721,6 +733,8 @@ obj8_free(obj8_t *obj)
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
 		    obj->idx_cap * sizeof (GLuint)));
 	}
+	if (obj->vao != 0)
+		glDeleteVertexArrays(1, &obj->vao);
 	free(obj->idx_table);
 	free(obj->filename);
 
@@ -775,21 +789,9 @@ cmd_dr_read(obj8_cmd_t *cmd)
 }
 
 static void
-geom_draw(const obj8_geom_t *geom, GLuint prog, const mat4 pvm)
+geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
-	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"), 1, GL_FALSE,
-	    (void *)pvm);
-
-	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_pos"),
-	    3, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
-	    (void *)(offsetof(obj8_vtx_t, pos)));
-	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_norm"),
-	    3, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
-	    (void *)(offsetof(obj8_vtx_t, norm)));
-	glVertexAttribPointer(glGetAttribLocation(prog, "vtx_tex0"),
-	    2, GL_FLOAT, GL_FALSE, sizeof (obj8_vtx_t),
-	    (void *)(offsetof(obj8_vtx_t, tex)));
-
+	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -845,7 +847,7 @@ rotation_get_angle(obj8_cmd_t *cmd)
 
 void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
-    GLuint prog, const mat4 pvm_in)
+    const mat4 pvm_in)
 {
 	bool_t do_show = B_TRUE;
 	mat4 pvm;
@@ -860,7 +862,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_GROUP:
 			if (!do_show)
 				break;
-			obj8_draw_group_cmd(obj, subcmd, groupname, prog, pvm);
+			obj8_draw_group_cmd(obj, subcmd, groupname, pvm);
 			break;
 		case OBJ8_CMD_TRIS:
 			if (!do_show)
@@ -869,10 +871,10 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
 				if (subcmd->tris.double_sided) {
 					glCullFace(GL_FRONT);
-					geom_draw(&subcmd->tris, prog, pvm);
+					geom_draw(obj, &subcmd->tris, pvm);
 					glCullFace(GL_BACK);
 				}
-				geom_draw(&subcmd->tris, prog, pvm);
+				geom_draw(obj, &subcmd->tris, pvm);
 			}
 			break;
 		case OBJ8_CMD_ANIM_HIDE_SHOW: {
@@ -929,37 +931,98 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	}
 }
 
+static void
+setup_arrays(obj8_t *obj, GLuint prog)
+{
+	GLint pos_loc_new, norm_loc_new, tex0_loc_new;
+	GLint pos_loc_old = -1, norm_loc_old = -1, tex0_loc_old = -1;
+
+	/*
+	 * If we're using our private VAO and the program is the same as
+	 * last time, our array enablings will still be valid.
+	 */
+	if (obj->vao != 0 && obj->last_prog == prog)
+		return;
+
+	pos_loc_new = glGetAttribLocation(prog, "vtx_pos");
+	norm_loc_new = glGetAttribLocation(prog, "vtx_norm");
+	tex0_loc_new = glGetAttribLocation(prog, "vtx_tex0");
+
+	if (obj->last_prog != prog) {
+		/* Disable unused vertex attribute arrays. */
+		pos_loc_old = glGetAttribLocation(obj->last_prog, "vtx_pos");
+		if (pos_loc_old != pos_loc_new)
+			glDisableVertexAttribArray(pos_loc_old);
+		norm_loc_old = glGetAttribLocation(obj->last_prog, "vtx_norm");
+		if (norm_loc_old != norm_loc_new)
+			glDisableVertexAttribArray(norm_loc_old);
+		tex0_loc_old = glGetAttribLocation(obj->last_prog, "vtx_tex0");
+		if (tex0_loc_old != tex0_loc_new)
+			glDisableVertexAttribArray(tex0_loc_old);
+	}
+
+	obj->last_prog = prog;
+	obj->pvm_loc = glGetUniformLocation(prog, "pvm");
+	VERIFY(obj->pvm_loc != -1);
+
+	if (pos_loc_new != pos_loc_old) {
+		glEnableVertexAttribArray(pos_loc_new);
+		glVertexAttribPointer(pos_loc_new, 3, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
+	}
+	if (norm_loc_new != norm_loc_old) {
+		glEnableVertexAttribArray(norm_loc_new);
+		glVertexAttribPointer(norm_loc_new, 3, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, norm)));
+	}
+	if (tex0_loc_new != tex0_loc_old) {
+		glEnableVertexAttribArray(tex0_loc_new);
+		glVertexAttribPointer(tex0_loc_new, 2, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, tex)));
+	}
+}
+
 void
 obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 {
 	mat4 pvm;
-	GLint pos_loc, norm_loc, tex0_loc;
 
 	ASSERT(prog != 0);
 
 	if (!upload_data(obj))
 		return;
 
-	pos_loc = glGetAttribLocation(prog, "vtx_pos");
-	norm_loc = glGetAttribLocation(prog, "vtx_norm");
-	tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
+	glutils_debug_push(0, "obj8_draw_group(%s)", basename(obj->filename));
 
-	glEnableVertexAttribArray(pos_loc);
-	glEnableVertexAttribArray(norm_loc);
-	glEnableVertexAttribArray(tex0_loc);
-
+	if (obj->vao != 0)
+		glBindVertexArray(obj->vao);
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
+	setup_arrays(obj, prog);
+
 	glm_mat4_mul(pvm_in, obj->matrix, pvm);
-	obj8_draw_group_cmd(obj, obj->top, groupname, prog, pvm);
+	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	if (obj->vao != 0) {
+		glBindVertexArray(0);
+	} else {
+		GLint pos_loc = glGetAttribLocation(prog, "vtx_pos");
+		GLint norm_loc = glGetAttribLocation(prog, "vtx_norm");
+		GLint tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
 
-	glDisableVertexAttribArray(pos_loc);
-	glDisableVertexAttribArray(norm_loc);
-	glDisableVertexAttribArray(tex0_loc);
+		if (pos_loc != -1)
+			glDisableVertexAttribArray(pos_loc);
+		if (norm_loc != -1)
+			glDisableVertexAttribArray(norm_loc);
+		if (tex0_loc != -1)
+			glDisableVertexAttribArray(tex0_loc);
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	}
+
+	glutils_debug_pop();
 }
 
 /*
