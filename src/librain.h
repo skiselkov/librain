@@ -423,11 +423,25 @@ typedef struct {
 	double		wiper_radius_inner[MAX_WIPERS];
 } librain_glass_t;
 
+typedef struct {
+	/*
+	 * Switch between xp6+ or xp10+ rain dataref
+	 * 0 to use sim/weather/precipitation_on_aircraft_ratio
+	 * 1 to use sim/weather/rain_percent
+	 * 
+	 * New datarefs could be targeted in future releases
+	 */
+	int rain_dataref_index;
+} librain_opt_t;
+
 /*
  * Initialization & teardown functions. See librain.c for more information.
  */
 LIBRAIN_EXPORT bool_t librain_init(const char *the_shaderpath,
     const librain_glass_t *glass, size_t num);
+LIBRAIN_EXPORT bool_t librain_init_opt(const char *the_shaderpath,
+    const librain_glass_t *glass, size_t num,
+	const librain_opt_t options);
 LIBRAIN_EXPORT void librain_fini(void);
 
 /*

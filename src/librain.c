@@ -1186,6 +1186,20 @@ bool_t
 librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num)
 {
+	librain_opt_t opts = {
+		.rain_dataref_index = 0
+	};
+	return librain_init_opt(the_shaderpath, glass, num, opts);
+}
+
+/*
+ * Initializes librain for operation specifying the options. This MUST
+ * be called at plugin load time.
+ */
+bool_t
+librain_init_opt(const char *the_shaderpath, const librain_glass_t *glass,
+    size_t num, const librain_opt_t opt)
+{
 	ASSERT(the_shaderpath != NULL);
 	ASSERT(glass != NULL);
 	ASSERT(num != 0);
@@ -1206,8 +1220,13 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix");
 	fdr_find(&drs.acf_matrix, "sim/graphics/view/acf_matrix");
 	fdr_find(&drs.viewport, "sim/graphics/view/viewport");
-	fdr_find(&drs.precip_rat,
+	if (opt.rain_dataref_index == 0) {
+		fdr_find(&drs.precip_rat,
 	    "sim/weather/precipitation_on_aircraft_ratio");
+	}
+	else {
+		fdr_find(&drs.precip_rat, "sim/weather/rain_percent");
+	}
 	fdr_find(&drs.prop_thrust, "sim/flightmodel/engine/POINT_thrust");
 	fdr_find(&drs.hdg, "sim/flightmodel/position/psi");
 	fdr_find(&drs.beta, "sim/flightmodel/position/beta");
