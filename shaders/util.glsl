@@ -30,7 +30,6 @@
 	clamp((float(x) - float(edge0)) / (float(edge1) - float(edge0)), \
 	    0.0, 1.0)
 
-
 float
 fx_lin(float x, float x1, float y1, float x2, float y2)
 {

@@ -307,8 +307,13 @@ droplet_regen(void)
 
 	DROPLET.streamer = ((gl_GlobalInvocationID.x & 15) == 0);
 
-	for (int i = 0; i < NUM_DROPLET_HISTORY; i++)
-		TAIL(i).pos = vec2(0.0);
+	for (int i = 0; i < NUM_DROPLET_HISTORY; i++) {
+		/*
+		 * It's important we place the points outside of clip-space.
+		 * This allows for early elimination of non-streamer tails.
+		 */
+		TAIL(i).pos = vec2(-1.0);
+	}
 }
 
 void

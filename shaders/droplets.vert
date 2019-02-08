@@ -21,19 +21,21 @@
 
 #include "droplets_data.h"
 
-layout(location = 0) in vec2		pos;
-layout(location = 1) in vec2		ctr;
-layout(location = 2) in float		radius;
-layout(location = 3) in float		size;
+layout(location = 0) in vec2	pos;
+layout(location = 1) in vec2	ctr;
+layout(location = 2) in float	radius;
+layout(location = 3) in float	size;
 
-layout(location = 0) out flat float	droplet_size;
-layout(location = 1) out smooth float	point_distance;
+layout(location = 0) out float	dist_ratio;
 
 void
 main()
 {
-	droplet_size = size;
-	point_distance = radius;
+	/*
+	 * Pre-calculate the distance ratio for the frag shader here.
+	 * This way we can use the GPU's interpolator.
+	 */
+	dist_ratio = 1.0 - radius / size;
 	/*
 	 * Droplet physics coordinates are [0,0] at the lower left corner
 	 * and [1,1] at the upper right. Clip-space coordinates are [0,0]

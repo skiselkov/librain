@@ -91,6 +91,7 @@ static GLint	rain_stage2_comp_prog = 0;
 static GLint	ws_rain_prog = 0;
 static GLint	ws_rain_comp_prog = 0;
 static GLint	ws_smudge_prog = 0;
+static GLint	ws_smudge_comp_prog = 0;
 static GLint	droplets_prog = 0;
 static GLint	droplets_paint_prog = 0;
 static GLint	tails_prog = 0;
@@ -106,7 +107,10 @@ static shader_info_t rain_stage2_comp_frag_info =
 static shader_info_t ws_rain_frag_info = { .filename = "ws_rain.frag.spv" };
 static shader_info_t ws_rain_comp_frag_info =
     { .filename = "ws_rain_comp.frag.spv" };
-static shader_info_t ws_smudge_frag_info = { .filename = "ws_smudge.frag.spv" };
+static shader_info_t ws_smudge_frag_info =
+    { .filename = "ws_smudge.frag.spv" };
+static shader_info_t ws_smudge_comp_frag_info =
+    { .filename = "ws_smudge_comp.frag.spv" };
 static shader_info_t nil_frag_info = { .filename = "nil.frag.spv" };
 static shader_info_t droplets_comp_info = { .filename = "droplets.comp.spv" };
 static shader_info_t droplets_vert_info = { .filename = "droplets.vert.spv" };
@@ -154,6 +158,12 @@ static shader_prog_info_t ws_smudge_prog_info = {
     .progname = "ws_smudge",
     .vert = &generic_vert_info,
     .frag = &ws_smudge_frag_info,
+};
+
+static shader_prog_info_t ws_smudge_comp_prog_info = {
+    .progname = "ws_smudge_comp",
+    .vert = &generic_vert_info,
+    .frag = &ws_smudge_comp_frag_info,
 };
 
 static shader_prog_info_t z_depth_prog_info = {
@@ -894,6 +904,8 @@ draw_ws_effects(const glass_info_t *gi)
 
 	glutils_disable_all_client_state();
 
+	glutils_debug_push(0, "draw_ws_effects(%s)", GLASS_NAME(gi));
+
 	/*
 	 * Pre-stage: render the actual image to a side buffer, but without
 	 * any smudging.
@@ -938,11 +950,16 @@ draw_ws_effects(const glass_info_t *gi)
 
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
+			glutils_debug_push(0, "ws_rain(%s)",
+			    gi->glass->group_ids[i]);
 			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
 			    prog, glob_pvm);
+			glutils_debug_pop();
 		}
 	} else {
+		glutils_debug_push(0, "ws_rain(NULL)");
 		obj8_draw_group(gi->glass->obj, NULL, prog, glob_pvm);
+		glutils_debug_pop();
 	}
 
 	/*
@@ -951,36 +968,46 @@ draw_ws_effects(const glass_info_t *gi)
 	 */
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
-	glUseProgram(ws_smudge_prog);
+	prog = (gi->qual.use_compute ? ws_smudge_comp_prog : ws_smudge_prog);
+	glUseProgram(prog);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
-	glUniform1i(glGetUniformLocation(ws_smudge_prog, "screenshot_tex"), 0);
+	glUniform1i(glGetUniformLocation(prog, "screenshot_tex"), 0);
+	glUniform2f(glGetUniformLocation(prog, "screenshot_tex_sz"),
+	    new_vp[2], new_vp[3]);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_smudge_tex);
-	glUniform1i(glGetUniformLocation(ws_smudge_prog, "ws_tex"), 1);
+	glUniform1i(glGetUniformLocation(prog, "ws_tex"), 1);
 
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, gi->water_depth_tex[!gi->water_depth_cur]);
-	glUniform1i(glGetUniformLocation(ws_smudge_prog, "depth_tex"), 2);
+	glUniform1i(glGetUniformLocation(prog, "depth_tex"), 2);
 
-	glUniform4f(glGetUniformLocation(ws_smudge_prog, "vp"),
+	glUniform4f(glGetUniformLocation(prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
-			obj8_draw_group(gi->glass->obj, gi->glass->group_ids[i],
-			    ws_smudge_prog, glob_pvm);
+			glutils_debug_push(0, "ws_smudge(%s)",
+			    gi->glass->group_ids[i]);
+			obj8_draw_group(gi->glass->obj,
+			    gi->glass->group_ids[i], prog, glob_pvm);
+			glutils_debug_pop();
 		}
 	} else {
-		obj8_draw_group(gi->glass->obj, NULL, ws_smudge_prog, glob_pvm);
+		glutils_debug_push(0, "ws_smudge(NULL)");
+		obj8_draw_group(gi->glass->obj, NULL, prog, glob_pvm);
+		glutils_debug_pop();
 	}
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
+
+	glutils_debug_pop();
 }
 
 static void
@@ -1642,6 +1669,8 @@ water_effects_fini(void)
 	DESTROY_OP(ws_rain_prog, 0, glDeleteProgram(ws_rain_prog));
 	DESTROY_OP(ws_rain_comp_prog, 0, glDeleteProgram(ws_rain_comp_prog));
 	DESTROY_OP(ws_smudge_prog, 0, glDeleteProgram(ws_smudge_prog));
+	DESTROY_OP(ws_smudge_comp_prog, 0,
+	    glDeleteProgram(ws_smudge_comp_prog));
 	DESTROY_OP(droplets_prog, 0, glDeleteProgram(droplets_prog));
 	DESTROY_OP(droplets_paint_prog, 0,
 	    glDeleteProgram(droplets_paint_prog));
@@ -1675,7 +1704,8 @@ librain_reload_gl_progs(void)
 	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) &&
 	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) &&
 	    reload_gl_prog(&ws_rain_prog, &ws_rain_prog_info) &&
-	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info));
+	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) &&
+	    reload_gl_prog(&ws_smudge_comp_prog, &ws_smudge_comp_prog_info));
 }
 
 bool_t

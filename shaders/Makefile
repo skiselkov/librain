@@ -33,6 +33,7 @@ SPVS = \
     ws_rain.frag.spv \
     ws_rain_comp.frag.spv \
     ws_smudge.frag.spv \
+    ws_smudge_comp.frag.spv \
     droplets.vert.spv \
     droplets.frag.spv \
     droplets.comp.spv \

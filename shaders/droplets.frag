@@ -21,14 +21,12 @@
 
 #include "consts.glsl"
 
-layout(location = 0) in flat float	droplet_size;
-layout(location = 1) in smooth float	point_distance;
+layout(location = 0) in float	dist_ratio;
 
-layout(location = 0) out vec4		color_out;
+layout(location = 0) out vec4	color_out;
 
 void
 main()
 {
-	float dist_ratio = 1.0 - point_distance / droplet_size;
 	color_out = vec4(max_depth, 0, 0, dist_ratio);
 }

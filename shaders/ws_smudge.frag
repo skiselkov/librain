@@ -23,36 +23,32 @@
 
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	screenshot_tex;
-layout(location = 12) uniform sampler2D	ws_tex;
-layout(location = 13) uniform vec4	vp;
+layout(location = 12) uniform vec2	screenshot_tex_sz;
+layout(location = 13) uniform sampler2D	ws_tex;
+layout(location = 14) uniform vec4	vp;
 
 layout(location = 0) in vec3		tex_norm;
 layout(location = 1) in vec2		tex_coord;
 
 layout(location = 0) out vec4		color_out;
 
-const float	kernel[25] = float[25](
-	0.01, 0.02, 0.04, 0.02, 0.01,
-	0.02, 0.04, 0.08, 0.04, 0.02,
-	0.04, 0.08, 0.16, 0.08, 0.04,
-	0.02, 0.04, 0.08, 0.04, 0.02,
-	0.01, 0.02, 0.04, 0.02, 0.01
-);
+#define	KERNEL	float[25]( \
+	0.01, 0.02, 0.04, 0.02, 0.01, \
+	0.02, 0.04, 0.08, 0.04, 0.02, \
+	0.04, 0.08, 0.16, 0.08, 0.04, \
+	0.02, 0.04, 0.08, 0.04, 0.02, \
+	0.01, 0.02, 0.04, 0.02, 0.01 \
+)
 
 vec4
 get_pixel(vec2 pos)
 {
 	vec4 pixel;
-	vec2 sz = textureSize(screenshot_tex, 0);
 
-	pos = pos / sz;
-	pos = clamp(pos, vec2(0), vec2(vp.zw / sz) - 0.001);
+	pos = pos / screenshot_tex_sz;
+	pos = clamp(pos, vec2(0), vec2(vp.zw / screenshot_tex_sz) - 0.001);
 
-	pixel = texture(ws_tex, pos);
-	if (pixel.a == 1.0)
-		return (pixel);
-	else
-		return (texture(screenshot_tex, pos));
+	return (texture(ws_tex, pos));
 }
 
 void
@@ -61,20 +57,40 @@ main()
 	vec4 depth_val = texture(depth_tex, tex_coord);
 	float depth = depth_val.r;
 	float depth_rat = depth / max_depth;
-	float depth_rat_fact = 1 * pow(depth_rat, 1.2);
-	vec4 out_pixel = vec4(0, 0, 0, 0);
 
-	for (float x = 0; x < 5; x++) {
-		for (float y = 0; y < 5; y++) {
-			vec4 pixel = get_pixel(gl_FragCoord.xy +
-			    depth_rat_fact * vec2(x - 2, y - 2));
+#define	BLUR_I(x, y, coeff_i) \
+	(get_pixel(gl_FragCoord.xy + depth_rat * vec2(float(x), float(y))) * \
+	    KERNEL[coeff_i])
 
-			if (pixel.a != 0.0)
-				out_pixel += kernel[int(y * 5 + x)] * pixel;
-			else
-				discard;
-		}
-	}
-
-	color_out = vec4(out_pixel.rgb, 1);
+	color_out =
+	    /* row 0 */
+	    BLUR_I(-2, -2, 0) +
+	    BLUR_I(-1, -2, 1) +
+	    BLUR_I(0, -2, 2) +
+	    BLUR_I(1, -2, 3) +
+	    BLUR_I(2, -2, 4) +
+	    /* row 1 */
+	    BLUR_I(-2, -1, 5) +
+	    BLUR_I(-1, -1, 6) +
+	    BLUR_I(0, -1, 7) +
+	    BLUR_I(1, -1, 8) +
+	    BLUR_I(2, -1, 9) +
+	    /* row 2 */
+	    BLUR_I(-2, 0, 10) +
+	    BLUR_I(-1, 0, 11) +
+	    BLUR_I(0, 0, 12) +
+	    BLUR_I(1, 0, 13) +
+	    BLUR_I(2, 0, 14) +
+	    /* row 3 */
+	    BLUR_I(-2, 1, 15) +
+	    BLUR_I(-1, 1, 16) +
+	    BLUR_I(0, 1, 17) +
+	    BLUR_I(1, 1, 18) +
+	    BLUR_I(2, 1, 19) +
+	    /* row 3 */
+	    BLUR_I(-2, 2, 20) +
+	    BLUR_I(-1, 2, 21) +
+	    BLUR_I(0, 2, 22) +
+	    BLUR_I(1, 2, 23) +
+	    BLUR_I(2, 2, 24);
 }
