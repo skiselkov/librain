@@ -15,6 +15,7 @@
 
 SPVS = \
     generic.vert.spv \
+    stencil.vert.spv \
     ws_temp.frag.spv \
     nil.frag.spv \
     ice_depth.vert.spv \

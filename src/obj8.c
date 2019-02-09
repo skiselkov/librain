@@ -791,7 +791,8 @@ cmd_dr_read(obj8_cmd_t *cmd)
 static void
 geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
-	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
+	if (obj->pvm_loc != -1)
+		glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -963,19 +964,19 @@ setup_arrays(obj8_t *obj, GLuint prog)
 
 	obj->last_prog = prog;
 	obj->pvm_loc = glGetUniformLocation(prog, "pvm");
-	VERIFY(obj->pvm_loc != -1);
+	/* pvm_loc can be -1, if the shader doesn't need the matrix */
 
-	if (pos_loc_new != pos_loc_old) {
+	if (pos_loc_new != pos_loc_old && pos_loc_new != -1) {
 		glEnableVertexAttribArray(pos_loc_new);
 		glVertexAttribPointer(pos_loc_new, 3, GL_FLOAT, GL_FALSE,
 		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
 	}
-	if (norm_loc_new != norm_loc_old) {
+	if (norm_loc_new != norm_loc_old && norm_loc_new != -1) {
 		glEnableVertexAttribArray(norm_loc_new);
 		glVertexAttribPointer(norm_loc_new, 3, GL_FLOAT, GL_FALSE,
 		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, norm)));
 	}
-	if (tex0_loc_new != tex0_loc_old) {
+	if (tex0_loc_new != tex0_loc_old && tex0_loc_new != -1) {
 		glEnableVertexAttribArray(tex0_loc_new);
 		glVertexAttribPointer(tex0_loc_new, 2, GL_FLOAT, GL_FALSE,
 		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, tex)));

@@ -25,7 +25,7 @@
 #define	POW4(x)		(POW2(x) * POW2(x))
 
 #define	FILTER_IN(old_val, new_val, d_t, lag) \
-	old_val += ((new_val) - (old_val)) * ((d_t) / (lag))
+	old_val = mix((old_val), (new_val), (d_t) / (lag))
 #define	LINSTEP(edge0, edge1, x) \
 	clamp((float(x) - float(edge0)) / (float(edge1) - float(edge0)), \
 	    0.0, 1.0)

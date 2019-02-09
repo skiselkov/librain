@@ -54,19 +54,21 @@ const float tail_update_rate = 0.05;
 const vec2 droplet_deform_scale = vec2(0.8, 2.0);
 
 #define	VTX_ANGLE(i)	(2.0 * M_PI * LINSTEP(0, FACES_PER_DROPLET, i))
+#define	DROPLET_Y_OFF	0.6
 const vec3 vtx_pos[VTX_PER_DROPLET - 1] = vec3[VTX_PER_DROPLET - 1](
-    vec3(sin(VTX_ANGLE(0)), cos(VTX_ANGLE(0)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(1)), cos(VTX_ANGLE(1)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(2)), cos(VTX_ANGLE(2)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(3)), cos(VTX_ANGLE(3)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(4)), cos(VTX_ANGLE(4)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(5)), cos(VTX_ANGLE(5)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(6)), cos(VTX_ANGLE(6)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(7)), cos(VTX_ANGLE(7)) - 0.75, 1.0),
-    vec3(sin(VTX_ANGLE(8)), cos(VTX_ANGLE(8)) - 0.75, 1.0)
+    vec3(sin(VTX_ANGLE(0)), cos(VTX_ANGLE(0)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(1)) * 1.25, cos(VTX_ANGLE(1)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(2)), cos(VTX_ANGLE(2)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(3)) * 0.75, cos(VTX_ANGLE(3)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(4)) * 0.75, cos(VTX_ANGLE(4)) - DROPLET_Y_OFF * 1.2,
+    1.0),
+    vec3(sin(VTX_ANGLE(5)) * 0.75, cos(VTX_ANGLE(5)) - DROPLET_Y_OFF * 1.2,
+    1.0),
+    vec3(sin(VTX_ANGLE(6)) * 0.75, cos(VTX_ANGLE(6)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(7)), cos(VTX_ANGLE(7)) - DROPLET_Y_OFF, 1.0),
+    vec3(sin(VTX_ANGLE(8)) * 1.25, cos(VTX_ANGLE(8)) - DROPLET_Y_OFF, 1.0)
 );
 
-layout(location = 0, r8) uniform restrict image2D depth_tex;
 layout(location = 1) uniform sampler2D ws_temp_tex;
 layout(location = 2) uniform float cur_t;
 layout(location = 3) uniform float d_t;
@@ -128,8 +130,9 @@ bump_rate_upd(vec2 pos)
 }
 
 vec2
-bump_droplet(vec2 pos, float spd, vec2 velocity)
+bump_droplet(vec2 pos, float spd, vec2 velocity, out float bump_sz_out)
 {
+	float bump_sz;
 	const float bump_sz_slow = 20.0;
 	const float bump_sz_fast = 1.0;
 	const float spd_fract = smoothstep(0.0, 0.2, spd);
@@ -139,17 +142,23 @@ bump_droplet(vec2 pos, float spd, vec2 velocity)
 	const float bump_prob_max = 0.75;
 	float rand_val, scale, bump_prob, spd_clamped;
 
-	if (cur_t - DROPLET.bump_t < bump_check_rate)
+	if (cur_t - DROPLET.bump_t < bump_check_rate) {
+		bump_sz_out = DROPLET.bump_sz;
 		return (velocity);
+	}
 	DROPLET.bump_t = cur_t;
 	spd_clamped = clamp(spd, 0.0, 1.0);
 	bump_prob = mix(bump_prob_min, bump_prob_max, spd_clamped);
-	if (gold_noise(pos, rand_seed[0]) < (1.0 - bump_prob))
+	if (gold_noise(pos, rand_seed[0]) < (1.0 - bump_prob)) {
+		bump_sz_out = DROPLET.bump_sz;
 		return (velocity);
+	}
 	rand_val = gold_noise(pos, rand_seed[1]);
 	scale = mix(bump_sz_slow, bump_sz_fast, spd_clamped) / DEPTH_TEX_SZ;
 
-	DROPLET.bump_sz = scale * (rand_val - 0.5);
+	bump_sz = scale * (rand_val - 0.5);
+	DROPLET.bump_sz = bump_sz;
+	bump_sz_out = bump_sz;
 
 	return (velocity * velocity_mul);
 }
@@ -165,16 +174,21 @@ streamer_upd_tail(void)
 }
 
 void
-update_droplet_tail_v(vec2 old_pos, vec2 new_pos)
+update_droplet_tail_v(float spd, vec2 old_pos, vec2 new_pos, out vec2 new_tail)
 {
-	vec2 tail_v = DROPLET.tail_v;
-	vec2 tail_v_tgt = new_pos - old_pos;
+	vec2 tail_v, tail_v_tgt;
+	vec2 d_pos = new_pos - old_pos;
+	float rate = 1.0 - clamp(smoothstep(0.0, 0.02, spd), 0.0, 0.9);
 
-	FILTER_IN(tail_v, tail_v_tgt, d_t, 0.2);
-	if (tail_v != vec2(0.0))
-		DROPLET.tail_v = normalize(tail_v);
+	d_pos = new_pos - old_pos;
+	if (d_pos != vec2(0.0))
+		tail_v_tgt = normalize(d_pos);
 	else
-		DROPLET.tail_v = vec2(0.0, -1.0);
+		tail_v_tgt = vec2(0.0, -1.0);
+	tail_v = mix(DROPLET.tail_v, tail_v_tgt, d_t / rate);
+
+	DROPLET.tail_v = tail_v;
+	new_tail = tail_v;
 }
 
 float
@@ -196,13 +210,15 @@ update_static_drag_len(vec2 pos, float quant, float spd)
 }
 
 void
-droplet_move(float quant, bool streamer)
+droplet_move(float quant, bool streamer, out vec2 new_pos_out,
+    out float spd_out, out vec2 new_tail)
 {
 	/* Copy in local variables to avoid global memory access */
 	float rel_quant = quant / MAX_DROPLET_SZ;
 	vec2 old_pos = DROPLET.pos[0];
 	vec2 velocity = DROPLET.velocity;
-	float spd = length(velocity);
+	float spd = DROPLET.spd;
+	float spd_tgt = length(velocity);
 	/* acceleration force */
 	vec2 F_a = droplet_forces_integrate(old_pos);
 	/* drag force - dynamic */
@@ -211,9 +227,10 @@ droplet_move(float quant, bool streamer)
 	vec2 F_d_s;
 	/* final force */
 	vec2 F;
-	vec2 new_pos;
+	vec2 new_pos, tail_v;
 	float F_d_s_len, rand_val, prob, bump_sz;
 
+	FILTER_IN(spd, spd_tgt, d_t, 0.2);
 	F_d_s_len = update_static_drag_len(old_pos, quant, spd);
 
 	if (F_d_s_len < length(F_a))
@@ -223,10 +240,9 @@ droplet_move(float quant, bool streamer)
 
 	F = F_a + F_d_d + F_d_s;
 	velocity += F * d_t;
-	velocity = bump_droplet(old_pos, spd, velocity);
-	new_pos = old_pos + velocity * d_t;
+	velocity = bump_droplet(old_pos, spd, velocity, bump_sz);
+	new_pos = velocity * d_t + old_pos;
 
-	bump_sz = DROPLET.bump_sz;
 	if (bump_sz > 0.0) {
 		vec2 velocity_norm;
 		float displace, bump_rate;
@@ -235,8 +251,7 @@ droplet_move(float quant, bool streamer)
 		velocity_norm = vec2_norm_right(velocity);
 		displace = min(spd * d_t * bump_rate, bump_sz);
 		new_pos += normalize(velocity_norm) * displace;
-
-		DROPLET.bump_sz -= displace;
+		bump_sz -= displace;
 	} else if (bump_sz < 0.0) {
 		vec2 velocity_norm;
 		float displace, bump_rate;
@@ -245,9 +260,9 @@ droplet_move(float quant, bool streamer)
 		velocity_norm = vec2_norm_right(velocity);
 		displace = max(-spd * d_t * bump_rate, bump_sz);
 		new_pos += normalize(velocity_norm) * displace;
-
-		DROPLET.bump_sz -= displace;
+		bump_sz -= displace;
 	}
+	DROPLET.bump_sz = bump_sz;
 
 	/*
 	 * Output update phase.
@@ -259,12 +274,16 @@ droplet_move(float quant, bool streamer)
 		DROPLET.pos[1] = old_pos;
 		DROPLET.pos[0] = new_pos;
 	}
+	new_pos_out = new_pos;
+	spd_out = spd;
 
 	DROPLET.velocity = velocity;
 	DROPLET.F_d_s_len = F_d_s_len;
 
-	update_droplet_tail_v(old_pos, new_pos);
-	FILTER_IN(DROPLET.spd, spd, d_t, 0.2);
+	update_droplet_tail_v(spd, old_pos, new_pos, tail_v);
+	new_tail = tail_v;
+	DROPLET.spd = spd;
+	spd_out = spd;
 }
 
 void
@@ -317,10 +336,9 @@ droplet_regen(void)
 }
 
 void
-droplet_visual_construct(float quant, bool streamer)
+droplet_visual_construct(vec2 pos, float spd, float quant, bool streamer,
+    vec2 tail_v)
 {
-	vec2 pos = DROPLET.pos[0];
-	float spd = DROPLET.spd;
 	float spd_fract = LINSTEP(0.0, 0.1, spd);
 	float quant_vis = mix(quant, quant / 2.0, spd_fract);
 	float quant_fract = quant_vis / MAX_DROPLET_SZ;
@@ -372,8 +390,11 @@ main(void)
 	bool streamer = DROPLET.streamer;
 
 	if (droplet_should_exist(new_quant, streamer)) {
-		droplet_move(new_quant, streamer);
-		droplet_visual_construct(new_quant, streamer);
+		vec2 pos, tail_v;
+		float spd;
+
+		droplet_move(new_quant, streamer, pos, spd, tail_v);
+		droplet_visual_construct(pos, spd, new_quant, streamer, tail_v);
 		DROPLET.quant = new_quant;
 	} else {
 		/* Try to regen droplet at new location */

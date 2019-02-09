@@ -21,6 +21,8 @@
 
 #include "consts.glsl"
 
+layout(early_fragment_tests) in;
+
 layout(location = 0) in float	dist_ratio;
 
 layout(location = 0) out vec4	color_out;

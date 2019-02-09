@@ -24,6 +24,8 @@
 #include "noise.glsl"
 #include "util.glsl"
 
+layout(early_fragment_tests) in;
+
 layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 2048;
 layout(constant_id = NORM_TEX_SZ_CONSTANT_ID) const int NORM_TEX_SZ = 2048;
 
@@ -58,8 +60,8 @@ main()
 	float window_ice_fact = sqrt(min(window_ice, 1.0));
 
 	if (temp < water_liquid_temp) {
-		float fact = min((temp - water_liquid_temp) /
-		    (water_frozen_temp - water_liquid_temp), 1);
+		float fact =
+		    smoothstep(water_frozen_temp, water_liquid_temp, temp);
 		float depth = pow(read_depth(vec2(0.0)) / max_depth, 0.3);
 		fact *= depth;
 		ice_displace = vec2(

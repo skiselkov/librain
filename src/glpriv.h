@@ -43,7 +43,8 @@ static void setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
     GLint mag_filter, GLint min_filter) UNUSED_ATTR;
 static void setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data) UNUSED_ATTR;
-static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex) UNUSED_ATTR;
+static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth,
+    GLuint stencil) UNUSED_ATTR;
 static bool_t reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
     UNUSED_ATTR;
 static char	*shaderpath	UNUSED_ATTR;
@@ -55,7 +56,7 @@ setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data,
     GLint mag_filter, GLint min_filter)
 {
-	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, tex);
 
 	if (mag_filter != 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
@@ -80,13 +81,24 @@ setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
 }
 
 static void
-setup_color_fbo_for_tex(GLuint fbo, GLuint tex)
+setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth, GLuint stencil)
 {
 	glBindFramebufferEXT(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 	    GL_TEXTURE_2D, tex, 0);
+	if (depth != 0) {
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+		    GL_TEXTURE_2D, depth, 0);
+	}
+	if (stencil != 0) {
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+		    GL_TEXTURE_2D, stencil, 0);
+	}
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
 	    GL_FRAMEBUFFER_COMPLETE);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
+	    GL_STENCIL_BUFFER_BIT);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, 0);
 }
 
 static bool_t

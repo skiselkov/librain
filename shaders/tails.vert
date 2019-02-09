@@ -44,5 +44,5 @@ main()
 	 * in the >>center<<, [1,1] on the upper right and [-1,-1] on the
 	 * lower left.
 	 */
-	gl_Position = vec4((pos * 2.0) - 1.0, 0.0, 1.0);
+	gl_Position = vec4((pos * 2.0) - 1.0, 1.0, 1.0);
 }

@@ -23,6 +23,8 @@
 #include "droplets_data.h"
 #include "util.glsl"
 
+layout(early_fragment_tests) in;
+
 layout(location = 0) in float	quant_fract;
 layout(location = 1) in vec2	centerpt;
 layout(location = 2) in float	max_width;

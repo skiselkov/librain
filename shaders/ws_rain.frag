@@ -86,7 +86,7 @@ main()
 #endif
 	float depth = texture(depth_tex, tex_coord).r;
 	vec2 norm_v = (2.0 * texture(norm_tex, tex_coord).xy) - 1.0;
-	vec2 displace = norm_v * displace_lim;// * (depth / max_depth);
+	vec2 displace = norm_v * displace_lim;
 	vec4 bg_pixel = get_pixel(gl_FragCoord.xy + displace);
 	float displace_fract = length(displace) / darkening_fact;
 
