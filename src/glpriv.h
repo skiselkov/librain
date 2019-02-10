@@ -104,13 +104,13 @@ setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth, GLuint stencil)
 static bool_t
 reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
 {
-	GLuint new_prog;
+	GLint new_prog;
 
 	ASSERT(shaderpath != NULL);
 	new_prog = shader_prog_from_info(shaderpath, info);
 	if (new_prog == 0)
 		return (B_FALSE);
-	if (*prog != 0)
+	if (*prog != 0 && new_prog != *prog)
 		glDeleteProgram(*prog);
 	*prog = new_prog;
 
