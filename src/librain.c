@@ -780,7 +780,6 @@ rain_stage2_compute_paint(glass_info_t *gi)
 	rain_stage2_compute_paint_tails(gi);
 
 	glDisable(GL_STENCIL_TEST);
-	glBindVertexArray(0);
 }
 
 static void
@@ -848,7 +847,7 @@ rain_stage2_comp(glass_info_t *gi)
 	glutils_debug_pop();
 }
 
-int
+static int
 rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	GLint vp[4];
@@ -891,10 +890,12 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 
+	gl_state_cleanup();
+
 	return (1);
 }
 
-int
+static int
 rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	GLint vp[4];
@@ -903,21 +904,16 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	UNUSED(before);
 	UNUSED(refcon);
 
+	glGetIntegerv(GL_VIEWPORT, vp);
+
 	/* Make sure we only run the computations once per frame */
 	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
 		return (1);
 
-	glGetIntegerv(GL_VIEWPORT, vp);
+	for (size_t i = 0; i < num_glass_infos; i++)
+		rain_stage2_comp(&glass_infos[i]);
 
-	if (!GLEW_VERSION_3_0)
-		glutils_disable_all_client_state();
-
-	for (size_t i = 0; i < num_glass_infos; i++) {
-		glass_info_t *gi = &glass_infos[i];
-
-		rain_stage2_comp(gi);
-	}
-
+	gl_state_cleanup();
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 
 	return (1);
@@ -1187,7 +1183,7 @@ librain_draw_exec(void)
 	}
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
-	glViewport(vp[0], vp[1], vp[2], vp[3]);
+	gl_state_cleanup();
 }
 
 void
@@ -1443,7 +1439,7 @@ glass_info_init_compute_visual_droplets(glass_info_t *gi)
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
 	    GL_STATIC_DRAW);
 
-	glBindVertexArray(0);
+	gl_state_cleanup();
 
 	free(indices);
 }
@@ -1507,7 +1503,7 @@ glass_info_init_compute_visual_tails(glass_info_t *gi)
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
 	    GL_STATIC_DRAW);
 
-	glBindVertexArray(0);
+	gl_state_cleanup();
 
 	free(indices);
 }
@@ -1666,11 +1662,10 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 
 	setup_texture_filter(gi->water_norm_tex, GL_RG, NORM_TEX_SZ(gi),
 	    NORM_TEX_SZ(gi), GL_RG, GL_UNSIGNED_BYTE, NULL,
-	    GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
+	    GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	setup_texture_filter(gi->water_norm_tex_stencil, GL_STENCIL_INDEX8,
 	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_STENCIL_INDEX,
-	    GL_UNSIGNED_BYTE, NULL, GL_LINEAR_MIPMAP_LINEAR,
-	    GL_LINEAR_MIPMAP_LINEAR);
+	    GL_UNSIGNED_BYTE, NULL, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
 	    0, gi->water_norm_tex_stencil);
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,

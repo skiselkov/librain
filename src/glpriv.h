@@ -117,6 +117,15 @@ reload_gl_prog(GLint *prog, const shader_prog_info_t *info)
 	return (B_TRUE);
 }
 
+static inline void
+gl_state_cleanup(void)
+{
+	if (GLEW_VERSION_3_0)
+		glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
 #ifdef	__cplusplus
 }
 #endif

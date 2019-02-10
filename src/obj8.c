@@ -30,6 +30,7 @@
 #include <acfutils/safe_alloc.h>
 #include <acfutils/thread.h>
 
+#include "glpriv.h"
 #include "librain.h"
 #include "obj8.h"
 
@@ -1005,9 +1006,7 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	glm_mat4_mul(pvm_in, obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
-	if (obj->vao != 0) {
-		glBindVertexArray(0);
-	} else {
+	if (obj->vao == 0) {
 		GLint pos_loc = glGetAttribLocation(prog, "vtx_pos");
 		GLint norm_loc = glGetAttribLocation(prog, "vtx_norm");
 		GLint tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
@@ -1018,10 +1017,8 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 			glDisableVertexAttribArray(norm_loc);
 		if (tex0_loc != -1)
 			glDisableVertexAttribArray(tex0_loc);
-
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	}
+	gl_state_cleanup();
 
 	glutils_debug_pop();
 }
