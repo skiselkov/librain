@@ -75,12 +75,10 @@ setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
 		 */
 		glTexStorage2D(GL_TEXTURE_2D, miplevels, int_fmt,
 		    width, height);
-		if (data != NULL) {
-			glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height,
-			    0, format, type, data);
-			if (miplevels > 0)
-				glGenerateMipmap(GL_TEXTURE_2D);
-		}
+		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height,
+		    0, format, type, data);
+		if (data != NULL&& miplevels > 0)
+			glGenerateMipmap(GL_TEXTURE_2D);
 	} else {
 		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0,
 		    format, type, data);
