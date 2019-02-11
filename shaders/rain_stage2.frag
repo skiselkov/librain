@@ -24,7 +24,9 @@
 #include "noise.glsl"
 #include "util.glsl"
 
+#if	COMPUTE_VARIANT
 layout(early_fragment_tests) in;
+#endif
 
 #if	COMPUTE_VARIANT
 const int DEPTH_TEX_SZ = 2048;

@@ -736,7 +736,7 @@ rain_stage1_comp(glass_info_t *gi)
 	glBindFramebufferEXT(GL_FRAMEBUFFER,
 	    gi->water_depth_fbo[!gi->water_depth_cur]);
 	glViewport(0, 0, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi));
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	if (!gi->qual.use_compute)
 		rain_stage1_comp_legacy(gi, d_t, rand_seed);
@@ -813,7 +813,7 @@ rain_stage2_normals(glass_info_t *gi)
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->water_norm_fbo);
 	glViewport(0, 0, NORM_TEX_SZ(gi), NORM_TEX_SZ(gi));
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glEnable(GL_STENCIL_TEST);
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
@@ -1657,7 +1657,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		setup_texture(gi->ws_temp_tex[i], GL_R32F, WS_TEMP_TEX_W,
 		    WS_TEMP_TEX_H, GL_RED, GL_FLOAT, temp_tex);
 		setup_color_fbo_for_tex(gi->ws_temp_fbo[i], gi->ws_temp_tex[i],
-		    0, 0);
+		    0, 0, B_FALSE);
 		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_temp_tex, glass,
 		    NULL, 0, GL_RED, GL_FLOAT, WS_TEMP_TEX_W, WS_TEMP_TEX_H));
 	}
@@ -1687,17 +1687,31 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		/*
 		 * The stencil always matches the depth texture size exactly,
 		 * so nearest filtering is good enough.
+		 * Please note: on Apple we need to give the framebuffer a
+		 * depth buffer as well to pass the framebuffer completeness
+		 * check, so we use a combined 24/8 combined depth/stencil
+		 * texture. We just ignore the depth texture.
 		 */
+#if	APL
+		setup_texture_filter(gi->water_depth_tex_stencil[i], 0,
+		    GL_DEPTH24_STENCIL8, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
+		    GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL, GL_NEAREST,
+		    GL_NEAREST);
+		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
+		    gi->water_depth_tex[i], gi->water_depth_tex_stencil[i],
+		    gi->water_depth_tex_stencil[i], B_TRUE);
+#else	/* !APL */
 		setup_texture_filter(gi->water_depth_tex_stencil[i], 0,
 		    GL_STENCIL_INDEX8, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
 		    GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, NULL, GL_NEAREST,
 		    GL_NEAREST);
+		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
+		    gi->water_depth_tex[i], 0, gi->water_depth_tex_stencil[i],
+		    B_FALSE);
+#endif	/* !APL */
 		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
 		    glass, NULL, 0, GL_STENCIL_INDEX8, GL_UNSIGNED_BYTE,
 		    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi)));
-
-		setup_color_fbo_for_tex(gi->water_depth_fbo[i],
-		    gi->water_depth_tex[i], 0, gi->water_depth_tex_stencil[i]);
 	}
 
 	/*
@@ -1715,11 +1729,19 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 * ever used in native 1:1 texel mapping when constructing the
 	 * normal map.
 	 */
+#if	APL
+	setup_texture_filter(gi->water_norm_tex_stencil, 0, GL_DEPTH24_STENCIL8,
+	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_DEPTH_STENCIL,
+	    GL_UNSIGNED_INT_24_8, NULL, GL_NEAREST, GL_NEAREST);
+	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
+	    gi->water_norm_tex_stencil, gi->water_norm_tex_stencil, B_TRUE);
+#else	/* !APL */
 	setup_texture_filter(gi->water_norm_tex_stencil, 0, GL_STENCIL_INDEX8,
 	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_STENCIL_INDEX,
 	    GL_UNSIGNED_BYTE, NULL, GL_NEAREST, GL_NEAREST);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
-	    0, gi->water_norm_tex_stencil);
+	    0, gi->water_norm_tex_stencil, B_FALSE);
+#endif	/* !APL */
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,
 	    GL_RG, GL_UNSIGNED_BYTE, NORM_TEX_SZ(gi), NORM_TEX_SZ(gi)));
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,
@@ -1734,7 +1756,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	glGenFramebuffers(1, &gi->ws_smudge_fbo);
 	setup_texture(gi->ws_smudge_tex, GL_RGBA, old_vp[2], old_vp[3],
 	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex, 0, 0);
+	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex, 0, 0,
+	    B_FALSE);
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex, glass, NULL, 0,
 	    GL_RGBA, GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
 
