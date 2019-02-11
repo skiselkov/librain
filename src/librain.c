@@ -52,6 +52,7 @@
 #define	NORM_TEX_SZ(gi)		((gi)->qual.use_compute ? 2048 : 1024)
 #define	GLASS_NAME(gi)	\
 	(gi->glass->name == NULL ? "<unnamed>" : gi->glass->name)
+#define	MIPLEVELS		8
 
 TEXSZ_MK_TOKEN(librain_water_depth_tex);
 TEXSZ_MK_TOKEN(librain_water_norm_tex);
@@ -476,8 +477,7 @@ ws_temp_comp(glass_info_t *gi)
 
 	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
 
-	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER,
-	    gi->ws_temp_fbo[!gi->ws_temp_cur]);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->ws_temp_fbo[!gi->ws_temp_cur]);
 	glViewport(0, 0, WS_TEMP_TEX_W, WS_TEMP_TEX_H);
 
 	glUseProgram(ws_temp_prog);
@@ -790,7 +790,7 @@ rain_stage2_normals(glass_info_t *gi)
 
 	glutils_debug_push(0, "rain_stage2_normals");
 
-	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, gi->water_norm_fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->water_norm_fbo);
 	glViewport(0, 0, NORM_TEX_SZ(gi), NORM_TEX_SZ(gi));
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -828,8 +828,6 @@ rain_stage2_normals(glass_info_t *gi)
 
 	glBindTexture(GL_TEXTURE_2D, gi->water_norm_tex);
 	glGenerateMipmap(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, gi->water_norm_tex_stencil);
-	glGenerateMipmap(GL_TEXTURE_2D);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glutils_debug_pop();
@@ -856,6 +854,10 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	UNUSED(phase);
 	UNUSED(before);
 	UNUSED(refcon);
+
+	/* Make sure we only run the computations once per frame */
+	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
+		return (1);
 
 	if (!rain_enabled) {
 		for (size_t i = 0; i < num_glass_infos; i++) {
@@ -887,10 +889,9 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 		rain_stage1_comp(gi);
 	}
 
+	gl_state_cleanup();
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
-
-	gl_state_cleanup();
 
 	return (1);
 }
@@ -899,21 +900,24 @@ static int
 rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	GLint vp[4];
+	GLint old_fbo;
 
 	UNUSED(phase);
 	UNUSED(before);
 	UNUSED(refcon);
 
-	glGetIntegerv(GL_VIEWPORT, vp);
-
 	/* Make sure we only run the computations once per frame */
 	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
 		return (1);
+
+	glGetIntegerv(GL_VIEWPORT, vp);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 
 	for (size_t i = 0; i < num_glass_infos; i++)
 		rain_stage2_comp(&glass_infos[i]);
 
 	gl_state_cleanup();
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 
 	return (1);
@@ -1015,7 +1019,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	 * Viewport is still assigned to new_vp, which is the same as
 	 * actual screen size.
 	 */
-	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 
 	prog = (gi->qual.use_compute ? ws_smudge_comp_prog : ws_smudge_prog);
 	glUseProgram(prog);
@@ -1629,8 +1633,8 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	for (int i = 0; i < 2; i++) {
 		if (gi->qual.use_compute) {
 			setup_texture(gi->water_depth_tex[i], GL_R8,
-			    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
-			    GL_RED, GL_UNSIGNED_BYTE, NULL);
+			    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi), GL_RED,
+			    GL_UNSIGNED_BYTE, NULL);
 			IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
 			    glass, NULL, 0, GL_R8, GL_UNSIGNED_BYTE,
 			    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi)));
@@ -1642,9 +1646,14 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 			    glass, NULL, 0, GL_R16F, GL_FLOAT,
 			    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi)));
 		}
-		setup_texture(gi->water_depth_tex_stencil[i], GL_STENCIL_INDEX8,
-		    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi), GL_STENCIL_INDEX,
-		    GL_UNSIGNED_BYTE, NULL);
+		/*
+		 * The stencil always matches the depth texture size exactly,
+		 * so nearest filtering is good enough.
+		 */
+		setup_texture_filter(gi->water_depth_tex_stencil[i], 0,
+		    GL_STENCIL_INDEX8, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
+		    GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, NULL, GL_NEAREST,
+		    GL_NEAREST);
 		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_depth_tex,
 		    glass, NULL, 0, GL_STENCIL_INDEX8, GL_UNSIGNED_BYTE,
 		    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi)));
@@ -1660,12 +1669,17 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	glGenTextures(1, &gi->water_norm_tex_stencil);
 	glGenFramebuffers(1, &gi->water_norm_fbo);
 
-	setup_texture_filter(gi->water_norm_tex, GL_RG, NORM_TEX_SZ(gi),
-	    NORM_TEX_SZ(gi), GL_RG, GL_UNSIGNED_BYTE, NULL,
+	setup_texture_filter(gi->water_norm_tex, MIPLEVELS, GL_RG,
+	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_RG, GL_UNSIGNED_BYTE, NULL,
 	    GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
-	setup_texture_filter(gi->water_norm_tex_stencil, GL_STENCIL_INDEX8,
+	/*
+	 * The stencil texture doesn't need to be mipmapped, as it's only
+	 * ever used in native 1:1 texel mapping when constructing the
+	 * normal map.
+	 */
+	setup_texture_filter(gi->water_norm_tex_stencil, 0, GL_STENCIL_INDEX8,
 	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_STENCIL_INDEX,
-	    GL_UNSIGNED_BYTE, NULL, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
+	    GL_UNSIGNED_BYTE, NULL, GL_NEAREST, GL_NEAREST);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
 	    0, gi->water_norm_tex_stencil);
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,

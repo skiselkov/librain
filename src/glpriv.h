@@ -38,9 +38,9 @@ extern "C" {
 		} \
 	} while (0)
 
-static void setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data,
-    GLint mag_filter, GLint min_filter) UNUSED_ATTR;
+static void setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt,
+    GLsizei width, GLsizei height, GLenum format, GLenum type,
+    const GLvoid *data, GLint mag_filter, GLint min_filter) UNUSED_ATTR;
 static void setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data) UNUSED_ATTR;
 static void setup_color_fbo_for_tex(GLuint fbo, GLuint tex, GLuint depth,
@@ -52,7 +52,7 @@ static char	*shaderpath	UNUSED_ATTR;
 static char	*shaderpath = NULL;
 
 static void
-setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
+setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data,
     GLint mag_filter, GLint min_filter)
 {
@@ -68,16 +68,24 @@ setup_texture_filter(GLuint tex, GLint int_fmt, GLsizei width,
 	}
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (miplevels > 0 && GLEW_ARB_framebuffer_object) {
+		/*
+		 * On AMD, we MUST specify the mipmapping level explicitly,
+		 * otherwise glGenerateMipmaps can hang.
+		 */
+		glTexStorage2D(GL_TEXTURE_2D, miplevels, int_fmt, width,
+		    height);
+	}
 	glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0, format,
 	    type, data);
 }
 
 static void
-setup_texture(GLuint tex, GLint int_fmt, GLsizei width,
-    GLsizei height, GLenum format, GLenum type, const GLvoid *data)
+setup_texture(GLuint tex, GLint int_fmt, GLsizei width, GLsizei height,
+    GLenum format, GLenum type, const GLvoid *data)
 {
-	setup_texture_filter(tex, int_fmt, width,
-	    height, format, type, data, GL_LINEAR, GL_LINEAR);
+	setup_texture_filter(tex, 0, int_fmt, width, height, format,
+	    type, data, GL_LINEAR, GL_LINEAR);
 }
 
 static void
