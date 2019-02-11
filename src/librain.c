@@ -41,7 +41,7 @@
 #include "librain.h"
 #include "../shaders/droplets_data.h"
 
-#define	RAIN_DRAW_TIMEOUT	15	/* seconds */
+#define	RAIN_DRAW_TIMEOUT	120	/* seconds */
 #define	DFL_VP_SIZE		16	/* pixels */
 
 #define	MIN_PRECIP_ICE_ADD	0.05	/* dimensionless */
@@ -198,6 +198,30 @@ static shader_prog_info_t tails_prog_info = {
     .vert = &tails_vert_info,
     .frag = &tails_frag_info
 };
+
+#define	SET_UNIFORM(_type, loc, ...) \
+	do { \
+		if ((loc) != -1) \
+			glUniform ## _type((loc), __VA_ARGS__); \
+	} while (0)
+
+typedef struct {
+	GLint	pvm;
+	GLint	tex;
+	GLint	temp_tex;
+	GLint	rand_seed;
+	GLint	precip_intens;
+	GLint	thrust;
+	GLint	wind;
+	GLint	gravity;
+	GLint	d_t;
+	GLint	gp;
+	GLint	tp;
+	GLint	wp;
+	GLint	wind_temp;
+} rain_stage1_loc_t;
+
+static rain_stage1_loc_t rain_stage1_loc = { 0 };
 
 static mat4 glob_pvm = GLM_MAT4_IDENTITY;
 
@@ -593,35 +617,34 @@ static void
 rain_stage1_comp_legacy(glass_info_t *gi, double d_t, float rand_seed)
 {
 	GLuint prog = rain_stage1_prog;
+	const rain_stage1_loc_t *loc = &rain_stage1_loc;
 
 	glutils_debug_push(0, "rain_stage1_comp_legacy(%s)", GLASS_NAME(gi));
 
 	glUseProgram(prog);
 
-	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"),
-	    1, GL_FALSE, (void *)gi->water_depth_pvm);
+	SET_UNIFORM(Matrix4fv, loc->pvm, 1, GL_FALSE,
+	    (void *)gi->water_depth_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gi->water_depth_tex[gi->water_depth_cur]);
-	glUniform1i(glGetUniformLocation(prog, "tex"), 0);
+	SET_UNIFORM(1i, loc->tex, 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_temp_tex[gi->ws_temp_cur]);
-	glUniform1i(glGetUniformLocation(prog, "temp_tex"), 1);
+	SET_UNIFORM(1i, loc->temp_tex, 1);
 
-	glUniform1f(glGetUniformLocation(prog, "rand_seed"), rand_seed);
-	glUniform1f(glGetUniformLocation(prog, "precip_intens"),
+	SET_UNIFORM(1f, loc->rand_seed, rand_seed);
+	SET_UNIFORM(1f, loc->precip_intens,
 	    precip_intens * gi->glass->slant_factor);
-	glUniform1f(glGetUniformLocation(prog, "thrust"), gi->thrust);
-	glUniform1f(glGetUniformLocation(prog, "wind"), gi->wind);
-	glUniform1f(glGetUniformLocation(prog, "gravity"),
-	    (float)gi->glass->gravity_factor);
-	glUniform1f(glGetUniformLocation(prog, "d_t"), d_t);
-	glUniform2f(glGetUniformLocation(prog, "gp"), gi->gp.x, gi->gp.y);
-	glUniform2f(glGetUniformLocation(prog, "tp"), gi->tp.x, gi->tp.y);
-	glUniform2f(glGetUniformLocation(prog, "wp"), gi->wp.x, gi->wp.y);
-	glUniform1f(glGetUniformLocation(prog, "wind_temp"),
-	    C2KELVIN(dr_getf(&drs.amb_temp)));
+	SET_UNIFORM(1f, loc->thrust, gi->thrust);
+	SET_UNIFORM(1f, loc->wind, gi->wind);
+	SET_UNIFORM(1f, loc->gravity, (float)gi->glass->gravity_factor);
+	SET_UNIFORM(1f, loc->d_t, d_t);
+	SET_UNIFORM(2f, loc->gp, gi->gp.x, gi->gp.y);
+	SET_UNIFORM(2f, loc->tp, gi->tp.x, gi->tp.y);
+	SET_UNIFORM(2f, loc->wp, gi->wp.x, gi->wp.y);
+	SET_UNIFORM(1f, loc->wind_temp, C2KELVIN(dr_getf(&drs.amb_temp)));
 
 	wiper_setup_prog(gi, prog);
 
@@ -641,9 +664,6 @@ rain_stage1_compute_move(const glass_info_t *gi, double cur_t, double d_t)
 	double gravity_force, wind_force, thrust_force;
 	float min_droplet_sz;
 	float rand_seed[NUM_RANDOM_SEEDS];
-
-	if (precip_intens == 0.0)
-		return;
 
 	glutils_debug_push(0, "rain_stage1_compute_move(%s)", GLASS_NAME(gi));
 
@@ -845,6 +865,13 @@ rain_stage2_comp(glass_info_t *gi)
 	glutils_debug_pop();
 }
 
+static bool_t
+rain_should_draw(void)
+{
+	return (dr_getf(&drs.sim_time) - last_rain_t < RAIN_DRAW_TIMEOUT &&
+	    rain_enabled);
+}
+
 static int
 rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
@@ -859,7 +886,7 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
 		return (1);
 
-	if (!rain_enabled) {
+	if (!rain_should_draw()) {
 		for (size_t i = 0; i < num_glass_infos; i++) {
 			glass_info_t *gi = &glass_infos[i];
 			gi->last_stage1_t = dr_getf(&drs.sim_time);
@@ -907,8 +934,10 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	UNUSED(refcon);
 
 	/* Make sure we only run the computations once per frame */
-	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT)
+	if (dr_geti(&drs.panel_render_type) != PANEL_RENDER_TYPE_3D_UNLIT ||
+	    !rain_should_draw()) {
 		return (1);
+	}
 
 	glGetIntegerv(GL_VIEWPORT, vp);
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
@@ -1100,6 +1129,9 @@ compute_precip(double now)
 		precip_intens += d_precip;
 	}
 
+	if (precip_intens > 0.0)
+		last_rain_t = now;
+
 	prev_win_ice = cur_win_ice;
 	last_run_t = now;
 }
@@ -1177,6 +1209,9 @@ librain_draw_exec(void)
 	GLint vp[4];
 
 	check_librain_init();
+
+	if (!rain_should_draw())
+		return;
 
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 	glGetIntegerv(GL_VIEWPORT, vp);
@@ -1842,6 +1877,24 @@ water_effects_fini(void)
 	num_glass_infos = 0;
 }
 
+static void
+stage1_prog_loc_resolve(GLuint prog, rain_stage1_loc_t *loc)
+{
+	loc->pvm = glGetUniformLocation(prog, "pvm");
+	loc->tex = glGetUniformLocation(prog, "tex");
+	loc->temp_tex = glGetUniformLocation(prog, "temp_tex");
+	loc->rand_seed = glGetUniformLocation(prog, "rand_seed");
+	loc->precip_intens = glGetUniformLocation(prog, "precip_intens");
+	loc->thrust = glGetUniformLocation(prog, "thrust");
+	loc->wind = glGetUniformLocation(prog, "wind");
+	loc->gravity = glGetUniformLocation(prog, "gravity");
+	loc->d_t = glGetUniformLocation(prog, "d_t");
+	loc->gp = glGetUniformLocation(prog, "gp");
+	loc->tp = glGetUniformLocation(prog, "tp");
+	loc->wp = glGetUniformLocation(prog, "wp");
+	loc->wind_temp = glGetUniformLocation(prog, "wind_temp");
+}
+
 bool_t
 librain_reload_gl_progs(void)
 {
@@ -1857,14 +1910,20 @@ librain_reload_gl_progs(void)
 			return (B_FALSE);
 	}
 
-	return (reload_gl_prog(&z_depth_prog, &z_depth_prog_info) &&
-	    reload_gl_prog(&stencil_init_prog, &stencil_init_prog_info) &&
-	    reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info) &&
-	    reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) &&
-	    reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) &&
-	    reload_gl_prog(&ws_rain_prog, &ws_rain_prog_info) &&
-	    reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) &&
-	    reload_gl_prog(&ws_smudge_comp_prog, &ws_smudge_comp_prog_info));
+	if (!reload_gl_prog(&z_depth_prog, &z_depth_prog_info) ||
+	    !reload_gl_prog(&stencil_init_prog, &stencil_init_prog_info) ||
+	    !reload_gl_prog(&ws_temp_prog, &ws_temp_prog_info) ||
+	    !reload_gl_prog(&rain_stage1_prog, &rain_stage1_prog_info) ||
+	    !reload_gl_prog(&rain_stage2_prog, &rain_stage2_prog_info) ||
+	    !reload_gl_prog(&ws_rain_prog, &ws_rain_prog_info) ||
+	    !reload_gl_prog(&ws_smudge_prog, &ws_smudge_prog_info) ||
+	    !reload_gl_prog(&ws_smudge_comp_prog, &ws_smudge_comp_prog_info)) {
+		return (B_FALSE);
+	}
+
+	stage1_prog_loc_resolve(rain_stage1_prog, &rain_stage1_loc);
+
+	return (B_TRUE);
 }
 
 bool_t

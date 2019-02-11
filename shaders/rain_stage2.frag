@@ -26,8 +26,13 @@
 
 layout(early_fragment_tests) in;
 
-layout(constant_id = DEPTH_TEX_SZ_CONSTANT_ID) const int DEPTH_TEX_SZ = 2048;
-layout(constant_id = NORM_TEX_SZ_CONSTANT_ID) const int NORM_TEX_SZ = 2048;
+#if	COMPUTE_VARIANT
+const int DEPTH_TEX_SZ = 2048;
+const int NORM_TEX_SZ = 2048;
+#else	/* !COMPUTE_VARIANT */
+const int DEPTH_TEX_SZ = 1024;
+const int NORM_TEX_SZ = 1024;
+#endif	/* !COMPUTE_VARIANT */
 
 layout(location = 10) uniform sampler2D	tex;
 layout(location = 11) uniform sampler2D	temp_tex;

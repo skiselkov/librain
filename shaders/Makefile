@@ -117,20 +117,6 @@ $(OUTDIR)/%.comp.spv : %.glsl
 $(OUTDIR)/%_comp.frag.spv : %.frag
 	$(call BUILD_SHADER,frag,-DCOMPUTE_VARIANT=1)
 
-#$(OUTDIR)/rain_stage2_1024_1024.frag.spv : rain_stage2.frag
-#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=1024 -DDEPTH_TEX_SZ=1024)
-#$(OUTDIR)/rain_stage2_1024_2048.frag.spv : rain_stage2.frag
-#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=1024 -DDEPTH_TEX_SZ=2048)
-#$(OUTDIR)/rain_stage2_2048_1024.frag.spv : rain_stage2.frag
-#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=2048 -DDEPTH_TEX_SZ=1024)
-#$(OUTDIR)/rain_stage2_2048_2048.frag.spv : rain_stage2.frag
-#	$(call BUILD_SHADER,frag,-DNORM_TEX_SZ=2048 -DDEPTH_TEX_SZ=2048)
-
-#$(OUTDIR)/droplets_1024.comp.spv : droplets.glsl
-#	$(call BUILD_COMP_SHADER,comp,-DDEPTH_TEX_SZ=1024)
-#$(OUTDIR)/droplets_2048.comp.spv : droplets.glsl
-#	$(call BUILD_COMP_SHADER,comp,-DDEPTH_TEX_SZ=2048)
-
 $(addprefix $(OUTDIR)/,$(SPVS)) : | $(OUTDIR)
 
 $(OUTDIR) :
