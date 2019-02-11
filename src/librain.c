@@ -770,7 +770,8 @@ rain_stage2_compute_paint_droplets(const glass_info_t *gi)
 static void
 rain_stage2_compute_paint_tails(const glass_info_t *gi)
 {
-	size_t num_elem = gi->qual.num_droplets * NUM_DROPLET_TAIL_SEGS * 2;
+	size_t num_elem = NUM_STREAMERS(gi->qual.num_droplets) *
+	    NUM_DROPLET_TAIL_SEGS * 2;
 
 	glutils_debug_push(0, "rain_stage2_compute_paint(%s, tails)",
 	    GLASS_NAME(gi));
@@ -1375,8 +1376,8 @@ glass_info_init_compute_phys(glass_info_t *gi)
 	size_t droplet_bytes = gi->qual.num_droplets * sizeof (droplet_data_t);
 	size_t vertex_bytes = gi->qual.num_droplets * VTX_PER_DROPLET *
 	    sizeof (droplet_vtx_t);
-	size_t tails_bytes = gi->qual.num_droplets * NUM_DROPLET_HISTORY *
-	    sizeof (droplet_tail_t);
+	size_t tails_bytes = NUM_STREAMERS(gi->qual.num_droplets) *
+	    NUM_DROPLET_HISTORY * sizeof (droplet_tail_t);
 	droplet_data_t *droplets = safe_calloc(1, droplet_bytes);
 	droplet_vtx_t *vertices = safe_calloc(1, vertex_bytes);
 	droplet_tail_t *tails = safe_calloc(1, tails_bytes);
@@ -1488,11 +1489,11 @@ glass_info_init_compute_visual_tails(glass_info_t *gi)
 {
 	GLuint prog = tails_prog;
 	GLint pos_loc, quant_loc;
-	size_t index_bytes = sizeof (GLuint) * gi->qual.num_droplets *
-	    NUM_DROPLET_TAIL_SEGS * 2;
+	size_t index_bytes = sizeof (GLuint) *
+	    NUM_STREAMERS(gi->qual.num_droplets) * NUM_DROPLET_TAIL_SEGS * 2;
 	GLuint *indices = safe_malloc(index_bytes);
-	const GLuint *end =
-	    &indices[gi->qual.num_droplets * NUM_DROPLET_TAIL_SEGS * 2];
+	const GLuint *end = &indices[NUM_STREAMERS(gi->qual.num_droplets) *
+	    NUM_DROPLET_TAIL_SEGS * 2];
 
 	ASSERT(prog != 0);
 
@@ -1522,7 +1523,7 @@ glass_info_init_compute_visual_tails(glass_info_t *gi)
 		    (void *)(offsetof(droplet_tail_t, quant)));
 	}
 
-	for (unsigned d = 0; d < gi->qual.num_droplets; d++) {
+	for (unsigned d = 0; d < NUM_STREAMERS(gi->qual.num_droplets); d++) {
 		GLuint *droplet = &indices[d * NUM_DROPLET_TAIL_SEGS * 2];
 		GLuint p = d * NUM_DROPLET_HISTORY;
 
@@ -1533,9 +1534,11 @@ glass_info_init_compute_visual_tails(glass_info_t *gi)
 			seg[0] = p + t;
 			seg[1] = p + t + 1;
 			ASSERT3U(seg[0], <,
-			    gi->qual.num_droplets * NUM_DROPLET_HISTORY);
+			    NUM_STREAMERS(gi->qual.num_droplets) *
+			    NUM_DROPLET_HISTORY);
 			ASSERT3U(seg[1], <,
-			    gi->qual.num_droplets * NUM_DROPLET_HISTORY);
+			    NUM_STREAMERS(gi->qual.num_droplets) *
+			    NUM_DROPLET_HISTORY);
 		}
 	}
 

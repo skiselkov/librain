@@ -41,7 +41,7 @@
 #define	VERTEX(_idx)	\
 	(vertices.v[DROPLET_ID * VTX_PER_DROPLET + (_idx)])
 #define	TAIL(_idx)	\
-	(tails.t[DROPLET_ID * NUM_DROPLET_HISTORY + (_idx)])
+	(tails.t[(DROPLET_ID >> STREAMER_SHIFT) * NUM_DROPLET_HISTORY + (_idx)])
 
 #define	FAST_SPD_LIM		0.1	/* tex/sec */
 #define	VERY_FAST_SPD_LIM	0.2	/* tex/sec */
@@ -324,14 +324,17 @@ droplet_regen(void)
 
 	droplet_init_velocity(droplet_pos);
 
-	DROPLET.streamer = ((gl_GlobalInvocationID.x & 15) == 0);
+	DROPLET.streamer =
+	    ((gl_GlobalInvocationID.x & ((1 << STREAMER_SHIFT) - 1)) == 0);
 
-	for (int i = 0; i < NUM_DROPLET_HISTORY; i++) {
+	if (DROPLET.streamer) {
 		/*
-		 * It's important we place the points outside of clip-space.
-		 * This allows for early elimination of non-streamer tails.
+		 * ONLY streamer droplets have tails. This avoids the
+		 * costly vertex shader pass of giving tons of tail line
+		 * segments to non-streamer droplets.
 		 */
-		TAIL(i).pos = vec2(-1.0);
+		for (int i = 0; i < NUM_DROPLET_HISTORY; i++)
+			TAIL(i).pos = vec2(0.0);
 	}
 }
 

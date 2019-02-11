@@ -29,6 +29,11 @@
 #define	MIN_DROPLET_SZ_MIN	20.0
 #define	MIN_DROPLET_SZ_MAX	80.0
 
+#define	VTX_PER_DROPLET		10
+#define	FACES_PER_DROPLET	(VTX_PER_DROPLET - 1)
+#define	STREAMER_SHIFT		4	/* for 15 short droplets, 1 streamer */
+#define	NUM_STREAMERS(n_d)	((n_d) >> STREAMER_SHIFT)
+
 #define	DEPTH_TEX_SZ_CONSTANT_ID	0
 #define	NORM_TEX_SZ_CONSTANT_ID		1
 
@@ -60,9 +65,6 @@ STRUCT(droplet_data_t, {
 	float	pad;		/* 32-bit */
 	/* 128-bit boundary */
 });
-
-#define	VTX_PER_DROPLET		10
-#define	FACES_PER_DROPLET	(VTX_PER_DROPLET - 1)
 
 STRUCT(droplet_vtx_t, {
 	vec2	pos;	/* 64-bit */
