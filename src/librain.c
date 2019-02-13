@@ -1026,9 +1026,6 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 		glUniform1i(glGetUniformLocation(prog, "num_wipers"), 0);
 	}
 
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
-
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 			glutils_debug_push(0, "ws_rain(%s)",
@@ -1042,6 +1039,14 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 		obj8_draw_group(gi->glass->obj, NULL, prog, glob_pvm);
 		glutils_debug_pop();
 	}
+
+#if	APL
+	/*
+	 * Mac depth buffer problem workaround.
+	 */
+	if (!rain_should_draw())
+		goto out;
+#endif
 
 	/*
 	 * Final stage: render the prepped displaced texture and apply
@@ -1071,8 +1076,6 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	glUniform4f(glGetUniformLocation(prog, "vp"),
 	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
 			glutils_debug_push(0, "ws_smudge(%s)",
@@ -1086,6 +1089,13 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 		obj8_draw_group(gi->glass->obj, NULL, prog, glob_pvm);
 		glutils_debug_pop();
 	}
+
+#if	APL
+	/*
+	 * Mac depth buffer problem workaround.
+	 */
+out:
+#endif
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
@@ -1211,16 +1221,20 @@ librain_draw_exec(void)
 
 	check_librain_init();
 
+#if	!APL
+	/*
+	 * The Mac fucks with the depth buffer unless we draw something here,
+	 * so fuck it, we'll always draw.
+	 */
 	if (!rain_should_draw())
 		return;
+#endif
 
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 	glGetIntegerv(GL_VIEWPORT, vp);
 
-	if (dr_getf(&drs.sim_time) - last_rain_t <= RAIN_DRAW_TIMEOUT) {
-		for (size_t i = 0; i < num_glass_infos; i++)
-			draw_ws_effects(&glass_infos[i], old_fbo);
-	}
+	for (size_t i = 0; i < num_glass_infos; i++)
+		draw_ws_effects(&glass_infos[i], old_fbo);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	gl_state_cleanup();
