@@ -311,7 +311,7 @@ droplet_regen(void)
 	DROPLET.regen_t = cur_t;
 
 	coord = vec2(gl_GlobalInvocationID);
-	if (gold_noise(coord, rand_seed[4]) > precip_intens)
+	if (gold_noise(coord, rand_seed[4]) >= precip_intens)
 		return;
 
 	droplet_pos = vec2(gold_noise(coord, rand_seed[5]),
