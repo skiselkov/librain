@@ -1006,19 +1006,12 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	glm_mat4_mul(pvm_in, obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
-	if (obj->vao == 0) {
-		GLint pos_loc = glGetAttribLocation(prog, "vtx_pos");
-		GLint norm_loc = glGetAttribLocation(prog, "vtx_norm");
-		GLint tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-
-		if (pos_loc != -1)
-			glDisableVertexAttribArray(pos_loc);
-		if (norm_loc != -1)
-			glDisableVertexAttribArray(norm_loc);
-		if (tex0_loc != -1)
-			glDisableVertexAttribArray(tex0_loc);
-	}
 	gl_state_cleanup();
+	/*
+	 * Here we used to disable vertex attribute arrays when NOT using
+	 * a private VAO. But, for some reason, that breaks on Mac.
+	 * No idea why, but without disabling, we get working rain.
+	 */
 
 	glutils_debug_pop();
 }

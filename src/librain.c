@@ -1567,7 +1567,8 @@ glass_info_init_compute(glass_info_t *gi)
 static void
 init_glass_stencil(glass_info_t *gi, GLuint fbo, unsigned w, unsigned h)
 {
-	glutils_debug_push(0, "init_glass_stencil(%s, %d)", GLASS_NAME(gi), fbo);
+	glutils_debug_push(0, "init_glass_stencil(%s, %d)",
+	    GLASS_NAME(gi), fbo);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, fbo);
 	glViewport(0, 0, w, h);
@@ -1993,6 +1994,8 @@ bool_t
 librain_init(const char *the_shaderpath, const librain_glass_t *glass,
     size_t num)
 {
+	GLint old_fbo;
+
 	ASSERT(the_shaderpath != NULL);
 	ASSERT(glass != NULL);
 	ASSERT(num != 0);
@@ -2003,6 +2006,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 
 	if (!librain_glob_init())
 		return (B_FALSE);
+
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 
 	shaderpath = strdup(the_shaderpath);
 
@@ -2069,9 +2074,16 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	reinit.glass = glass;
 	reinit.num = num;
 
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+	gl_state_cleanup();
+
 	return (B_TRUE);
 errout:
 	librain_fini();
+
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+	gl_state_cleanup();
+
 	return (B_FALSE);
 }
 
