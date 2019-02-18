@@ -20,8 +20,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <GL/glew.h>
-
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 #include <XPLMUtilities.h>
@@ -29,6 +27,7 @@
 #include <acfutils/assert.h>
 #include <acfutils/crc64.h>
 #include <acfutils/dr.h>
+#include <acfutils/glew.h>
 #include <acfutils/glutils.h>
 #include <acfutils/math.h>
 #include <acfutils/perf.h>

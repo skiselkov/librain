@@ -21,12 +21,12 @@
 
 #include <stdio.h>
 
-#include <GL/glew.h>
-#include <cglm/cglm.h>
-
 #include <acfutils/dr.h>
 #include <acfutils/geom.h>
+#include <acfutils/glew.h>
 #include <acfutils/list.h>
+
+#include <cglm/cglm.h>
 
 #include "librain_common.h"
 

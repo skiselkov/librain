@@ -19,11 +19,10 @@
 #ifndef	_GLPRIV_H_
 #define	_GLPRIV_H_
 
-#include <GL/glew.h>
-
 #include <XPLMGraphics.h>
 
 #include <acfutils/core.h>
+#include <acfutils/glew.h>
 #include <acfutils/shader.h>
 
 #ifdef	__cplusplus

@@ -19,15 +19,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <GL/glew.h>
-#include <cglm/cglm.h>
-
 #include <acfutils/crc64.h>
 #include <acfutils/dr.h>
+#include <acfutils/glew.h>
 #include <acfutils/glutils.h>
 #include <acfutils/png.h>
 #include <acfutils/safe_alloc.h>
 #include <acfutils/time.h>
+
+#include <cglm/cglm.h>
 
 #include "glpriv.h"
 #include "librain.h"
