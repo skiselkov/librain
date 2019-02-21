@@ -85,7 +85,26 @@ static float	last_run_t = 0;
 static GLint	z_depth_prog = 0;
 static GLint	stencil_init_prog = 0;
 
+typedef struct {
+	GLint	pvm;
+	GLint	src;
+	GLint	depth;
+	GLint	rand_seed;
+	GLint	le_temp;
+	GLint	cabin_temp;
+	GLint	wind_fact;
+	GLint	d_t;
+	GLint	inertia_in;
+	GLint	heat_zones;
+	GLint	heat_tgt_temps;
+	GLint	precip_intens;
+	GLint	hot_air_src;
+	GLint	hot_air_radius;
+	GLint	hot_air_temp;
+} ws_temp_prog_loc_t;
 static GLint	ws_temp_prog = 0;
+static ws_temp_prog_loc_t ws_temp_prog_loc;
+
 static GLint	rain_stage1_prog = 0;
 static GLint	rain_stage2_prog = 0;
 static GLint	rain_stage2_comp_prog = 0;
@@ -197,12 +216,6 @@ static shader_prog_info_t tails_prog_info = {
     .vert = &tails_vert_info,
     .frag = &tails_frag_info
 };
-
-#define	SET_UNIFORM(_type, loc, ...) \
-	do { \
-		if ((loc) != -1) \
-			glUniform ## _type((loc), __VA_ARGS__); \
-	} while (0)
 
 typedef struct {
 	GLint	pvm;
@@ -455,7 +468,7 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 		return;
 
 	glutils_debug_push(0, "librain_draw_z_depth(%s)",
-	    basename(obj8_get_filename(obj)));
+	    lacf_basename(obj8_get_filename(obj)));
 
 	if (!debug_draw)
 		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
@@ -465,7 +478,7 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 	if (z_depth_group_ids != NULL) {
 		for (int i = 0; z_depth_group_ids[i] != NULL; i++) {
 			glutils_debug_push(0, "librain_draw_z_depth(%s, %s)",
-			    basename(obj8_get_filename(obj)),
+			    lacf_basename(obj8_get_filename(obj)),
 			    z_depth_group_ids[i]);
 			obj8_draw_group(obj, z_depth_group_ids[i],
 			    z_depth_prog, glob_pvm);
@@ -473,7 +486,7 @@ librain_draw_z_depth(obj8_t *obj, const char **z_depth_group_ids)
 		}
 	} else {
 		glutils_debug_push(0, "librain_draw_z_depth(%s, NULL)",
-		    basename(obj8_get_filename(obj)));
+		    lacf_basename(obj8_get_filename(obj)));
 		obj8_draw_group(obj, NULL, z_depth_prog, glob_pvm);
 		glutils_debug_pop();
 	}
@@ -490,6 +503,7 @@ ws_temp_comp(glass_info_t *gi)
 	float now = dr_getf(&drs.sim_time);
 	float d_t = now - gi->last_ws_temp_t;
 	float rand_seed;
+	ws_temp_prog_loc_t *loc = &ws_temp_prog_loc;
 
 	if (d_t < WS_TEMP_COMP_INTVAL)
 		return;
@@ -505,39 +519,29 @@ ws_temp_comp(glass_info_t *gi)
 
 	glUseProgram(ws_temp_prog);
 
-	glUniformMatrix4fv(glGetUniformLocation(ws_temp_prog, "pvm"),
-	    1, GL_FALSE, (void *)gi->ws_temp_pvm);
+	glUniformMatrix4fv(loc->pvm, 1, GL_FALSE, (void *)gi->ws_temp_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_temp_tex[gi->ws_temp_cur]);
-	glUniform1i(glGetUniformLocation(ws_temp_prog, "src"), 0);
+	glUniform1i(loc->src, 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->water_depth_tex[gi->water_depth_cur]);
-	glUniform1i(glGetUniformLocation(ws_temp_prog, "depth"), 1);
+	glUniform1i(loc->depth, 1);
 
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "rand_seed"), rand_seed);
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "le_temp"),
-	    C2KELVIN(dr_getf(&drs.le_temp)));
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "cabin_temp"),
-	    gi->glass->cabin_temp);
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "wind_fact"),
-	    MAX(gi->wind, gi->thrust));
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "d_t"), d_t);
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "inertia_in"),
-	    gi->glass->therm_inertia);
-	glUniform4fv(glGetUniformLocation(ws_temp_prog, "heat_zones"),
-	    16, gi->glass->heat_zones);
-	glUniform1fv(glGetUniformLocation(ws_temp_prog, "heat_tgt_temps"),
-	    4, gi->glass->heat_tgt_temps);
-	glUniform1f(glGetUniformLocation(ws_temp_prog, "precip_intens"),
+	glUniform1f(loc->rand_seed, rand_seed);
+	glUniform1f(loc->le_temp, C2KELVIN(dr_getf(&drs.le_temp)));
+	glUniform1f(loc->cabin_temp, gi->glass->cabin_temp);
+	glUniform1f(loc->wind_fact, MAX(gi->wind, gi->thrust));
+	glUniform1f(loc->d_t, d_t);
+	glUniform1f(loc->inertia_in, gi->glass->therm_inertia);
+	glUniform4fv(loc->heat_zones, 16, gi->glass->heat_zones);
+	glUniform1fv(loc->heat_tgt_temps, 4, gi->glass->heat_tgt_temps);
+	glUniform1f(loc->precip_intens,
 	    precip_intens * gi->glass->slant_factor);
-	glUniform2fv(glGetUniformLocation(ws_temp_prog, "hot_air_src"),
-	    4, gi->glass->hot_air_src);
-	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_radius"),
-	    2, gi->glass->hot_air_radius);
-	glUniform1fv(glGetUniformLocation(ws_temp_prog, "hot_air_temp"),
-	    2, gi->glass->hot_air_temp);
+	glUniform2fv(loc->hot_air_src, 4, gi->glass->hot_air_src);
+	glUniform1fv(loc->hot_air_radius, 2, gi->glass->hot_air_radius);
+	glUniform1fv(loc->hot_air_temp, 2, gi->glass->hot_air_temp);
 
 	glutils_draw_quads(&gi->ws_temp_quads, ws_temp_prog);
 
@@ -622,28 +626,27 @@ rain_stage1_comp_legacy(glass_info_t *gi, double d_t, float rand_seed)
 
 	glUseProgram(prog);
 
-	SET_UNIFORM(Matrix4fv, loc->pvm, 1, GL_FALSE,
-	    (void *)gi->water_depth_pvm);
+	glUniformMatrix4fv(loc->pvm, 1, GL_FALSE, (void *)gi->water_depth_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gi->water_depth_tex[gi->water_depth_cur]);
-	SET_UNIFORM(1i, loc->tex, 0);
+	glUniform1i(loc->tex, 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_temp_tex[gi->ws_temp_cur]);
-	SET_UNIFORM(1i, loc->temp_tex, 1);
+	glUniform1i(loc->temp_tex, 1);
 
-	SET_UNIFORM(1f, loc->rand_seed, rand_seed);
-	SET_UNIFORM(1f, loc->precip_intens,
+	glUniform1f(loc->rand_seed, rand_seed);
+	glUniform1f(loc->precip_intens,
 	    precip_intens * gi->glass->slant_factor);
-	SET_UNIFORM(1f, loc->thrust, gi->thrust);
-	SET_UNIFORM(1f, loc->wind, gi->wind);
-	SET_UNIFORM(1f, loc->gravity, (float)gi->glass->gravity_factor);
-	SET_UNIFORM(1f, loc->d_t, d_t);
-	SET_UNIFORM(2f, loc->gp, gi->gp.x, gi->gp.y);
-	SET_UNIFORM(2f, loc->tp, gi->tp.x, gi->tp.y);
-	SET_UNIFORM(2f, loc->wp, gi->wp.x, gi->wp.y);
-	SET_UNIFORM(1f, loc->wind_temp, C2KELVIN(dr_getf(&drs.amb_temp)));
+	glUniform1f(loc->thrust, gi->thrust);
+	glUniform1f(loc->wind, gi->wind);
+	glUniform1f(loc->gravity, (float)gi->glass->gravity_factor);
+	glUniform1f(loc->d_t, d_t);
+	glUniform2f(loc->gp, gi->gp.x, gi->gp.y);
+	glUniform2f(loc->tp, gi->tp.x, gi->tp.y);
+	glUniform2f(loc->wp, gi->wp.x, gi->wp.y);
+	glUniform1f(loc->wind_temp, C2KELVIN(dr_getf(&drs.amb_temp)));
 
 	wiper_setup_prog(gi, prog);
 
@@ -1918,6 +1921,26 @@ water_effects_fini(void)
 }
 
 static void
+ws_temp_comp_loc_resolve(GLuint prog, ws_temp_prog_loc_t *loc)
+{
+	loc->pvm = glGetUniformLocation(prog, "pvm");
+	loc->src = glGetUniformLocation(prog, "src");
+	loc->depth = glGetUniformLocation(prog, "depth");
+	loc->rand_seed = glGetUniformLocation(prog, "rand_seed");
+	loc->le_temp = glGetUniformLocation(prog, "le_temp");
+	loc->cabin_temp = glGetUniformLocation(prog, "cabin_temp");
+	loc->wind_fact = glGetUniformLocation(prog, "wind_fact");
+	loc->d_t = glGetUniformLocation(prog, "d_t");
+	loc->inertia_in = glGetUniformLocation(prog, "inertia_in");
+	loc->heat_zones = glGetUniformLocation(prog, "heat_zones");
+	loc->heat_tgt_temps = glGetUniformLocation(prog, "heat_tgt_temps");
+	loc->precip_intens = glGetUniformLocation(prog, "precip_intens");
+	loc->hot_air_src = glGetUniformLocation(prog, "hot_air_src");
+	loc->hot_air_radius = glGetUniformLocation(prog, "hot_air_radius");
+	loc->hot_air_temp = glGetUniformLocation(prog, "hot_air_temp");
+}
+
+static void
 stage1_prog_loc_resolve(GLuint prog, rain_stage1_loc_t *loc)
 {
 	loc->pvm = glGetUniformLocation(prog, "pvm");
@@ -1961,6 +1984,7 @@ librain_reload_gl_progs(void)
 		return (B_FALSE);
 	}
 
+	ws_temp_comp_loc_resolve(ws_temp_prog, &ws_temp_prog_loc);
 	stage1_prog_loc_resolve(rain_stage1_prog, &rain_stage1_loc);
 
 	return (B_TRUE);

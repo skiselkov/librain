@@ -994,7 +994,8 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	if (!upload_data(obj))
 		return;
 
-	glutils_debug_push(0, "obj8_draw_group(%s)", basename(obj->filename));
+	glutils_debug_push(0, "obj8_draw_group(%s)",
+	    lacf_basename(obj->filename));
 
 	if (obj->vao != 0)
 		glBindVertexArray(obj->vao);
