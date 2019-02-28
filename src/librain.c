@@ -78,7 +78,6 @@ static bool_t	rain_enabled = B_TRUE;
 
 static GLint	saved_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static bool_t	prepare_ran = B_FALSE;
-static double	prev_win_ice = 0;
 static double	precip_intens = 0;
 static float	last_run_t = 0;
 
@@ -1111,7 +1110,6 @@ static void
 compute_precip(double now)
 {
 	double d_t = now - last_run_t;
-	double cur_win_ice;
 
 	if (d_t <= 0)
 		return;
@@ -1122,30 +1120,10 @@ compute_precip(double now)
 	} else {
 		precip_intens = dr_getf(&drs.precip_rat);
 	}
-	cur_win_ice = dr_getf(&drs.window_ice);
-
-	/*
-	 * If the window is icing up, but X-Plane thinks there's no precip
-	 * to cause it, we attempt to derive a precip rate from the rate of
-	 * window ice accumulation.
-	 */
-	if (precip_intens < MIN_PRECIP_ICE_ADD &&
-	    dr_getf(&drs.amb_temp) < PRECIP_ICE_TEMP_THRESH &&
-	    cur_win_ice > 0) {
-		double d_ice = (cur_win_ice - prev_win_ice) / d_t;
-		double d_precip;
-
-		if (d_ice > 0)
-			d_precip = wavg(0.025, 0.05, clamp(d_ice, 0, 1));
-		else
-			d_precip = wavg(0.02, 0, clamp(ABS(d_ice), 0, 1));
-		precip_intens += d_precip;
-	}
 
 	if (precip_intens > 0.0)
 		last_rain_t = now;
 
-	prev_win_ice = cur_win_ice;
 	last_run_t = now;
 }
 
