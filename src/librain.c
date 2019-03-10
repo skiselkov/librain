@@ -259,7 +259,6 @@ typedef struct {
 	glutils_quads_t		water_depth_quads;
 
 	GLuint			water_norm_tex;
-	GLuint			water_norm_tex_stencil;
 	GLuint			water_norm_fbo;
 	glutils_quads_t		water_norm_quads;
 
@@ -816,10 +815,6 @@ rain_stage2_normals(glass_info_t *gi)
 	glViewport(0, 0, NORM_TEX_SZ(gi), NORM_TEX_SZ(gi));
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glEnable(GL_STENCIL_TEST);
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-
 	glUseProgram(prog);
 
 	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"),
@@ -844,7 +839,6 @@ rain_stage2_normals(glass_info_t *gi)
 
 	glutils_draw_quads(&gi->water_norm_quads, prog);
 
-	glDisable(GL_STENCIL_TEST);
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
 
@@ -1608,8 +1602,6 @@ glass_info_init_stencils(glass_info_t *gi)
 		init_glass_stencil(gi, gi->water_depth_fbo[i],
 		    DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi));
 	}
-	init_glass_stencil(gi, gi->water_norm_fbo,
-	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi));
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
@@ -1713,7 +1705,6 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 * Stage 2: computing normals.
 	 */
 	glGenTextures(1, &gi->water_norm_tex);
-	glGenTextures(1, &gi->water_norm_tex_stencil);
 	glGenFramebuffers(1, &gi->water_norm_fbo);
 
 	setup_texture_filter(gi->water_norm_tex, MIPLEVELS, GL_RG,
@@ -1725,17 +1716,11 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 * normal map.
 	 */
 #if	APL
-	setup_texture_filter(gi->water_norm_tex_stencil, 0, GL_DEPTH24_STENCIL8,
-	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_DEPTH_STENCIL,
-	    GL_UNSIGNED_INT_24_8, NULL, GL_NEAREST, GL_NEAREST);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
-	    gi->water_norm_tex_stencil, gi->water_norm_tex_stencil, B_TRUE);
+	    0, 0, B_TRUE);
 #else	/* !APL */
-	setup_texture_filter(gi->water_norm_tex_stencil, 0, GL_STENCIL_INDEX8,
-	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_STENCIL_INDEX,
-	    GL_UNSIGNED_BYTE, NULL, GL_NEAREST, GL_NEAREST);
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
-	    0, gi->water_norm_tex_stencil, B_FALSE);
+	    0, 0, B_FALSE);
 #endif	/* !APL */
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_water_norm_tex, glass, NULL, 0,
 	    GL_RG, GL_UNSIGNED_BYTE, NORM_TEX_SZ(gi), NORM_TEX_SZ(gi)));
@@ -1829,8 +1814,6 @@ glass_info_fini(glass_info_t *gi)
 	    glDeleteFramebuffers(1, &gi->water_norm_fbo));
 	DESTROY_OP(gi->water_norm_tex, 0,
 	    glDeleteTextures(1, &gi->water_norm_tex));
-	DESTROY_OP(gi->water_norm_tex_stencil, 0,
-	    glDeleteTextures(1, &gi->water_norm_tex_stencil));
 	glutils_destroy_quads(&gi->water_norm_quads);
 
 	DESTROY_OP(gi->ws_smudge_fbo, 0,
