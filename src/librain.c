@@ -1717,7 +1717,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 #if	APL
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
-	    0, 0, B_TRUE);
+	    0, 0, B_FALSE);
 #else	/* !APL */
 	setup_color_fbo_for_tex(gi->water_norm_fbo, gi->water_norm_tex,
 	    0, 0, B_FALSE);
