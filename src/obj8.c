@@ -633,7 +633,7 @@ upload_data(obj8_t *obj)
 		ASSERT(obj->idx_table != NULL);
 
 		/* Make sure outside GL errors don't confuse us */
-		(void) glGetError();
+		glutils_reset_errors();
 
 		if (GLEW_VERSION_3_0) {
 			glGenVertexArrays(1, &obj->vao);
@@ -663,6 +663,8 @@ upload_data(obj8_t *obj)
 
 		if (obj->vao != 0)
 			glBindVertexArray(0);
+
+		GLUTILS_ASSERT_NO_ERROR();
 	}
 	return (!obj->load_error);
 }
@@ -931,6 +933,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			break;
 		}
 	}
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 static void
@@ -949,39 +952,40 @@ setup_arrays(obj8_t *obj, GLuint prog)
 	pos_loc_new = glGetAttribLocation(prog, "vtx_pos");
 	norm_loc_new = glGetAttribLocation(prog, "vtx_norm");
 	tex0_loc_new = glGetAttribLocation(prog, "vtx_tex0");
+	GLUTILS_ASSERT_NO_ERROR();
 
-	if (obj->last_prog != prog) {
+	if (obj->last_prog != prog && obj->last_prog != 0) {
 		/* Disable unused vertex attribute arrays. */
 		pos_loc_old = glGetAttribLocation(obj->last_prog, "vtx_pos");
 		if (pos_loc_old != pos_loc_new)
-			glDisableVertexAttribArray(pos_loc_old);
+			glutils_disable_vtx_attr_ptr(pos_loc_old);
 		norm_loc_old = glGetAttribLocation(obj->last_prog, "vtx_norm");
 		if (norm_loc_old != norm_loc_new)
-			glDisableVertexAttribArray(norm_loc_old);
+			glutils_disable_vtx_attr_ptr(norm_loc_old);
 		tex0_loc_old = glGetAttribLocation(obj->last_prog, "vtx_tex0");
 		if (tex0_loc_old != tex0_loc_new)
-			glDisableVertexAttribArray(tex0_loc_old);
+			glutils_disable_vtx_attr_ptr(tex0_loc_old);
+		GLUTILS_ASSERT_NO_ERROR();
 	}
 
 	obj->last_prog = prog;
 	obj->pvm_loc = glGetUniformLocation(prog, "pvm");
+	GLUTILS_ASSERT_NO_ERROR();
 	/* pvm_loc can be -1, if the shader doesn't need the matrix */
 
-	if (pos_loc_new != pos_loc_old && pos_loc_new != -1) {
-		glEnableVertexAttribArray(pos_loc_new);
-		glVertexAttribPointer(pos_loc_new, 3, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, pos)));
+	if (pos_loc_new != pos_loc_old) {
+		glutils_enable_vtx_attr_ptr(pos_loc_new, 3, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
 	}
-	if (norm_loc_new != norm_loc_old && norm_loc_new != -1) {
-		glEnableVertexAttribArray(norm_loc_new);
-		glVertexAttribPointer(norm_loc_new, 3, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, norm)));
+	if (norm_loc_new != norm_loc_old) {
+		glutils_enable_vtx_attr_ptr(norm_loc_new, 3, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
 	}
-	if (tex0_loc_new != tex0_loc_old && tex0_loc_new != -1) {
-		glEnableVertexAttribArray(tex0_loc_new);
-		glVertexAttribPointer(tex0_loc_new, 2, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), (void *)(offsetof(obj8_vtx_t, tex)));
+	if (tex0_loc_new != tex0_loc_old) {
+		glutils_enable_vtx_attr_ptr(tex0_loc_new, 2, GL_FLOAT, GL_FALSE,
+		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
 	}
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -990,6 +994,8 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	mat4 pvm;
 
 	ASSERT(prog != 0);
+
+	glutils_reset_errors();
 
 	if (!upload_data(obj))
 		return;
@@ -1015,6 +1021,7 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	 */
 
 	glutils_debug_pop();
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 /*
