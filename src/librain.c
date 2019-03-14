@@ -868,6 +868,13 @@ rain_should_draw(void)
 	    rain_enabled);
 }
 
+static void
+gl_state_reset(void)
+{
+	glutils_reset_errors();
+	glutils_disable_all_vtx_attrs();
+}
+
 static int
 rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 {
@@ -890,8 +897,10 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 		return (1);
 	}
 
+	gl_state_reset();
 	glGetIntegerv(GL_VIEWPORT, vp);
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
 		if (gi->qual.use_compute) {
@@ -916,6 +925,8 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 
+	GLUTILS_ASSERT_NO_ERROR();
+
 	return (1);
 }
 
@@ -935,6 +946,7 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 		return (1);
 	}
 
+	gl_state_reset();
 	glGetIntegerv(GL_VIEWPORT, vp);
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 
@@ -944,6 +956,8 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	gl_state_cleanup();
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
+
+	GLUTILS_ASSERT_NO_ERROR();
 
 	return (1);
 }

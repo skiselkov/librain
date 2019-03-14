@@ -968,7 +968,12 @@ setup_arrays(obj8_t *obj, GLuint prog)
 		GLUTILS_ASSERT_NO_ERROR();
 	}
 
-	obj->last_prog = prog;
+	/*
+	 * If we're not running VAOs, we need to restore the arrays on
+	 * every draw.
+	 */
+	if (obj->vao != 0)
+		obj->last_prog = prog;
 	obj->pvm_loc = glGetUniformLocation(prog, "pvm");
 	GLUTILS_ASSERT_NO_ERROR();
 	/* pvm_loc can be -1, if the shader doesn't need the matrix */

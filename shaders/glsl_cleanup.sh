@@ -12,8 +12,17 @@
 #
 # CDDL HEADER END
 #
-# Copyright 2018 Saso Kiselkov. All rights reserved.
+# Copyright 2019 Saso Kiselkov. All rights reserved.
 
-sed -i '
+case $(uname) in
+Linux)
+	SED=sed
+	;;
+Darwin)
+	SED=gsed
+	;;
+esac
+
+"$SED" -i '
 s/\<textureSize\>/textureSize2D/;
 ' $@

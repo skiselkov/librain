@@ -49,6 +49,7 @@ SPIRVX_430_VERSION=430
 GLSLANG=glslang
 SPIRVX=spirv-cross
 GLSL_CLEANUP=./glsl_cleanup.sh
+ECHO=/bin/echo
 
 ifeq ($(V),1)
 	VERB=
@@ -57,7 +58,7 @@ endef
 else	# Not Verbose
 	VERB=@
 define logMsg
-	@echo $(1)
+	@$(ECHO) $(1)
 endef
 endif
 
