@@ -251,6 +251,13 @@ typedef struct {
 	const librain_glass_t	*glass;
 
 	float			last_stage1_t;
+	/*
+	 * This flag indicates whether stage1 has rendered something or not.
+	 * If this flag is not set, this avoids the buffer swap on the legacy
+	 * effect and avoids re-rendering the normals (since they couldn't
+	 * have changed if the water movement pass never ran).
+	 */
+	bool_t			stage1_adv;
 
 	int			water_depth_cur;
 	GLuint			water_depth_tex[2];
@@ -753,6 +760,10 @@ rain_stage1_comp(glass_info_t *gi)
 			rain_stage1_compute_move(gi, cur_t, d_t);
 
 		glActiveTexture(GL_TEXTURE0);
+
+		gi->stage1_adv = B_TRUE;
+	} else {
+		gi->stage1_adv = B_FALSE;
 	}
 
 	gi->last_stage1_t = cur_t;
@@ -862,13 +873,15 @@ rain_stage2_normals(glass_info_t *gi)
 static void
 rain_stage2_comp(glass_info_t *gi)
 {
-	glutils_debug_push(0, "rain_stage2_comp");
+	if (gi->stage1_adv) {
+		glutils_debug_push(0, "rain_stage2_comp");
 
-	if (gi->qual.use_compute)
-		rain_stage2_compute_paint(gi);
+		if (gi->qual.use_compute)
+			rain_stage2_compute_paint(gi);
+		rain_stage2_normals(gi);
 
-	rain_stage2_normals(gi);
-	glutils_debug_pop();
+		glutils_debug_pop();
+	}
 }
 
 static bool_t
@@ -1121,7 +1134,8 @@ out:
 
 	glutils_debug_pop();
 
-	gi->water_depth_cur = !gi->water_depth_cur;
+	if (gi->stage1_adv)
+		gi->water_depth_cur = !gi->water_depth_cur;
 }
 
 static void
