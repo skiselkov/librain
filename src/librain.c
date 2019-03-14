@@ -723,7 +723,7 @@ rain_stage1_compute_move(const glass_info_t *gi, double cur_t, double d_t)
 static void
 rain_stage1_comp(glass_info_t *gi)
 {
-	float rand_seed = (crc64_rand() % 1000000) / 1000000.0;
+	enum { MIN_FPS = 5 };
 	float cur_t = dr_getf(&drs.sim_time);
 	float d_t = cur_t - gi->last_stage1_t;
 
@@ -731,19 +731,29 @@ rain_stage1_comp(glass_info_t *gi)
 
 	if (gi->last_stage1_t == 0.0)
 		gi->last_stage1_t = cur_t;
-	d_t = cur_t - gi->last_stage1_t;
+	/* Prevent running at too low FPS, because the effect can be weird */
+	d_t = MIN(cur_t - gi->last_stage1_t, 1.0 / MIN_FPS);
 
-	glBindFramebufferEXT(GL_FRAMEBUFFER,
-	    gi->water_depth_fbo[!gi->water_depth_cur]);
-	glViewport(0, 0, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi));
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	/*
+	 * When time isn't progressing (sim is paused or the user is
+	 * in some setup screen), avoid running, because the water
+	 * droplets can't move anyway.
+	 */
+	if (d_t > 0.0) {
+		float rand_seed = (crc64_rand() % 1000000) / 1000000.0;
 
-	if (!gi->qual.use_compute)
-		rain_stage1_comp_legacy(gi, d_t, rand_seed);
-	else
-		rain_stage1_compute_move(gi, cur_t, d_t);
+		glBindFramebufferEXT(GL_FRAMEBUFFER,
+		    gi->water_depth_fbo[!gi->water_depth_cur]);
+		glViewport(0, 0, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi));
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glActiveTexture(GL_TEXTURE0);
+		if (!gi->qual.use_compute)
+			rain_stage1_comp_legacy(gi, d_t, rand_seed);
+		else
+			rain_stage1_compute_move(gi, cur_t, d_t);
+
+		glActiveTexture(GL_TEXTURE0);
+	}
 
 	gi->last_stage1_t = cur_t;
 
