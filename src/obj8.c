@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2019 Saso Kiselkov. All rights reserved.
  */
 
 #include <stddef.h>
@@ -63,6 +63,7 @@ typedef struct obj8_cmd_s {
 	int			dr_offset;
 	char			dr_name[128];
 	bool_t			dr_found;
+	bool_t			dr_lookup_done;
 	union {
 		struct {
 			list_t	cmds;
@@ -93,6 +94,9 @@ struct obj8_s {
 
 	GLuint		last_prog;
 	GLint		pvm_loc;
+	GLint		pos_loc;
+	GLint		norm_loc;
+	GLint		tex0_loc;
 	GLuint		vao;
 	void		*vtx_table;
 	GLuint		vtx_buf;
@@ -776,7 +780,10 @@ cmd_dr_read(obj8_cmd_t *cmd)
 {
 	double v;
 
-	if (!cmd->dr_found) {
+	if (COND_UNLIKELY(!cmd->dr_found)) {
+		if (COND_LIKELY(cmd->dr_lookup_done))
+			return (0);
+		cmd->dr_lookup_done = B_TRUE;
 		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
 		    &cmd->dr_offset)) {
 			return (0);
@@ -939,7 +946,6 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 static void
 setup_arrays(obj8_t *obj, GLuint prog)
 {
-	GLint pos_loc_new, norm_loc_new, tex0_loc_new;
 	GLint pos_loc_old = -1, norm_loc_old = -1, tex0_loc_old = -1;
 
 	/*
@@ -949,21 +955,21 @@ setup_arrays(obj8_t *obj, GLuint prog)
 	if (obj->vao != 0 && obj->last_prog == prog)
 		return;
 
-	pos_loc_new = glGetAttribLocation(prog, "vtx_pos");
-	norm_loc_new = glGetAttribLocation(prog, "vtx_norm");
-	tex0_loc_new = glGetAttribLocation(prog, "vtx_tex0");
+	obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
+	obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
+	obj->tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
 	GLUTILS_ASSERT_NO_ERROR();
 
 	if (obj->last_prog != prog && obj->last_prog != 0) {
 		/* Disable unused vertex attribute arrays. */
 		pos_loc_old = glGetAttribLocation(obj->last_prog, "vtx_pos");
-		if (pos_loc_old != pos_loc_new)
+		if (pos_loc_old != obj->pos_loc)
 			glutils_disable_vtx_attr_ptr(pos_loc_old);
 		norm_loc_old = glGetAttribLocation(obj->last_prog, "vtx_norm");
-		if (norm_loc_old != norm_loc_new)
+		if (norm_loc_old != obj->norm_loc)
 			glutils_disable_vtx_attr_ptr(norm_loc_old);
 		tex0_loc_old = glGetAttribLocation(obj->last_prog, "vtx_tex0");
-		if (tex0_loc_old != tex0_loc_new)
+		if (tex0_loc_old != obj->tex0_loc)
 			glutils_disable_vtx_attr_ptr(tex0_loc_old);
 		GLUTILS_ASSERT_NO_ERROR();
 	}
@@ -978,17 +984,17 @@ setup_arrays(obj8_t *obj, GLuint prog)
 	GLUTILS_ASSERT_NO_ERROR();
 	/* pvm_loc can be -1, if the shader doesn't need the matrix */
 
-	if (pos_loc_new != pos_loc_old) {
-		glutils_enable_vtx_attr_ptr(pos_loc_new, 3, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
+	if (obj->pos_loc != pos_loc_old) {
+		glutils_enable_vtx_attr_ptr(obj->pos_loc, 3, GL_FLOAT,
+		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
 	}
-	if (norm_loc_new != norm_loc_old) {
-		glutils_enable_vtx_attr_ptr(norm_loc_new, 3, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
+	if (obj->norm_loc != norm_loc_old) {
+		glutils_enable_vtx_attr_ptr(obj->norm_loc, 3, GL_FLOAT,
+		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
 	}
-	if (tex0_loc_new != tex0_loc_old) {
-		glutils_enable_vtx_attr_ptr(tex0_loc_new, 2, GL_FLOAT, GL_FALSE,
-		    sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
+	if (obj->tex0_loc != tex0_loc_old) {
+		glutils_enable_vtx_attr_ptr(obj->tex0_loc, 2, GL_FLOAT,
+		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
 	}
 	GLUTILS_ASSERT_NO_ERROR();
 }
@@ -1019,11 +1025,11 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
 	gl_state_cleanup();
-	/*
-	 * Here we used to disable vertex attribute arrays when NOT using
-	 * a private VAO. But, for some reason, that breaks on Mac.
-	 * No idea why, but without disabling, we get working rain.
-	 */
+	if (obj->vao == 0) {
+		glutils_disable_vtx_attr_ptr(obj->pos_loc);
+		glutils_disable_vtx_attr_ptr(obj->norm_loc);
+		glutils_disable_vtx_attr_ptr(obj->tex0_loc);
+	}
 
 	glutils_debug_pop();
 	GLUTILS_ASSERT_NO_ERROR();
