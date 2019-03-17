@@ -35,6 +35,13 @@
 #include "obj8.h"
 
 #define	ANIM_ALLOC_STEP	8
+/*
+ * After rendering starts, we only try to lookup datarefs for a little
+ * while. If within 10 draw cycles the dataref isn't populated, we give
+ * up to avoid lags performing costly dataref lookups for datarefs that
+ * are likely never going to show up.
+ */
+#define	MAX_DR_LOOKUPS	10
 
 TEXSZ_MK_TOKEN(obj8_vtx_buf);
 TEXSZ_MK_TOKEN(obj8_idx_buf);
@@ -63,7 +70,7 @@ typedef struct obj8_cmd_s {
 	int			dr_offset;
 	char			dr_name[128];
 	bool_t			dr_found;
-	bool_t			dr_lookup_done;
+	unsigned		dr_lookup_done;
 	union {
 		struct {
 			list_t	cmds;
@@ -781,9 +788,9 @@ cmd_dr_read(obj8_cmd_t *cmd)
 	double v;
 
 	if (COND_UNLIKELY(!cmd->dr_found)) {
-		if (COND_LIKELY(cmd->dr_lookup_done))
+		if (COND_LIKELY(cmd->dr_lookup_done > MAX_DR_LOOKUPS))
 			return (0);
-		cmd->dr_lookup_done = B_TRUE;
+		cmd->dr_lookup_done++;
 		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
 		    &cmd->dr_offset)) {
 			return (0);
@@ -1000,7 +1007,8 @@ setup_arrays(obj8_t *obj, GLuint prog)
 }
 
 void
-obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
+obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
+    const mat4 pvm_in)
 {
 	mat4 pvm;
 
@@ -1021,7 +1029,7 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog, mat4 pvm_in)
 
 	setup_arrays(obj, prog);
 
-	glm_mat4_mul(pvm_in, obj->matrix, pvm);
+	glm_mat4_mul((vec4 *)pvm_in, obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
 	gl_state_cleanup();

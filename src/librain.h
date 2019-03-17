@@ -444,7 +444,8 @@ LIBRAIN_EXPORT void librain_fini(void);
 /*
  * Rendering pipeline functions. See librain.c for more information.
  */
-LIBRAIN_EXPORT void librain_draw_prepare(bool_t force);
+LIBRAIN_EXPORT unsigned librain_get_call_count(void);
+LIBRAIN_EXPORT void librain_draw_prepare(unsigned call_index, bool_t force);
 LIBRAIN_EXPORT void librain_draw_z_depth(obj8_t *obj,
     const char **z_depth_group_ids);
 LIBRAIN_EXPORT void librain_draw_exec(void);
@@ -461,6 +462,7 @@ LIBRAIN_EXPORT void librain_set_wiper_angle(const librain_glass_t *glass,
  * Helper functions for more advanced effects rendering.
  */
 LIBRAIN_EXPORT void librain_get_pvm(mat4 pvm);
+LIBRAIN_EXPORT void librain_get_vp(vec4 vp);
 LIBRAIN_EXPORT GLuint librain_get_screenshot_tex(void);
 LIBRAIN_EXPORT void librain_refresh_screenshot(void);
 LIBRAIN_EXPORT bool_t librain_reload_gl_progs(void);

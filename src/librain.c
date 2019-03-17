@@ -65,24 +65,48 @@ typedef enum {
 	PANEL_RENDER_TYPE_3D_LIT = 2
 } panel_render_type_t;
 
+/*
+ * Values of sim/graphics/view/draw_call_type - this is important
+ * when capturing graphics matrices & viewport to support VR.
+ */
+typedef enum {
+	DRAW_CALL_NONE =	0,
+	DRAW_CALL_MONO =	1,
+	DRAW_CALL_DCT_STEREO =	2,
+	DRAW_CALL_LEFT_EYE =	3,
+	DRAW_CALL_RIGHT_EYE =	4
+} draw_call_type_t;
+
 static bool_t		inited = B_FALSE;
 static bool_t		debug_draw = B_FALSE;
 static bool_t		wipers_visible = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
-static GLint	old_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
-static GLint	new_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
+static GLint	cur_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
+static GLint	saved_vp[4] = { -1, -1, -1, -1 };
+static GLenum	saved_clip_origin;
+static GLenum	saved_depth_mode;
+static GLenum	saved_depth_func;
+static GLfloat	saved_depth_clear;
+static GLint	ss_texsz[2] = { DFL_VP_SIZE, DFL_VP_SIZE };
 static float	last_rain_t = 0;
 static bool_t	rain_enabled = B_TRUE;
 
-static GLint	saved_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static bool_t	prepare_ran = B_FALSE;
 static double	precip_intens = 0;
 static float	last_run_t = 0;
 
 static GLint	z_depth_prog = 0;
 static GLint	stencil_init_prog = 0;
+
+/* Captured matrix info during capture_mtx */
+static struct {
+	mat4	proj_matrix;
+	mat4	acf_matrix;
+	vec4	viewport;
+} mtx_info[2];
+static unsigned num_mtx_info = 0;
 
 typedef struct {
 	GLint	pvm;
@@ -177,13 +201,13 @@ static shader_prog_info_t ws_rain_comp_prog_info = {
 static shader_prog_info_t ws_smudge_prog_info = {
     .progname = "ws_smudge",
     .vert = &generic_vert_info,
-    .frag = &ws_smudge_frag_info,
+    .frag = &ws_smudge_frag_info
 };
 
 static shader_prog_info_t ws_smudge_comp_prog_info = {
     .progname = "ws_smudge_comp",
     .vert = &generic_vert_info,
-    .frag = &ws_smudge_comp_frag_info,
+    .frag = &ws_smudge_comp_frag_info
 };
 
 static shader_prog_info_t z_depth_prog_info = {
@@ -234,7 +258,10 @@ typedef struct {
 
 static rain_stage1_loc_t rain_stage1_loc = { 0 };
 
+static mat4 glob_proj_matrix = GLM_MAT4_IDENTITY;
+static mat4 glob_acf_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_pvm = GLM_MAT4_IDENTITY;
+static vec4 glob_vp;
 
 typedef struct {
 	double	angle_now;		/* radians */
@@ -335,6 +362,7 @@ static struct {
 	dr_t	window_ice;
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
+	dr_t	draw_call_type;
 
 	bool_t	xe_present;
 	dr_t	xe_active;
@@ -347,6 +375,9 @@ static struct {
 
 #define	RAIN_PAINT_PHASE	xplm_Phase_Gauges
 #define	RAIN_PAINT_BEFORE	0
+
+#define	MTX_CAPTURE_PHASE	xplm_Phase_Airplanes
+#define	MTX_CAPTURE_BEFORE	0
 
 static void init_glass_stencil(glass_info_t *gi, GLuint fbo,
     unsigned w, unsigned h);
@@ -411,39 +442,54 @@ update_vectors(glass_info_t *gi)
 }
 
 static void
-update_viewport(void)
+update_glob_data(const mat4 proj_matrix, const mat4 acf_matrix, const vec4 vp)
 {
-	GLint vp[4];
+	memcpy(glob_proj_matrix, proj_matrix, sizeof (mat4));
+	for (int i = 0; i < 4; i++)
+		glob_proj_matrix[3][i] /= 100;
 
-	glGetIntegerv(GL_VIEWPORT, vp);
-	if (old_vp[2] == vp[2] && old_vp[3] == vp[3])
+	memcpy(glob_acf_matrix, acf_matrix, sizeof (mat4));
+
+	glm_mat4_mul(glob_proj_matrix, glob_acf_matrix, glob_pvm);
+
+	memcpy(glob_vp, vp, sizeof (vec4));
+}
+
+static void
+update_ss_tex(const vec4 vp)
+{
+	for (int i = 0; i < 4; i++)
+		cur_vp[i] = vp[i];
+
+	if (cur_vp[2] == ss_texsz[0] && cur_vp[3] == ss_texsz[1])
 		return;
 
 	IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
-	    old_vp[2], old_vp[3]));
+	    ss_texsz[0], ss_texsz[1]));
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex,
 		    glass_infos[i].glass, GL_RGBA, GL_UNSIGNED_BYTE,
-		    old_vp[2], old_vp[3]));
+		    ss_texsz[0], ss_texsz[1]));
 	}
 
 	/* If the viewport size has changed, update the textures. */
-	memcpy(old_vp, vp, sizeof (vp));
+	ss_texsz[0] = cur_vp[2];
+	ss_texsz[1] = cur_vp[3];
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, vp[2], vp[3], 0,
-	    GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ss_texsz[0], ss_texsz[1],
+	    0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
 	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
-	    vp[2], vp[3]));
+	    ss_texsz[0], ss_texsz[1]));
 
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glBindTexture(GL_TEXTURE_2D, glass_infos[i].ws_smudge_tex);
 
 		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex,
 		    glass_infos[i].glass, NULL, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-		    vp[2], vp[3]));
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vp[2], vp[3], 0,
-		    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		    ss_texsz[0], ss_texsz[1]));
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ss_texsz[0],
+		    ss_texsz[1], 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	}
 }
 
@@ -458,8 +504,8 @@ librain_refresh_screenshot(void)
 	glReadBuffer(GL_COLOR_ATTACHMENT0);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, screenshot_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
-	glBlitFramebuffer(0, 0, old_vp[2], old_vp[3],
-	    0, 0, old_vp[2], old_vp[3], GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBlitFramebuffer(cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3],
+	    0, 0, ss_texsz[0], ss_texsz[1], GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
@@ -985,6 +1031,34 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	return (1);
 }
 
+int
+capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
+{
+	int idx;
+	int vp[4];
+
+	UNUSED(phase);
+	UNUSED(before);
+	UNUSED(refcon);
+
+	if (dr_geti(&drs.draw_call_type) == DRAW_CALL_RIGHT_EYE) {
+		idx = 1;
+		num_mtx_info = 2;
+	} else {
+		idx = 0;
+		num_mtx_info = 1;
+	}
+	VERIFY3S(dr_getvf32(&drs.acf_matrix,
+	    (float *)mtx_info[idx].acf_matrix, 0, 16), ==, 16);
+	VERIFY3S(dr_getvf32(&drs.proj_matrix,
+	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
+	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+	for (int i = 0; i < 4; i++)
+		mtx_info[idx].viewport[i] = vp[i];
+
+	return (1);
+}
+
 static bool_t
 wiper_debug_add(GLuint prog, const glass_info_t *gi, int i)
 {
@@ -1019,12 +1093,13 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 
 	glutils_debug_push(0, "draw_ws_effects(%s)", GLASS_NAME(gi));
 
+	glEnable(GL_DEPTH_TEST);
+
 	/*
 	 * Pre-stage: render the actual image to a side buffer, but without
 	 * any smudging.
 	 */
 	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->ws_smudge_fbo);
-	glViewport(new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
@@ -1044,7 +1119,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	glUniform1i(glGetUniformLocation(prog, "depth_tex"), 2);
 
 	glUniform4f(glGetUniformLocation(prog, "vp"),
-	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
+	    cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3]);
 
 	if (wipers_visible) {
 		unsigned num_wipers = 0;
@@ -1095,7 +1170,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
 	glUniform1i(glGetUniformLocation(prog, "screenshot_tex"), 0);
 	glUniform2f(glGetUniformLocation(prog, "screenshot_tex_sz"),
-	    new_vp[2], new_vp[3]);
+	    ss_texsz[0], ss_texsz[1]);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_smudge_tex);
@@ -1106,7 +1181,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	glUniform1i(glGetUniformLocation(prog, "depth_tex"), 2);
 
 	glUniform4f(glGetUniformLocation(prog, "vp"),
-	    new_vp[0], new_vp[1], new_vp[2], new_vp[3]);
+	    cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3]);
 
 	if (gi->glass->group_ids != NULL) {
 		for (int i = 0; gi->glass->group_ids[i] != NULL; i++) {
@@ -1159,32 +1234,23 @@ compute_precip(double now)
 	last_run_t = now;
 }
 
-static void
-compute_pvm(mat4 pvm)
+unsigned
+librain_get_call_count(void)
 {
-	mat4 mv_matrix;
-	mat4 proj_matrix;
-
-	VERIFY3S(dr_getvf32(&drs.acf_matrix, (void *)mv_matrix, 0, 16),
-	    ==, 16);
-	VERIFY3S(dr_getvf32(&drs.proj_matrix, (void *)proj_matrix, 0, 16),
-	    ==, 16);
-
-	for (int i = 0; i < 4; i++)
-		proj_matrix[3][i] /= 100;
-
-	glm_mat4_mul(proj_matrix, mv_matrix, pvm);
+	return (num_mtx_info);
 }
 
 void
-librain_draw_prepare(bool_t force)
+librain_draw_prepare(unsigned call_index, bool_t force)
 {
-	GLint vp[4];
-	int w, h;
 	double now = dr_getf(&drs.sim_time);
 
 	check_librain_init();
+	ASSERT3U(call_index, <, num_mtx_info);
+
 	compute_precip(now);
+	update_glob_data(mtx_info[call_index].proj_matrix,
+	    mtx_info[call_index].acf_matrix, mtx_info[call_index].viewport);
 
 	if (precip_intens > 0 || dr_getf(&drs.amb_temp) <= 4)
 		last_rain_t = now;
@@ -1200,36 +1266,32 @@ librain_draw_prepare(bool_t force)
 	}
 	prepare_ran = B_TRUE;
 
-	update_viewport();
-	librain_refresh_screenshot();
+	glGetIntegerv(GL_VIEWPORT, saved_vp);
+	glViewport(mtx_info[call_index].viewport[0],
+	    mtx_info[call_index].viewport[1],
+	    mtx_info[call_index].viewport[2],
+	    mtx_info[call_index].viewport[3]);
 
-	glGetIntegerv(GL_VIEWPORT, vp);
-	XPLMGetScreenSize(&w, &h);
-	/*
-	 * In VR the viewport width needs to be halved, because the viewport
-	 * is split between the left and right eye.
-	 */
-	if (drs.VR_enabled_avail && dr_geti(&drs.VR_enabled) != 0)
-		w /= 2;
-	if (vp[2] != w || vp[3] != h) {
-		memcpy(saved_vp, vp, sizeof (saved_vp));
-		glViewport(vp[0], vp[1], w, h);
-		new_vp[0] = vp[0];
-		new_vp[1] = vp[1];
-		new_vp[2] = w;
-		new_vp[3] = h;
-	} else {
-		memcpy(new_vp, old_vp, sizeof (new_vp));
+	if (GLEW_VERSION_4_5) {
+		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
+		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
+		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
+		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
+
+		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+		glDepthFunc(GL_LESS);
+		glClearDepth(1.0);
 	}
+	glClear(GL_DEPTH_BUFFER_BIT);
 
-	compute_pvm(glob_pvm);
+	update_ss_tex(mtx_info[call_index].viewport);
+	librain_refresh_screenshot();
 }
 
 void
 librain_draw_exec(void)
 {
 	GLint old_fbo;
-	GLint vp[4];
 
 	check_librain_init();
 
@@ -1243,7 +1305,6 @@ librain_draw_exec(void)
 #endif
 
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
-	glGetIntegerv(GL_VIEWPORT, vp);
 
 	for (size_t i = 0; i < num_glass_infos; i++)
 		draw_ws_effects(&glass_infos[i], old_fbo);
@@ -1260,10 +1321,12 @@ librain_draw_finish(void)
 	if (!prepare_ran)
 		return;
 	prepare_ran = B_FALSE;
+	glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 
-	if (saved_vp[0] != -1) {
-		glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
-		saved_vp[0] = saved_vp[1] = saved_vp[2] = saved_vp[3] = -1;
+	if (GLEW_VERSION_4_5) {
+		glClipControl(saved_clip_origin, saved_depth_mode);
+		glDepthFunc(saved_depth_func);
+		glClearDepth(saved_depth_clear);
 	}
 }
 
@@ -1772,12 +1835,12 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	 */
 	glGenTextures(1, &gi->ws_smudge_tex);
 	glGenFramebuffers(1, &gi->ws_smudge_fbo);
-	setup_texture(gi->ws_smudge_tex, GL_RGBA, old_vp[2], old_vp[3],
+	setup_texture(gi->ws_smudge_tex, GL_RGBA, ss_texsz[0], ss_texsz[1],
 	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex, 0, 0,
 	    B_FALSE);
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex, glass, NULL, 0,
-	    GL_RGBA, GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
+	    GL_RGBA, GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
 
 	free(temp_tex);
 
@@ -1830,7 +1893,7 @@ glass_info_fini(glass_info_t *gi)
 	}
 	if (gi->ws_smudge_tex != 0) {
 		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex, gi->glass,
-		    GL_RGBA, GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
+		    GL_RGBA, GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
 	}
 
 	DESTROY_OP(gi->ws_temp_fbo[0], 0,
@@ -2068,6 +2131,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
+	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
 	    dr_find(&drs.xe_rain, "env/rain") &&
@@ -2077,6 +2141,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	    RAIN_COMP_BEFORE, NULL);
 	XPLMRegisterDrawCallback(rain_paint_cb, RAIN_PAINT_PHASE,
 	    RAIN_PAINT_BEFORE, NULL);
+	VERIFY(XPLMRegisterDrawCallback(capture_mtx, MTX_CAPTURE_PHASE,
+	    MTX_CAPTURE_BEFORE, NULL));
 
 	if (!GLEW_ARB_framebuffer_object) {
 		logMsg("Cannot initialize: your OpenGL version doesn't "
@@ -2088,10 +2154,10 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, old_vp[2], old_vp[3], 0,
-	    GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ss_texsz[0], ss_texsz[1],
+	    0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
-	    old_vp[2], old_vp[3]));
+	    ss_texsz[0], ss_texsz[1]));
 
 	glGenFramebuffers(1, &screenshot_fbo);
 	glBindFramebufferEXT(GL_FRAMEBUFFER, screenshot_fbo);
@@ -2132,6 +2198,8 @@ librain_fini(void)
 	free(shaderpath);
 	shaderpath = NULL;
 
+	VERIFY(XPLMUnregisterDrawCallback(capture_mtx, MTX_CAPTURE_PHASE,
+	    MTX_CAPTURE_BEFORE, NULL));
 	XPLMUnregisterDrawCallback(rain_paint_cb, RAIN_PAINT_PHASE,
 	    RAIN_PAINT_BEFORE, NULL);
 	XPLMUnregisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
@@ -2139,7 +2207,7 @@ librain_fini(void)
 
 	if (screenshot_tex != 0) {
 		IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB,
-		    GL_UNSIGNED_BYTE, old_vp[2], old_vp[3]));
+		    GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
 	}
 
 	DESTROY_OP(screenshot_fbo, 0, glDeleteFramebuffers(1, &screenshot_fbo));
@@ -2147,11 +2215,10 @@ librain_fini(void)
 
 	water_effects_fini();
 
-	for (int i = 2; i < 4; i++) {
-		old_vp[i] = DFL_VP_SIZE;
-		new_vp[i] = DFL_VP_SIZE;
-		saved_vp[i] = DFL_VP_SIZE;
-	}
+	for (int i = 2; i < 4; i++)
+		cur_vp[i] = DFL_VP_SIZE;
+	ss_texsz[0] = DFL_VP_SIZE;
+	ss_texsz[1] = DFL_VP_SIZE;
 
 	inited = B_FALSE;
 }
@@ -2160,11 +2227,14 @@ void
 librain_get_pvm(mat4 pvm)
 {
 	check_librain_init();
-	/* If we can, grab a cached copy */
-	if (prepare_ran)
-		memcpy(pvm, glob_pvm, sizeof (mat4));
-	else
-		compute_pvm(pvm);
+	memcpy(pvm, glob_pvm, sizeof (mat4));
+}
+
+void
+librain_get_vp(vec4 vp)
+{
+	check_librain_init();
+	memcpy(vp, glob_vp, sizeof (vec4));
 }
 
 GLuint
