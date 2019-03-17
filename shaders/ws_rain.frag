@@ -24,7 +24,7 @@
 #include "util.glsl"
 
 #define	MAX_WIPERS	2
-#define	RAIN_DEBUG	0
+#define	RAIN_DEBUG	1
 
 layout(location = 10) uniform sampler2D	depth_tex;
 layout(location = 11) uniform sampler2D	norm_tex;

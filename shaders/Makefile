@@ -45,6 +45,7 @@ OUTDIR=bin
 SPIRVX_TGT_VERSION=120
 SPIRVX_420_VERSION=420
 SPIRVX_430_VERSION=430
+SPIRVX_450_VERSION=450
 
 GLSLANG=glslang
 SPIRVX=spirv-cross
@@ -78,6 +79,15 @@ define BUILD_SHADER
 	$(VERB) $(GLSL_CLEANUP) $(@:%.$(1).spv=%.$(1).glsl420)
 endef
 
+define BUILD_SHADER_MODERN
+	$(call logMsg,-n \	[GLSLANG]\	)
+	$(VERB) $(GLSLANG) $(2) -G460 -o $@ $^
+
+	$(call logMsg,\	[SPIRVX 4.50]\	$(@:%.$(1).spv=%.$(1).glsl450))
+	$(VERB) $(SPIRVX) --version $(SPIRVX_450_VERSION) \
+	    --output $(@:%.$(1).spv=%.$(1).glsl450) $@
+endef
+
 define BUILD_COMP_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
 	$(VERB) $(GLSLANG) $(2) -G460 -S comp -o $@ $^
@@ -105,6 +115,8 @@ $(OUTDIR)/ice_depth_remove_line.frag.spv : ice_depth.frag
 	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=0)
 $(OUTDIR)/ice_depth_deice_line.frag.spv : ice_depth.frag
 	$(call BUILD_SHADER,frag,-DADD_ICE=0 -DSRC_TYPE=1 -DDEICE=1)
+$(OUTDIR)/generic_layers.vert.spv : generic.vert
+	$(call BUILD_SHADER_MODERN,vert,-DUSE_LAYERS)
 
 $(OUTDIR)/%.vert.spv : %.vert
 	$(call BUILD_SHADER,vert)

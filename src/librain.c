@@ -77,6 +77,15 @@ typedef enum {
 	DRAW_CALL_RIGHT_EYE =	4
 } draw_call_type_t;
 
+/*
+ * Values of sim/graphics/view/plane_render_type.
+ */
+typedef enum {
+	PLANE_RENDER_NONE =	0,
+	PLANE_RENDER_SOLID =	1,
+	PLANE_RENDER_BLEND =	2
+} plane_render_type_t;
+
 static bool_t		inited = B_FALSE;
 static bool_t		debug_draw = B_FALSE;
 static bool_t		wipers_visible = B_FALSE;
@@ -262,6 +271,7 @@ static mat4 glob_proj_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_acf_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_pvm = GLM_MAT4_IDENTITY;
 static vec4 glob_vp;
+static unsigned glob_call_index = 0;
 
 typedef struct {
 	double	angle_now;		/* radians */
@@ -363,6 +373,8 @@ static struct {
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
 	dr_t	draw_call_type;
+	dr_t	plane_render_type;
+	dr_t	rev_float_z;
 
 	bool_t	xe_present;
 	dr_t	xe_active;
@@ -1036,13 +1048,21 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	int idx;
 	int vp[4];
+	draw_call_type_t dct;
 
 	UNUSED(phase);
 	UNUSED(before);
 	UNUSED(refcon);
 
-	if (dr_geti(&drs.draw_call_type) == DRAW_CALL_RIGHT_EYE) {
+	if (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID)
+		return (1);
+
+	dct = dr_geti(&drs.draw_call_type);
+	if (dct == DRAW_CALL_RIGHT_EYE) {
 		idx = 1;
+		num_mtx_info = 2;
+	} else if (dct == DRAW_CALL_LEFT_EYE) {
+		idx = 0;
 		num_mtx_info = 2;
 	} else {
 		idx = 0;
@@ -1053,6 +1073,51 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	VERIFY3S(dr_getvf32(&drs.proj_matrix,
 	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+
+	logMsg("dct: %d\n"
+	    "proj_matrix:\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n"
+	    "acf_matrix:\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n"
+	    "%f %f %f %f\n", dct,
+	    mtx_info[idx].proj_matrix[0][0],
+	    mtx_info[idx].proj_matrix[1][0],
+	    mtx_info[idx].proj_matrix[2][0],
+	    mtx_info[idx].proj_matrix[3][0],
+	    mtx_info[idx].proj_matrix[0][1],
+	    mtx_info[idx].proj_matrix[1][1],
+	    mtx_info[idx].proj_matrix[2][1],
+	    mtx_info[idx].proj_matrix[3][1],
+	    mtx_info[idx].proj_matrix[0][2],
+	    mtx_info[idx].proj_matrix[1][2],
+	    mtx_info[idx].proj_matrix[2][2],
+	    mtx_info[idx].proj_matrix[3][2],
+	    mtx_info[idx].proj_matrix[0][3],
+	    mtx_info[idx].proj_matrix[1][3],
+	    mtx_info[idx].proj_matrix[2][3],
+	    mtx_info[idx].proj_matrix[3][3],
+	    mtx_info[idx].acf_matrix[0][0],
+	    mtx_info[idx].acf_matrix[1][0],
+	    mtx_info[idx].acf_matrix[2][0],
+	    mtx_info[idx].acf_matrix[3][0],
+	    mtx_info[idx].acf_matrix[0][1],
+	    mtx_info[idx].acf_matrix[1][1],
+	    mtx_info[idx].acf_matrix[2][1],
+	    mtx_info[idx].acf_matrix[3][1],
+	    mtx_info[idx].acf_matrix[0][2],
+	    mtx_info[idx].acf_matrix[1][2],
+	    mtx_info[idx].acf_matrix[2][2],
+	    mtx_info[idx].acf_matrix[3][2],
+	    mtx_info[idx].acf_matrix[0][3],
+	    mtx_info[idx].acf_matrix[1][3],
+	    mtx_info[idx].acf_matrix[2][3],
+	    mtx_info[idx].acf_matrix[3][3]);
+
 	for (int i = 0; i < 4; i++)
 		mtx_info[idx].viewport[i] = vp[i];
 
@@ -1100,9 +1165,8 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	 * any smudging.
 	 */
 	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->ws_smudge_fbo);
+	glViewport(0, 0, ss_texsz[0], ss_texsz[1]);
 	glClear(GL_COLOR_BUFFER_BIT);
-
-	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
 
 	glUseProgram(prog);
 
@@ -1162,6 +1226,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	 * actual screen size.
 	 */
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+	glViewport(cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3]);
 
 	prog = (gi->qual.use_compute ? ws_smudge_comp_prog : ws_smudge_prog);
 	glUseProgram(prog);
@@ -1208,9 +1273,6 @@ out:
 	glActiveTexture(GL_TEXTURE0);
 
 	glutils_debug_pop();
-
-	if (gi->stage1_adv)
-		gi->water_depth_cur = !gi->water_depth_cur;
 }
 
 static void
@@ -1241,14 +1303,37 @@ librain_get_call_count(void)
 }
 
 void
-librain_draw_prepare(unsigned call_index, bool_t force)
+librain_draw_prepare_all(void)
 {
 	double now = dr_getf(&drs.sim_time);
 
 	check_librain_init();
-	ASSERT3U(call_index, <, num_mtx_info);
 
 	compute_precip(now);
+
+	glGetIntegerv(GL_VIEWPORT, saved_vp);
+
+	if (dr_geti(&drs.rev_float_z) != 0) {
+		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
+		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
+		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
+		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
+
+		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+		glDepthFunc(GL_LESS);
+		glClearDepth(1.0);
+	}
+}
+
+void
+librain_draw_prepare_eye(unsigned call_index, bool_t force)
+{
+	double now = dr_getf(&drs.sim_time);
+
+	check_librain_init();
+
+	ASSERT3U(call_index, <, num_mtx_info);
+
 	update_glob_data(mtx_info[call_index].proj_matrix,
 	    mtx_info[call_index].acf_matrix, mtx_info[call_index].viewport);
 
@@ -1266,22 +1351,18 @@ librain_draw_prepare(unsigned call_index, bool_t force)
 	}
 	prepare_ran = B_TRUE;
 
-	glGetIntegerv(GL_VIEWPORT, saved_vp);
+	glob_call_index = call_index;
+
 	glViewport(mtx_info[call_index].viewport[0],
 	    mtx_info[call_index].viewport[1],
 	    mtx_info[call_index].viewport[2],
 	    mtx_info[call_index].viewport[3]);
 
-	if (GLEW_VERSION_4_5) {
-		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
-		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
-		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
-		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
-
-		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
-		glDepthFunc(GL_LESS);
-		glClearDepth(1.0);
-	}
+	logMsg("call_idx %d vp %.0f %.0f %.0f %.0f", call_index,
+	    mtx_info[call_index].viewport[0],
+	    mtx_info[call_index].viewport[1],
+	    mtx_info[call_index].viewport[2],
+	    mtx_info[call_index].viewport[3]);
 	glClear(GL_DEPTH_BUFFER_BIT);
 
 	update_ss_tex(mtx_info[call_index].viewport);
@@ -1314,16 +1395,18 @@ librain_draw_exec(void)
 }
 
 void
-librain_draw_finish(void)
+librain_draw_finish_all(void)
 {
 	check_librain_init();
 
-	if (!prepare_ran)
-		return;
-	prepare_ran = B_FALSE;
+	for (size_t i = 0; i < num_glass_infos; i++) {
+		glass_info_t *gi = &glass_infos[i];
+		if (gi->stage1_adv)
+			gi->water_depth_cur = !gi->water_depth_cur;
+	}
 	glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 
-	if (GLEW_VERSION_4_5) {
+	if (dr_geti(&drs.rev_float_z) != 0) {
 		glClipControl(saved_clip_origin, saved_depth_mode);
 		glDepthFunc(saved_depth_func);
 		glClearDepth(saved_depth_clear);
@@ -2132,6 +2215,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
+	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
+	fdr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
 	    dr_find(&drs.xe_rain, "env/rain") &&
