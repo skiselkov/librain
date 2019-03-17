@@ -445,11 +445,12 @@ LIBRAIN_EXPORT void librain_fini(void);
  * Rendering pipeline functions. See librain.c for more information.
  */
 LIBRAIN_EXPORT unsigned librain_get_call_count(void);
-LIBRAIN_EXPORT void librain_draw_prepare(unsigned call_index, bool_t force);
+LIBRAIN_EXPORT void librain_draw_prepare_all(void);
+LIBRAIN_EXPORT void librain_draw_prepare_eye(unsigned call_index, bool_t force);
 LIBRAIN_EXPORT void librain_draw_z_depth(obj8_t *obj,
     const char **z_depth_group_ids);
 LIBRAIN_EXPORT void librain_draw_exec(void);
-LIBRAIN_EXPORT void librain_draw_finish(void);
+LIBRAIN_EXPORT void librain_draw_finish_all(void);
 LIBRAIN_EXPORT void librain_set_enabled(bool_t flag);
 
 /*

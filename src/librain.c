@@ -77,12 +77,26 @@ typedef enum {
 	DRAW_CALL_RIGHT_EYE =	4
 } draw_call_type_t;
 
+/*
+ * Values of sim/graphics/view/plane_render_type.
+ */
+typedef enum {
+	PLANE_RENDER_NONE =	0,
+	PLANE_RENDER_SOLID =	1,
+	PLANE_RENDER_BLEND =	2
+} plane_render_type_t;
+
+static int			xp_ver, xplm_ver;
+static XPLMHostApplicationID	host_id;
+
 static bool_t		inited = B_FALSE;
 static bool_t		debug_draw = B_FALSE;
 static bool_t		wipers_visible = B_FALSE;
 
 static GLuint	screenshot_tex = 0;
 static GLuint	screenshot_fbo = 0;
+static GLuint	ws_smudge_tex = 0;
+static GLuint	ws_smudge_fbo = 0;
 static GLint	cur_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static GLint	saved_vp[4] = { -1, -1, -1, -1 };
 static GLenum	saved_clip_origin;
@@ -161,6 +175,7 @@ static shader_info_t droplets_frag_info = { .filename = "droplets.frag.spv" };
 static shader_info_t tails_vert_info = { .filename = "tails.vert.spv" };
 static shader_info_t tails_frag_info = { .filename = "tails.frag.spv" };
 static shader_info_t stencil_vert_info = { .filename = "stencil.vert.spv" };
+
 
 static shader_prog_info_t ws_temp_prog_info = {
     .progname = "ws_temp",
@@ -262,6 +277,7 @@ static mat4 glob_proj_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_acf_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_pvm = GLM_MAT4_IDENTITY;
 static vec4 glob_vp;
+static unsigned glob_call_index = 0;
 
 typedef struct {
 	double	angle_now;		/* radians */
@@ -304,9 +320,6 @@ typedef struct {
 	GLuint			ws_temp_fbo[2];
 	int			ws_temp_cur;
 	glutils_quads_t		ws_temp_quads;
-
-	GLuint			ws_smudge_tex;
-	GLuint			ws_smudge_fbo;
 
 	GLuint			droplets_ssbo;
 	GLuint			vertices_vao;
@@ -363,6 +376,8 @@ static struct {
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
 	dr_t	draw_call_type;
+	dr_t	plane_render_type;
+	dr_t	rev_float_z;
 
 	bool_t	xe_present;
 	dr_t	xe_active;
@@ -445,32 +460,32 @@ static void
 update_glob_data(const mat4 proj_matrix, const mat4 acf_matrix, const vec4 vp)
 {
 	memcpy(glob_proj_matrix, proj_matrix, sizeof (mat4));
-	for (int i = 0; i < 4; i++)
-		glob_proj_matrix[3][i] /= 100;
-
+	if (!drs.VR_enabled_avail || dr_geti(&drs.VR_enabled) == 0) {
+		/*
+		 * Outside of VR, the projection parameters are placing
+		 * the near clipping plane very far (about 1 meter), so
+		 * we bring it much closer to get it fixed up.
+		 */
+		for (int i = 0; i < 4; i++)
+			glob_proj_matrix[3][i] /= 100;
+	}
 	memcpy(glob_acf_matrix, acf_matrix, sizeof (mat4));
-
 	glm_mat4_mul(glob_proj_matrix, glob_acf_matrix, glob_pvm);
-
 	memcpy(glob_vp, vp, sizeof (vec4));
+	for (int i = 0; i < 4; i++)
+		cur_vp[i] = vp[i];
 }
 
 static void
-update_ss_tex(const vec4 vp)
+update_ss_tex(void)
 {
-	for (int i = 0; i < 4; i++)
-		cur_vp[i] = vp[i];
-
 	if (cur_vp[2] == ss_texsz[0] && cur_vp[3] == ss_texsz[1])
 		return;
 
 	IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
 	    ss_texsz[0], ss_texsz[1]));
-	for (size_t i = 0; i < num_glass_infos; i++) {
-		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex,
-		    glass_infos[i].glass, GL_RGBA, GL_UNSIGNED_BYTE,
-		    ss_texsz[0], ss_texsz[1]));
-	}
+	IF_TEXSZ(TEXSZ_FREE(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
+	    ss_texsz[0], ss_texsz[1]));
 
 	/* If the viewport size has changed, update the textures. */
 	ss_texsz[0] = cur_vp[2];
@@ -482,15 +497,11 @@ update_ss_tex(const vec4 vp)
 	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
 	    ss_texsz[0], ss_texsz[1]));
 
-	for (size_t i = 0; i < num_glass_infos; i++) {
-		glBindTexture(GL_TEXTURE_2D, glass_infos[i].ws_smudge_tex);
-
-		IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex,
-		    glass_infos[i].glass, NULL, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-		    ss_texsz[0], ss_texsz[1]));
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ss_texsz[0],
-		    ss_texsz[1], 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	}
+	glBindTexture(GL_TEXTURE_2D, ws_smudge_tex);
+	IF_TEXSZ(TEXSZ_ALLOC(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
+	    ss_texsz[0], ss_texsz[1]));
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ss_texsz[0],
+	    ss_texsz[1], 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 }
 
 void
@@ -504,8 +515,9 @@ librain_refresh_screenshot(void)
 	glReadBuffer(GL_COLOR_ATTACHMENT0);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, screenshot_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
-	glBlitFramebuffer(cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3],
-	    0, 0, ss_texsz[0], ss_texsz[1], GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBlitFramebuffer(cur_vp[0], cur_vp[1], cur_vp[0] + cur_vp[2],
+	    cur_vp[1] + cur_vp[3], 0, 0, ss_texsz[0], ss_texsz[1],
+	    GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 }
@@ -1036,13 +1048,21 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 {
 	int idx;
 	int vp[4];
+	draw_call_type_t dct;
 
 	UNUSED(phase);
 	UNUSED(before);
 	UNUSED(refcon);
 
-	if (dr_geti(&drs.draw_call_type) == DRAW_CALL_RIGHT_EYE) {
+	if (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID)
+		return (1);
+
+	dct = dr_geti(&drs.draw_call_type);
+	if (dct == DRAW_CALL_RIGHT_EYE) {
 		idx = 1;
+		num_mtx_info = 2;
+	} else if (dct == DRAW_CALL_LEFT_EYE) {
+		idx = 0;
 		num_mtx_info = 2;
 	} else {
 		idx = 0;
@@ -1053,6 +1073,31 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	VERIFY3S(dr_getvf32(&drs.proj_matrix,
 	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+
+	/*
+	 * X-Plane version 11.32 and prior had a VR bug in the SDK where
+	 * the projection matrix for the right eye was identical to the
+	 * left eye. To fix that, we grab the good left-eye matrix,
+	 * decompose the frustum out of it and swap the left and right
+	 * frustum boundaries, then recompose the matrix. This corrects
+	 * the right eye and the render now aligns properly.
+	 */
+	if (dct == DRAW_CALL_RIGHT_EYE && xp_ver <= 11320) {
+		float near, far, top, bottom, left, right;
+
+		glm_persp_decomp(mtx_info[0].proj_matrix,
+		    &near, &far, &top, &bottom, &left, &right);
+		/*
+		 * YUCK the multiplication constants here are to solve a
+		 * suspected mismatch between the left and right eye
+		 * projection matrices that X-Plane actually uses.
+		 * Unfortunately, without a fix for the problem, we have
+		 * no idea what exact values should be used.
+		 */
+		glm_frustum(-right, -left * 1.00075, bottom * 1.0025, top,
+		    near, far, mtx_info[1].proj_matrix);
+	}
+
 	for (int i = 0; i < 4; i++)
 		mtx_info[idx].viewport[i] = vp[i];
 
@@ -1099,10 +1144,8 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	 * Pre-stage: render the actual image to a side buffer, but without
 	 * any smudging.
 	 */
-	glBindFramebufferEXT(GL_FRAMEBUFFER, gi->ws_smudge_fbo);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	XPLMSetGraphicsState(0, 1, 0, 1, 1, 1, 1);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, ws_smudge_fbo);
+	glViewport(0, 0, ss_texsz[0], ss_texsz[1]);
 
 	glUseProgram(prog);
 
@@ -1147,6 +1190,10 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 		glutils_debug_pop();
 	}
 
+	/* Restore old framebuffer */
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
+	glViewport(cur_vp[0], cur_vp[1], cur_vp[2], cur_vp[3]);
+
 #if	APL
 	/*
 	 * Mac depth buffer problem workaround.
@@ -1158,11 +1205,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	/*
 	 * Final stage: render the prepped displaced texture and apply
 	 * variable smudging based on water depth.
-	 * Viewport is still assigned to new_vp, which is the same as
-	 * actual screen size.
 	 */
-	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
-
 	prog = (gi->qual.use_compute ? ws_smudge_comp_prog : ws_smudge_prog);
 	glUseProgram(prog);
 
@@ -1173,7 +1216,7 @@ draw_ws_effects(glass_info_t *gi, GLint old_fbo)
 	    ss_texsz[0], ss_texsz[1]);
 
 	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, gi->ws_smudge_tex);
+	glBindTexture(GL_TEXTURE_2D, ws_smudge_tex);
 	glUniform1i(glGetUniformLocation(prog, "ws_tex"), 1);
 
 	glActiveTexture(GL_TEXTURE2);
@@ -1208,9 +1251,6 @@ out:
 	glActiveTexture(GL_TEXTURE0);
 
 	glutils_debug_pop();
-
-	if (gi->stage1_adv)
-		gi->water_depth_cur = !gi->water_depth_cur;
 }
 
 static void
@@ -1241,14 +1281,37 @@ librain_get_call_count(void)
 }
 
 void
-librain_draw_prepare(unsigned call_index, bool_t force)
+librain_draw_prepare_all(void)
 {
 	double now = dr_getf(&drs.sim_time);
 
 	check_librain_init();
-	ASSERT3U(call_index, <, num_mtx_info);
 
 	compute_precip(now);
+
+	glGetIntegerv(GL_VIEWPORT, saved_vp);
+
+	if (dr_geti(&drs.rev_float_z) != 0) {
+		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
+		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
+		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
+		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
+
+		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+		glDepthFunc(GL_LESS);
+		glClearDepth(1.0);
+	}
+}
+
+void
+librain_draw_prepare_eye(unsigned call_index, bool_t force)
+{
+	double now = dr_getf(&drs.sim_time);
+
+	check_librain_init();
+
+	ASSERT3U(call_index, <, num_mtx_info);
+
 	update_glob_data(mtx_info[call_index].proj_matrix,
 	    mtx_info[call_index].acf_matrix, mtx_info[call_index].viewport);
 
@@ -1266,25 +1329,16 @@ librain_draw_prepare(unsigned call_index, bool_t force)
 	}
 	prepare_ran = B_TRUE;
 
-	glGetIntegerv(GL_VIEWPORT, saved_vp);
+	glob_call_index = call_index;
+
 	glViewport(mtx_info[call_index].viewport[0],
 	    mtx_info[call_index].viewport[1],
 	    mtx_info[call_index].viewport[2],
 	    mtx_info[call_index].viewport[3]);
 
-	if (GLEW_VERSION_4_5) {
-		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
-		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
-		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
-		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
-
-		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
-		glDepthFunc(GL_LESS);
-		glClearDepth(1.0);
-	}
 	glClear(GL_DEPTH_BUFFER_BIT);
 
-	update_ss_tex(mtx_info[call_index].viewport);
+	update_ss_tex();
 	librain_refresh_screenshot();
 }
 
@@ -1314,16 +1368,18 @@ librain_draw_exec(void)
 }
 
 void
-librain_draw_finish(void)
+librain_draw_finish_all(void)
 {
 	check_librain_init();
 
-	if (!prepare_ran)
-		return;
-	prepare_ran = B_FALSE;
+	for (size_t i = 0; i < num_glass_infos; i++) {
+		glass_info_t *gi = &glass_infos[i];
+		if (gi->stage1_adv)
+			gi->water_depth_cur = !gi->water_depth_cur;
+	}
 	glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 
-	if (GLEW_VERSION_4_5) {
+	if (dr_geti(&drs.rev_float_z) != 0) {
 		glClipControl(saved_clip_origin, saved_depth_mode);
 		glDepthFunc(saved_depth_func);
 		glClearDepth(saved_depth_clear);
@@ -1829,19 +1885,6 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	    GL_STENCIL_INDEX8, GL_UNSIGNED_BYTE, NORM_TEX_SZ(gi),
 	    NORM_TEX_SZ(gi)));
 
-	/*
-	 * Final render pre-stage: capture the full res displacement,
-	 * which is then used as the final smudge pass.
-	 */
-	glGenTextures(1, &gi->ws_smudge_tex);
-	glGenFramebuffers(1, &gi->ws_smudge_fbo);
-	setup_texture(gi->ws_smudge_tex, GL_RGBA, ss_texsz[0], ss_texsz[1],
-	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	setup_color_fbo_for_tex(gi->ws_smudge_fbo, gi->ws_smudge_tex, 0, 0,
-	    B_FALSE);
-	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ws_smudge_tex, glass, NULL, 0,
-	    GL_RGBA, GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
-
 	free(temp_tex);
 
 	glass_info_init_quads(gi);
@@ -1891,10 +1934,6 @@ glass_info_fini(glass_info_t *gi)
 		    gi->glass, GL_STENCIL_INDEX8, GL_UNSIGNED_BYTE,
 		    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi)));
 	}
-	if (gi->ws_smudge_tex != 0) {
-		IF_TEXSZ(TEXSZ_FREE_INSTANCE(librain_ws_smudge_tex, gi->glass,
-		    GL_RGBA, GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
-	}
 
 	DESTROY_OP(gi->ws_temp_fbo[0], 0,
 	    glDeleteFramebuffers(2, gi->ws_temp_fbo));
@@ -1916,11 +1955,6 @@ glass_info_fini(glass_info_t *gi)
 	DESTROY_OP(gi->water_norm_tex, 0,
 	    glDeleteTextures(1, &gi->water_norm_tex));
 	glutils_destroy_quads(&gi->water_norm_quads);
-
-	DESTROY_OP(gi->ws_smudge_fbo, 0,
-	    glDeleteFramebuffers(1, &gi->ws_smudge_fbo));
-	DESTROY_OP(gi->ws_smudge_tex, 0,
-	    glDeleteTextures(1, &gi->ws_smudge_tex));
 
 	DESTROY_OP(gi->droplets_ssbo, 0,
 	    glDeleteBuffers(1, &gi->droplets_ssbo));
@@ -2082,6 +2116,9 @@ librain_glob_init(void)
 
 	glob_inited = B_TRUE;
 #endif	/* DLLMODE */
+
+	XPLMGetVersions(&xp_ver, &xplm_ver, &host_id);
+
 	return (B_TRUE);
 }
 
@@ -2132,6 +2169,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
+	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
+	fdr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
 	    dr_find(&drs.xe_rain, "env/rain") &&
@@ -2165,6 +2204,18 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	    GL_TEXTURE_2D, screenshot_tex, 0);
 	VERIFY3U(glCheckFramebufferStatus(GL_FRAMEBUFFER), ==,
 	    GL_FRAMEBUFFER_COMPLETE);
+
+	/*
+	 * Final render pre-stage: capture the full res displacement,
+	 * which is then used as the final smudge pass.
+	 */
+	glGenTextures(1, &ws_smudge_tex);
+	glGenFramebuffers(1, &ws_smudge_fbo);
+	setup_texture(ws_smudge_tex, GL_RGBA, ss_texsz[0], ss_texsz[1],
+	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	setup_color_fbo_for_tex(ws_smudge_fbo, ws_smudge_tex, 0, 0, B_FALSE);
+	IF_TEXSZ(TEXSZ_ALLOC(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
+	    ss_texsz[0], ss_texsz[1]));
 
 	/* Must go ahead of VAO construction */
 	if (!librain_reload_gl_progs())
@@ -2209,9 +2260,15 @@ librain_fini(void)
 		IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB,
 		    GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
 	}
-
 	DESTROY_OP(screenshot_fbo, 0, glDeleteFramebuffers(1, &screenshot_fbo));
 	DESTROY_OP(screenshot_tex, 0, glDeleteTextures(1, &screenshot_tex));
+
+	if (ws_smudge_tex != 0) {
+		IF_TEXSZ(TEXSZ_FREE(librain_ws_smudge_tex, GL_RGBA,
+		    GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
+	}
+	DESTROY_OP(ws_smudge_fbo, 0, glDeleteFramebuffers(1, &ws_smudge_fbo));
+	DESTROY_OP(ws_smudge_tex, 0, glDeleteTextures(1, &ws_smudge_tex));
 
 	water_effects_fini();
 

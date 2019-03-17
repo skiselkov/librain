@@ -59,8 +59,8 @@ main()
 	float depth_rat = depth / max_depth;
 
 #define	BLUR_I(x, y, coeff_i) \
-	(get_pixel(gl_FragCoord.xy + depth_rat * vec2(float(x), float(y))) * \
-	    KERNEL[coeff_i])
+	(get_pixel(gl_FragCoord.xy - vp.xy + \
+	    depth_rat * vec2(float(x), float(y))) * KERNEL[coeff_i])
 
 	color_out =
 	    /* row 0 */
