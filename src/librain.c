@@ -1074,49 +1074,22 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
 
-	logMsg("dct: %d\n"
-	    "proj_matrix:\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n"
-	    "acf_matrix:\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n"
-	    "%f %f %f %f\n", dct,
-	    mtx_info[idx].proj_matrix[0][0],
-	    mtx_info[idx].proj_matrix[1][0],
-	    mtx_info[idx].proj_matrix[2][0],
-	    mtx_info[idx].proj_matrix[3][0],
-	    mtx_info[idx].proj_matrix[0][1],
-	    mtx_info[idx].proj_matrix[1][1],
-	    mtx_info[idx].proj_matrix[2][1],
-	    mtx_info[idx].proj_matrix[3][1],
-	    mtx_info[idx].proj_matrix[0][2],
-	    mtx_info[idx].proj_matrix[1][2],
-	    mtx_info[idx].proj_matrix[2][2],
-	    mtx_info[idx].proj_matrix[3][2],
-	    mtx_info[idx].proj_matrix[0][3],
-	    mtx_info[idx].proj_matrix[1][3],
-	    mtx_info[idx].proj_matrix[2][3],
-	    mtx_info[idx].proj_matrix[3][3],
-	    mtx_info[idx].acf_matrix[0][0],
-	    mtx_info[idx].acf_matrix[1][0],
-	    mtx_info[idx].acf_matrix[2][0],
-	    mtx_info[idx].acf_matrix[3][0],
-	    mtx_info[idx].acf_matrix[0][1],
-	    mtx_info[idx].acf_matrix[1][1],
-	    mtx_info[idx].acf_matrix[2][1],
-	    mtx_info[idx].acf_matrix[3][1],
-	    mtx_info[idx].acf_matrix[0][2],
-	    mtx_info[idx].acf_matrix[1][2],
-	    mtx_info[idx].acf_matrix[2][2],
-	    mtx_info[idx].acf_matrix[3][2],
-	    mtx_info[idx].acf_matrix[0][3],
-	    mtx_info[idx].acf_matrix[1][3],
-	    mtx_info[idx].acf_matrix[2][3],
-	    mtx_info[idx].acf_matrix[3][3]);
+	if (dct == DRAW_CALL_RIGHT_EYE) {
+		mat4 inv, delta;
+
+		glm_mat4_inv(mtx_info[1].proj_matrix, inv);
+		glm_mat4_mul(mtx_info[0].proj_matrix, inv, delta);
+
+		printf("delta:\n"
+		    "%16.9f %16.9f %16.9f %16.9f\n"
+		    "%16.9f %16.9f %16.9f %16.9f\n"
+		    "%16.9f %16.9f %16.9f %16.9f\n"
+		    "%16.9f %16.9f %16.9f %16.9f\n",
+		    delta[0][0], delta[1][0], delta[2][0], delta[3][0],
+		    delta[0][1], delta[1][1], delta[2][1], delta[3][1],
+		    delta[0][2], delta[1][2], delta[2][2], delta[3][2],
+		    delta[0][3], delta[1][3], delta[2][3], delta[3][3]);
+	}
 
 	for (int i = 0; i < 4; i++)
 		mtx_info[idx].viewport[i] = vp[i];
