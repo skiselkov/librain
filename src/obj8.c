@@ -104,7 +104,6 @@ struct obj8_s {
 	GLint		pos_loc;
 	GLint		norm_loc;
 	GLint		tex0_loc;
-	GLuint		vao;
 	void		*vtx_table;
 	GLuint		vtx_buf;
 	unsigned	vtx_cap;
@@ -646,12 +645,6 @@ upload_data(obj8_t *obj)
 		/* Make sure outside GL errors don't confuse us */
 		glutils_reset_errors();
 
-		if (GLEW_VERSION_3_0) {
-			glGenVertexArrays(1, &obj->vao);
-			VERIFY(obj->vao != 0);
-			glBindVertexArray(obj->vao);
-		}
-
 		glGenBuffers(1, &obj->vtx_buf);
 		glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 		glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap *
@@ -671,9 +664,6 @@ upload_data(obj8_t *obj)
 		    obj->filename, 0, obj->idx_cap * sizeof (GLuint)));
 		free(obj->idx_table);
 		obj->idx_table = NULL;
-
-		if (obj->vao != 0)
-			glBindVertexArray(0);
 
 		GLUTILS_ASSERT_NO_ERROR();
 	}
@@ -747,8 +737,6 @@ obj8_free(obj8_t *obj)
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
 		    obj->idx_cap * sizeof (GLuint)));
 	}
-	if (obj->vao != 0)
-		glDeleteVertexArrays(1, &obj->vao);
 	free(obj->idx_table);
 	free(obj->filename);
 
@@ -953,56 +941,21 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 static void
 setup_arrays(obj8_t *obj, GLuint prog)
 {
-	GLint pos_loc_old = -1, norm_loc_old = -1, tex0_loc_old = -1;
-
-	/*
-	 * If we're using our private VAO and the program is the same as
-	 * last time, our array enablings will still be valid.
-	 */
-	if (obj->vao != 0 && obj->last_prog == prog)
-		return;
-
-	obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
-	obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
-	obj->tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-	GLUTILS_ASSERT_NO_ERROR();
-
-	if (obj->last_prog != prog && obj->last_prog != 0) {
-		/* Disable unused vertex attribute arrays. */
-		pos_loc_old = glGetAttribLocation(obj->last_prog, "vtx_pos");
-		if (pos_loc_old != obj->pos_loc)
-			glutils_disable_vtx_attr_ptr(pos_loc_old);
-		norm_loc_old = glGetAttribLocation(obj->last_prog, "vtx_norm");
-		if (norm_loc_old != obj->norm_loc)
-			glutils_disable_vtx_attr_ptr(norm_loc_old);
-		tex0_loc_old = glGetAttribLocation(obj->last_prog, "vtx_tex0");
-		if (tex0_loc_old != obj->tex0_loc)
-			glutils_disable_vtx_attr_ptr(tex0_loc_old);
+	if (obj->last_prog != prog) {
+		obj->last_prog = prog;
+		obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
+		obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
+		obj->tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
+		obj->pvm_loc = glGetUniformLocation(prog, "pvm");
 		GLUTILS_ASSERT_NO_ERROR();
 	}
 
-	/*
-	 * If we're not running VAOs, we need to restore the arrays on
-	 * every draw.
-	 */
-	if (obj->vao != 0)
-		obj->last_prog = prog;
-	obj->pvm_loc = glGetUniformLocation(prog, "pvm");
-	GLUTILS_ASSERT_NO_ERROR();
-	/* pvm_loc can be -1, if the shader doesn't need the matrix */
-
-	if (obj->pos_loc != pos_loc_old) {
-		glutils_enable_vtx_attr_ptr(obj->pos_loc, 3, GL_FLOAT,
-		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
-	}
-	if (obj->norm_loc != norm_loc_old) {
-		glutils_enable_vtx_attr_ptr(obj->norm_loc, 3, GL_FLOAT,
-		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
-	}
-	if (obj->tex0_loc != tex0_loc_old) {
-		glutils_enable_vtx_attr_ptr(obj->tex0_loc, 2, GL_FLOAT,
-		    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
-	}
+	glutils_enable_vtx_attr_ptr(obj->pos_loc, 3, GL_FLOAT,
+	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
+	glutils_enable_vtx_attr_ptr(obj->norm_loc, 3, GL_FLOAT,
+	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
+	glutils_enable_vtx_attr_ptr(obj->tex0_loc, 2, GL_FLOAT,
+	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
 	GLUTILS_ASSERT_NO_ERROR();
 }
 
@@ -1022,8 +975,6 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 	glutils_debug_push(0, "obj8_draw_group(%s)",
 	    lacf_basename(obj->filename));
 
-	if (obj->vao != 0)
-		glBindVertexArray(obj->vao);
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
@@ -1033,11 +984,9 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
 	gl_state_cleanup();
-	if (obj->vao == 0) {
-		glutils_disable_vtx_attr_ptr(obj->pos_loc);
-		glutils_disable_vtx_attr_ptr(obj->norm_loc);
-		glutils_disable_vtx_attr_ptr(obj->tex0_loc);
-	}
+	glutils_disable_vtx_attr_ptr(obj->pos_loc);
+	glutils_disable_vtx_attr_ptr(obj->norm_loc);
+	glutils_disable_vtx_attr_ptr(obj->tex0_loc);
 
 	glutils_debug_pop();
 	GLUTILS_ASSERT_NO_ERROR();
