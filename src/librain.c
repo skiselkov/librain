@@ -1083,10 +1083,10 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	 * the right eye and the render now aligns properly.
 	 */
 	if (dct == DRAW_CALL_RIGHT_EYE && xp_ver <= 11320) {
-		float near, far, top, bottom, left, right;
+		float near_z, far_z, top, bottom, left, right;
 
 		glm_persp_decomp(mtx_info[0].proj_matrix,
-		    &near, &far, &top, &bottom, &left, &right);
+		    &near_z, &far_z, &top, &bottom, &left, &right);
 		/*
 		 * YUCK the multiplication constants here are to solve a
 		 * suspected mismatch between the left and right eye
@@ -1095,7 +1095,7 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 		 * no idea what exact values should be used.
 		 */
 		glm_frustum(-right, -left * 1.00075, bottom * 1.0025, top,
-		    near, far, mtx_info[1].proj_matrix);
+		    near_z, far_z, mtx_info[1].proj_matrix);
 	}
 
 	for (int i = 0; i < 4; i++)
