@@ -378,6 +378,9 @@ static struct {
 	dr_t	draw_call_type;
 	dr_t	plane_render_type;
 	dr_t	rev_float_z;
+	bool_t	aa_ratio_avail;
+	dr_t	fsaa_ratio_x;
+	dr_t	fsaa_ratio_y;
 
 	bool_t	xe_present;
 	dr_t	xe_active;
@@ -1073,6 +1076,19 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	VERIFY3S(dr_getvf32(&drs.proj_matrix,
 	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+	if (drs.aa_ratio_avail) {
+		/*
+		 * Anti-aliasing messes with the viewport, so we need to
+		 * divide it by the AA ratio, otherwise our render doesn't
+		 * line up with the screen.
+		 */
+		float ratio_x = dr_getf(&drs.fsaa_ratio_x);
+		float ratio_y = dr_getf(&drs.fsaa_ratio_y);
+		vp[0] /= ratio_x;
+		vp[1] /= ratio_y;
+		vp[2] /= ratio_x;
+		vp[3] /= ratio_y;
+	}
 
 	/*
 	 * X-Plane version 11.32 and prior had a VR bug in the SDK where
@@ -2171,6 +2187,11 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
 	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
 	fdr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
+
+	drs.aa_ratio_avail = (dr_find(&drs.fsaa_ratio_x,
+	    "sim/private/controls/hdr/fsaa_ratio_x") &&
+	    dr_find(&drs.fsaa_ratio_y,
+	    "sim/private/controls/hdr/fsaa_ratio_y"));
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
 	    dr_find(&drs.xe_rain, "env/rain") &&
