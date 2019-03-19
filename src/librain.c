@@ -1094,7 +1094,7 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 		 * Unfortunately, without a fix for the problem, we have
 		 * no idea what exact values should be used.
 		 */
-		glm_frustum(-right, -left * 1.00075, bottom * 1.0025, top,
+		glm_frustum(-right, -left * 1.00075, bottom * 1.008, top,
 		    near_z, far_z, mtx_info[1].proj_matrix);
 	}
 
