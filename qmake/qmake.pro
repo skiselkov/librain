@@ -36,7 +36,7 @@ INCLUDEPATH += $$[LIBACFUTILS]/SDK/CHeaders/Widgets
 INCLUDEPATH += $$[LIBACFUTILS]/glew
 INCLUDEPATH += $$[LIBACFUTILS]/cglm/cglm-0.4.1/include
 QMAKE_CFLAGS += -std=c99 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
-QMAKE_CFLAGS += -Wunused-result
+QMAKE_CFLAGS += -Wunused-result -Wno-missing-field-initializers
 
 # Make sure to disable Qmake's own warnings system, because it overrides
 # our warning flags. This breaks CTASSERT, which relies on an unused local
@@ -96,6 +96,8 @@ macx-clang {
 	QMAKE_CFLAGS += $$system("$$[LIBACFUTILS]/pkg-config-deps mac-64 \
 	    --static-openal --cflags")
 	LIBS += -L$$[LIBACFUTILS]/qmake/mac64 -lacfutils
+	LIBS += $$system("$$[LIBACFUTILS]/pkg-config-deps mac-64 \
+	    --static-openal --libs")
 	LIBS += -F$$[LIBACFUTILS]/SDK/Libraries/Mac
 	LIBS += -framework OpenGL
 	LIBS += -framework XPLM
