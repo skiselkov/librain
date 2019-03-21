@@ -95,6 +95,10 @@ macx {
 macx-clang {
 	QMAKE_CFLAGS += $$system("$$[LIBACFUTILS]/pkg-config-deps mac-64 \
 	    --static-openal --cflags")
+	contains(dll, 1) {
+		QMAKE_LFLAGS += -install_name @rpath/librain.dylib
+	}
+
 	LIBS += -L$$[LIBACFUTILS]/qmake/mac64 -lacfutils
 	LIBS += $$system("$$[LIBACFUTILS]/pkg-config-deps mac-64 \
 	    --static-openal --libs")

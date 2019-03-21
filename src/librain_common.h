@@ -45,11 +45,11 @@ extern "C" {
     #endif	/* !__GNUC__ */
   #endif	/* !DLLMODE */
 #else	/* !defined(_WIN32) && !defined(__CYGWIN__) */
-  #if	__GNUC__ >= 4
+  #ifdef	DLLMODE
+    #define	LIBRAIN_EXPORT	__attribute__((visibility("default")))
+  #else	/* !DLLMODE */
     #define	LIBRAIN_EXPORT
-  #else
-    #define LIBRAIN_EXPORT
-  #endif
+  #endif	/* !DLLMODE */
 #endif
 
 #ifdef	__cplusplus
