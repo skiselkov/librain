@@ -78,13 +78,21 @@ typedef enum {
 } draw_call_type_t;
 
 /*
- * Values of sim/graphics/view/plane_render_type.
+ * Values of sim/graphics/view/plane_render_type
  */
 typedef enum {
 	PLANE_RENDER_NONE =	0,
 	PLANE_RENDER_SOLID =	1,
 	PLANE_RENDER_BLEND =	2
 } plane_render_type_t;
+
+/*
+ * Values of sim/graphics/view/world_render_type
+ */
+typedef enum {
+	WORLD_RENDER_TYPE_NORM = 0,
+	WORLD_RENDER_TYPE_REFLECT = 1
+} world_render_type_t;
 
 static int			xp_ver, xplm_ver;
 static XPLMHostApplicationID	host_id;
@@ -358,6 +366,8 @@ static struct {
 
 static struct {
 	dr_t	panel_render_type;
+	dr_t	plane_render_type;
+	dr_t	world_render_type;
 	dr_t	sim_time;
 	dr_t	proj_matrix;
 	dr_t	acf_matrix;
@@ -376,7 +386,6 @@ static struct {
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
 	dr_t	draw_call_type;
-	dr_t	plane_render_type;
 	dr_t	rev_float_z;
 	bool_t	aa_ratio_avail;
 	dr_t	fsaa_ratio_x;
@@ -1057,7 +1066,8 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 	UNUSED(before);
 	UNUSED(refcon);
 
-	if (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID)
+	if (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID ||
+	    dr_geti(&drs.world_render_type) != WORLD_RENDER_TYPE_NORM)
 		return (1);
 
 	dct = dr_geti(&drs.draw_call_type);
@@ -2166,6 +2176,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	memset(&drs, 0, sizeof (drs));
 
 	fdr_find(&drs.panel_render_type, "sim/graphics/view/panel_render_type");
+	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
+	fdr_find(&drs.world_render_type, "sim/graphics/view/world_render_type");
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
 	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix");
 	fdr_find(&drs.acf_matrix, "sim/graphics/view/acf_matrix");
@@ -2185,7 +2197,6 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
-	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
 	fdr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
 
 	drs.aa_ratio_avail = (dr_find(&drs.fsaa_ratio_x,
