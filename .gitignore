@@ -12,6 +12,7 @@ qmake/librain.o
 qmake/mac64/
 qmake/obj8.o
 qmake/librain.zip
+qmake/rain.def
 plugin/qmake/debug
 plugin/qmake/librain.plugin
 plugin/qmake/Makefile.Debug

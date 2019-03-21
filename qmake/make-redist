@@ -16,10 +16,10 @@
 # Copyright 2019 Saso Kiselkov. All rights reserved.
 
 HEADERS=(
-	librain_common.h
-	librain.h
-	obj8.h
-	surf_ice.h
+	../src/librain_common.h
+	../src/librain.h
+	../src/obj8.h
+	../src/surf_ice.h
 )
 
 if ! [ -d lin64 ]; then
@@ -34,7 +34,7 @@ fi
 
 mkdir -p librain/include librain/librain-shaders
 cp ../README.md librain
-cp ${HEADERS} librain/include
+cp ${HEADERS[@]} librain/include
 cp ../shaders/bin/*.glsl* ../shaders/bin/*.spv* librain/librain-shaders
 cp -r win64-dll win64-mingw mac64 lin64 librain
 rm -f librain.zip

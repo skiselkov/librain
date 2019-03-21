@@ -68,6 +68,7 @@ win32:contains(CROSS_COMPILE, x86_64-w64-mingw32-) {
 	LIBS += -L$$[LIBACFUTILS]/SDK/Libraries/Win -lXPLM_64
 	LIBS += -L$$[LIBACFUTILS]/GL_for_Windows/lib -lglu32 -lopengl32
 	LIBS += -ldbghelp
+	LIBS += -Wl,--output-def,rain.def
 }
 
 linux-g++-64 {

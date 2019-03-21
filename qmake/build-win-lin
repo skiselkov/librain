@@ -51,7 +51,14 @@ if [ $? != 0 ] ; then
 	exit
 fi
 mv "$RELEASE/rain.dll" "win64-dll/rain.dll" || exit 1
-mv "$RELEASE/librain.a" "win64-dll/rain.lib" || exit 1
+
+# WARNING: we can't rely on --out-implib, because the included
+# filenames of the .o files in the archive are identical across
+# different library builds. This then confuses MSVC, which proceeds
+# to link all symbols from identically-named .o files from all
+# DLLs with them. This produces a jumbled mess of symbol name refs.
+x86_64-w64-mingw32-dlltool -d rain.def \
+    --dllname rain.dll --output-lib win64-dll/rain.lib
 
 qmake -set DLL 0
 qmake -spec win32-g++
