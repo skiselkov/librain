@@ -38,6 +38,12 @@ INCLUDEPATH += $$[LIBACFUTILS]/cglm/cglm-0.4.1/include
 QMAKE_CFLAGS += -std=c99 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
 QMAKE_CFLAGS += -Wunused-result
 
+# Make sure to disable Qmake's own warnings system, because it overrides
+# our warning flags. This breaks CTASSERT, which relies on an unused local
+# typedef.
+QMAKE_CFLAGS_WARN_ON -= -W -Wall
+QMAKE_CXXFLAGS_WARN_ON -= -W -Wall
+
 # _GNU_SOURCE needed on Linux for getline()
 # DEBUG - used by our ASSERT macro
 # _FILE_OFFSET_BITS=64 to get 64-bit ftell and fseek on 32-bit platforms.
