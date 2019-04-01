@@ -43,6 +43,16 @@
  */
 #define	MAX_DR_LOOKUPS	10
 
+#define	PROT_BAD_ANIM_VAL(__val, __cmd, __bail) \
+	do { \
+		if (!isfinite((__val))) { \
+			logMsg("Bad animation dataref %s = %f. Bailing out. " \
+			    "Report this as a bug and attach the log file.", \
+			    (__cmd)->dr_name, (__val)); \
+			__bail; \
+		} \
+	} while (0)
+
 TEXSZ_MK_TOKEN(obj8_vtx_buf);
 TEXSZ_MK_TOKEN(obj8_idx_buf);
 
@@ -819,6 +829,7 @@ rotation_get_angle(obj8_cmd_t *cmd)
 	double val = cmd_dr_read(cmd);
 	size_t n = cmd->rotate.n_pts;
 
+	PROT_BAD_ANIM_VAL(val, cmd, return (0));
 	/* Too few points to animate anything */
 	if (n == 0)
 		return (0);
@@ -886,6 +897,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_ANIM_HIDE_SHOW: {
 			double val = cmd_dr_read(subcmd);
 
+			PROT_BAD_ANIM_VAL(val, subcmd, break);
 			if (subcmd->hide_show.val[0] <= val &&
 			    subcmd->hide_show.val[1] >= val)
 				do_show = subcmd->hide_show.set_val;
@@ -900,6 +912,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			double val = cmd_dr_read(subcmd);
 			vec3 xlate = {0, 0, 0};
 
+			PROT_BAD_ANIM_VAL(val, subcmd, break);
 			if (subcmd->trans.n_pts == 1) {
 				/*
 				 * single-point translations simply set
