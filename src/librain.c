@@ -386,6 +386,7 @@ static struct {
 	bool_t	VR_enabled_avail;
 	dr_t	VR_enabled;
 	dr_t	draw_call_type;
+	bool_t	rev_float_z_avail;
 	dr_t	rev_float_z;
 	bool_t	aa_ratio_avail;
 	dr_t	fsaa_ratio_x;
@@ -1317,7 +1318,7 @@ librain_draw_prepare_all(void)
 
 	glGetIntegerv(GL_VIEWPORT, saved_vp);
 
-	if (dr_geti(&drs.rev_float_z) != 0) {
+	if (drs.rev_float_z_avail && dr_geti(&drs.rev_float_z) != 0) {
 		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
 		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
 		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
@@ -1405,7 +1406,7 @@ librain_draw_finish_all(void)
 	}
 	glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 
-	if (dr_geti(&drs.rev_float_z) != 0) {
+	if (drs.rev_float_z_avail && dr_geti(&drs.rev_float_z) != 0) {
 		glClipControl(saved_clip_origin, saved_depth_mode);
 		glDepthFunc(saved_depth_func);
 		glClearDepth(saved_depth_clear);
@@ -2197,7 +2198,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
-	fdr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
+	drs.rev_float_z_avail =
+	    dr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
 
 	drs.aa_ratio_avail = (dr_find(&drs.fsaa_ratio_x,
 	    "sim/private/controls/hdr/fsaa_ratio_x") &&
