@@ -279,7 +279,21 @@ typedef struct {
 	GLint	wind_temp;
 } rain_stage1_loc_t;
 
-static rain_stage1_loc_t rain_stage1_loc = { 0 };
+typedef struct {
+	GLint	pos;
+	GLint	ctr;
+	GLint	radius;
+	GLint	size;
+} droplets_paint_loc_t;
+
+typedef struct {
+	GLint	pos;
+	GLint	quant;
+} tails_paint_loc_t;
+
+static rain_stage1_loc_t	rain_stage1_loc = { 0 };
+static droplets_paint_loc_t	droplets_paint_prog_loc = { 0 };
+static tails_paint_loc_t	tails_prog_loc = { 0 };
 
 static mat4 glob_proj_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_acf_matrix = GLM_MAT4_IDENTITY;
@@ -330,10 +344,8 @@ typedef struct {
 	glutils_quads_t		ws_temp_quads;
 
 	GLuint			droplets_ssbo;
-	GLuint			vertices_vao;
 	GLuint			vertices_vtx_buf;
 	GLuint			vertices_idx_buf;
-	GLuint			tails_vao;
 	GLuint			tails_vtx_buf;
 	GLuint			tails_idx_buf;
 
@@ -409,6 +421,48 @@ static struct {
 
 static void init_glass_stencil(glass_info_t *gi, GLuint fbo,
     unsigned w, unsigned h);
+
+static void
+bind_droplets_vtx_attrs(void)
+{
+	const droplets_paint_loc_t *loc = &droplets_paint_prog_loc;
+
+	glutils_enable_vtx_attr_ptr(loc->pos, 2, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_vtx_t), offsetof(droplet_vtx_t, pos));
+	glutils_enable_vtx_attr_ptr(loc->ctr, 2, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_vtx_t), offsetof(droplet_vtx_t, ctr));
+	glutils_enable_vtx_attr_ptr(loc->radius, 1, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_vtx_t), offsetof(droplet_vtx_t, radius));
+	glutils_enable_vtx_attr_ptr(loc->size, 1, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_vtx_t), offsetof(droplet_vtx_t, size));
+}
+
+static void
+unbind_droplets_vtx_attrs(void)
+{
+	glutils_disable_vtx_attr_ptr(droplets_paint_prog_loc.pos);
+	glutils_disable_vtx_attr_ptr(droplets_paint_prog_loc.ctr);
+	glutils_disable_vtx_attr_ptr(droplets_paint_prog_loc.radius);
+	glutils_disable_vtx_attr_ptr(droplets_paint_prog_loc.size);
+}
+
+static void
+bind_tails_vtx_attrs(void)
+{
+	const tails_paint_loc_t *loc = &tails_prog_loc;
+
+	glutils_enable_vtx_attr_ptr(loc->pos, 2, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_tail_t), offsetof(droplet_tail_t, pos));
+	glutils_enable_vtx_attr_ptr(loc->quant, 1, GL_FLOAT, GL_FALSE,
+	    sizeof (droplet_tail_t), offsetof(droplet_tail_t, quant));
+}
+
+static void
+unbind_tails_vtx_attrs(void)
+{
+	glutils_disable_vtx_attr_ptr(tails_prog_loc.pos);
+	glutils_disable_vtx_attr_ptr(tails_prog_loc.quant);
+}
 
 static bool_t
 have_compute(void)
@@ -851,10 +905,16 @@ rain_stage2_compute_paint_droplets(const glass_info_t *gi)
 	    GLASS_NAME(gi));
 
 	glUseProgram(droplets_paint_prog);
-	glBindVertexArray(gi->vertices_vao);
+
 	glBindBuffer(GL_ARRAY_BUFFER, gi->vertices_vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->vertices_idx_buf);
+
+	bind_droplets_vtx_attrs();
 	glDrawElements(GL_TRIANGLES, num_elem, GL_UNSIGNED_INT, NULL);
+	unbind_droplets_vtx_attrs();
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	glutils_debug_pop();
 }
@@ -869,12 +929,18 @@ rain_stage2_compute_paint_tails(const glass_info_t *gi)
 	    GLASS_NAME(gi));
 
 	glUseProgram(tails_prog);
-	glBindVertexArray(gi->tails_vao);
 	glBindBuffer(GL_ARRAY_BUFFER, gi->tails_vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->tails_idx_buf);
 	glLineWidth(STREAMER_WIDTH);
+
+	bind_tails_vtx_attrs();
 	glDrawElements(GL_LINES, num_elem, GL_UNSIGNED_INT, NULL);
+	unbind_tails_vtx_attrs();
+
 	glLineWidth(1);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
 	glutils_debug_pop();
 }
 
@@ -1587,54 +1653,15 @@ glass_info_init_compute_phys(glass_info_t *gi)
 static void
 glass_info_init_compute_visual_droplets(glass_info_t *gi)
 {
-	GLuint prog = droplets_paint_prog;
-	GLint pos_loc, ctr_loc, radius_loc, size_loc;
 	size_t index_bytes = sizeof (GLuint) * gi->qual.num_droplets *
 	    FACES_PER_DROPLET * 3;
 	GLuint *indices = safe_malloc(index_bytes);
-
-	ASSERT(prog != 0);
-
-	glGenVertexArrays(1, &gi->vertices_vao);
-	VERIFY(gi->vertices_vao != 0);
-	glBindVertexArray(gi->vertices_vao);
 
 	VERIFY(gi->vertices_vtx_buf != 0);
 	glGenBuffers(1, &gi->vertices_idx_buf);
 	VERIFY(gi->vertices_idx_buf != 0);
 
-	glBindBuffer(GL_ARRAY_BUFFER, gi->vertices_vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->vertices_idx_buf);
-
-	pos_loc = glGetAttribLocation(prog, "pos");
-	if (pos_loc != -1) {
-		glEnableVertexAttribArray(pos_loc);
-		glVertexAttribPointer(pos_loc, 2, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_vtx_t),
-		    (void *)(offsetof(droplet_vtx_t, pos)));
-	}
-	ctr_loc = glGetAttribLocation(prog, "ctr");
-	if (ctr_loc != -1) {
-		glEnableVertexAttribArray(ctr_loc);
-		glVertexAttribPointer(ctr_loc, 2, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_vtx_t),
-		    (void *)(offsetof(droplet_vtx_t, ctr)));
-	}
-	radius_loc = glGetAttribLocation(prog, "radius");
-	if (radius_loc != -1) {
-		glEnableVertexAttribArray(radius_loc);
-		glVertexAttribPointer(radius_loc, 1, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_vtx_t),
-		    (void *)(offsetof(droplet_vtx_t, radius)));
-	}
-	size_loc = glGetAttribLocation(prog, "size");
-	if (size_loc != -1) {
-		glEnableVertexAttribArray(size_loc);
-		glVertexAttribPointer(size_loc, 1, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_vtx_t),
-		    (void *)(offsetof(droplet_vtx_t, size)));
-	}
-
 	for (unsigned d = 0; d < gi->qual.num_droplets; d++) {
 		GLuint *droplet = &indices[d * FACES_PER_DROPLET * 3];
 
@@ -1647,11 +1674,9 @@ glass_info_init_compute_visual_droplets(glass_info_t *gi)
 			face[2] = d * VTX_PER_DROPLET + VTX_PER_DROPLET - 1;
 		}
 	}
-
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
 	    GL_STATIC_DRAW);
-
-	gl_state_cleanup();
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	free(indices);
 }
@@ -1659,42 +1684,17 @@ glass_info_init_compute_visual_droplets(glass_info_t *gi)
 static void
 glass_info_init_compute_visual_tails(glass_info_t *gi)
 {
-	GLuint prog = tails_prog;
-	GLint pos_loc, quant_loc;
 	size_t index_bytes = sizeof (GLuint) *
 	    NUM_STREAMERS(gi->qual.num_droplets) * NUM_DROPLET_TAIL_SEGS * 2;
 	GLuint *indices = safe_malloc(index_bytes);
 	const GLuint *end = &indices[NUM_STREAMERS(gi->qual.num_droplets) *
 	    NUM_DROPLET_TAIL_SEGS * 2];
 
-	ASSERT(prog != 0);
-
-	glGenVertexArrays(1, &gi->tails_vao);
-	VERIFY(gi->tails_vao != 0);
-	glBindVertexArray(gi->tails_vao);
-
 	VERIFY(gi->tails_vtx_buf != 0);
 	glGenBuffers(1, &gi->tails_idx_buf);
 	VERIFY(gi->tails_idx_buf != 0);
 
-	glBindBuffer(GL_ARRAY_BUFFER, gi->tails_vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gi->tails_idx_buf);
-
-	pos_loc = glGetAttribLocation(prog, "pos");
-	if (pos_loc != -1) {
-		glEnableVertexAttribArray(pos_loc);
-		glVertexAttribPointer(pos_loc, 2, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_tail_t),
-		    (void *)(offsetof(droplet_tail_t, pos)));
-	}
-	quant_loc = glGetAttribLocation(prog, "quant");
-	if (quant_loc != -1) {
-		glEnableVertexAttribArray(quant_loc);
-		glVertexAttribPointer(quant_loc, 1, GL_FLOAT, GL_FALSE,
-		    sizeof (droplet_tail_t),
-		    (void *)(offsetof(droplet_tail_t, quant)));
-	}
-
 	for (unsigned d = 0; d < NUM_STREAMERS(gi->qual.num_droplets); d++) {
 		GLuint *droplet = &indices[d * NUM_DROPLET_TAIL_SEGS * 2];
 		GLuint p = d * NUM_DROPLET_HISTORY;
@@ -1713,11 +1713,9 @@ glass_info_init_compute_visual_tails(glass_info_t *gi)
 			    NUM_DROPLET_HISTORY);
 		}
 	}
-
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, indices,
 	    GL_STATIC_DRAW);
-
-	gl_state_cleanup();
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	free(indices);
 }
@@ -1986,15 +1984,11 @@ glass_info_fini(glass_info_t *gi)
 	DESTROY_OP(gi->droplets_ssbo, 0,
 	    glDeleteBuffers(1, &gi->droplets_ssbo));
 
-	DESTROY_OP(gi->vertices_vao, 0,
-	    glDeleteVertexArrays(1, &gi->vertices_vao));
 	DESTROY_OP(gi->vertices_vtx_buf, 0,
 	    glDeleteBuffers(1, &gi->vertices_vtx_buf));
 	DESTROY_OP(gi->vertices_idx_buf, 0,
 	    glDeleteBuffers(1, &gi->vertices_idx_buf));
 
-	DESTROY_OP(gi->tails_vao, 0,
-	    glDeleteVertexArrays(1, &gi->tails_vao));
 	DESTROY_OP(gi->tails_vtx_buf, 0,
 	    glDeleteBuffers(1, &gi->tails_vtx_buf));
 	DESTROY_OP(gi->tails_idx_buf, 0,
@@ -2094,6 +2088,18 @@ librain_reload_gl_progs(void)
 		    &droplets_paint_prog_info) ||
 		    !reload_gl_prog(&tails_prog, &tails_prog_info))
 			return (B_FALSE);
+
+		droplets_paint_prog_loc.pos =
+		    glGetAttribLocation(droplets_paint_prog, "pos");
+		droplets_paint_prog_loc.ctr =
+		    glGetAttribLocation(droplets_paint_prog, "ctr");
+		droplets_paint_prog_loc.radius =
+		    glGetAttribLocation(droplets_paint_prog, "radius");
+		droplets_paint_prog_loc.size =
+		    glGetAttribLocation(droplets_paint_prog, "size");
+
+		tails_prog_loc.pos = glGetAttribLocation(tails_prog, "pos");
+		tails_prog_loc.quant = glGetAttribLocation(tails_prog, "quant");
 	}
 
 	if (!reload_gl_prog(&z_depth_prog, &z_depth_prog_info) ||
