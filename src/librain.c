@@ -291,9 +291,40 @@ typedef struct {
 	GLint	quant;
 } tails_paint_loc_t;
 
+typedef struct {
+	GLint	ws_temp_tex;
+	GLint	cur_t;
+	GLint	d_t;
+	GLint	rand_seed;
+	GLint	gravity_point;
+	GLint	gravity_force;
+	GLint	wind_point;
+	GLint	wind_force;
+	GLint	thrust_point;
+	GLint	thrust_force;
+	GLint	precip_intens;
+	GLint	min_droplet_sz;
+	GLint	le_temp;
+} droplets_move_loc_t;
+
+typedef struct {
+	GLint	pvm;
+	GLint	tex;
+	GLint	temp_tex;
+	GLint	tp;
+	GLint	thrust;
+	GLint	wp;
+	GLint	wind;
+	GLint	precip_intens;
+	GLint	window_ice;
+} stage2_loc_t;
+
 static rain_stage1_loc_t	rain_stage1_loc = { 0 };
 static droplets_paint_loc_t	droplets_paint_prog_loc = { 0 };
 static tails_paint_loc_t	tails_prog_loc = { 0 };
+static droplets_move_loc_t	droplets_move_loc = { 0 };
+static stage2_loc_t		stage2_comp_loc = { 0 };
+static stage2_loc_t		stage2_loc = { 0 };
 
 static mat4 glob_proj_matrix = GLM_MAT4_IDENTITY;
 static mat4 glob_acf_matrix = GLM_MAT4_IDENTITY;
@@ -796,6 +827,7 @@ rain_stage1_compute_move(const glass_info_t *gi, double cur_t, double d_t)
 	double gravity_force, wind_force, thrust_force;
 	float min_droplet_sz;
 	float rand_seed[NUM_RANDOM_SEEDS];
+	const droplets_move_loc_t *loc = &droplets_move_loc;
 
 	glutils_debug_push(0, "rain_stage1_compute_move(%s)", GLASS_NAME(gi));
 
@@ -814,27 +846,22 @@ rain_stage1_compute_move(const glass_info_t *gi, double cur_t, double d_t)
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, ws_temp_tex);
-	glUniform1i(glGetUniformLocation(prog, "ws_temp_tex"), 0);
+	glUniform1i(loc->ws_temp_tex, 0);
 
-	glUniform1f(glGetUniformLocation(prog, "cur_t"), cur_t);
-	glUniform1f(glGetUniformLocation(prog, "d_t"), d_t);
-	glUniform1fv(glGetUniformLocation(prog, "rand_seed"), NUM_RANDOM_SEEDS,
-	    rand_seed);
-	glUniform2f(glGetUniformLocation(prog, "gravity_point"),
+	glUniform1f(loc->cur_t, cur_t);
+	glUniform1f(loc->d_t, d_t);
+	glUniform1fv(loc->rand_seed, NUM_RANDOM_SEEDS, rand_seed);
+	glUniform2f(loc->gravity_point,
 	    gi->glass->gravity_point.x, gi->glass->gravity_point.y);
-	glUniform1f(glGetUniformLocation(prog, "gravity_force"), gravity_force);
-	glUniform2f(glGetUniformLocation(prog, "wind_point"),
-	    gi->compute.wp.x, gi->compute.wp.y);
-	glUniform1f(glGetUniformLocation(prog, "wind_force"), wind_force);
-	glUniform2f(glGetUniformLocation(prog, "thrust_point"),
+	glUniform1f(loc->gravity_force, gravity_force);
+	glUniform2f(loc->wind_point, gi->compute.wp.x, gi->compute.wp.y);
+	glUniform1f(loc->wind_force, wind_force);
+	glUniform2f(loc->thrust_point,
 	    gi->glass->thrust_point.x, gi->glass->thrust_point.y);
-	glUniform1f(glGetUniformLocation(prog, "thrust_force"), thrust_force);
-	glUniform1f(glGetUniformLocation(prog, "precip_intens"),
-	    pow(precip_intens, 0.7));
-	glUniform1f(glGetUniformLocation(prog, "min_droplet_sz"),
-	    min_droplet_sz);
-	glUniform1f(glGetUniformLocation(prog, "le_temp"),
-	    C2KELVIN(dr_getf(&drs.le_temp)));
+	glUniform1f(loc->thrust_force, thrust_force);
+	glUniform1f(loc->precip_intens, pow(precip_intens, 0.7));
+	glUniform1f(loc->min_droplet_sz, min_droplet_sz);
+	glUniform1f(loc->le_temp, C2KELVIN(dr_getf(&drs.le_temp)));
 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
 	    DROPLETS_SSBO_BINDING, gi->droplets_ssbo);
@@ -964,6 +991,8 @@ rain_stage2_compute_paint(glass_info_t *gi)
 static void
 rain_stage2_normals(glass_info_t *gi)
 {
+	const stage2_loc_t *loc =
+	    (gi->qual.use_compute ? &stage2_comp_loc : &stage2_loc);
 	GLuint prog =
 	    (gi->qual.use_compute ? rain_stage2_comp_prog : rain_stage2_prog);
 
@@ -975,25 +1004,23 @@ rain_stage2_normals(glass_info_t *gi)
 
 	glUseProgram(prog);
 
-	glUniformMatrix4fv(glGetUniformLocation(prog, "pvm"),
-	    1, GL_FALSE, (void *)gi->water_norm_pvm);
+	glUniformMatrix4fv(loc->pvm, 1, GL_FALSE, (void *)gi->water_norm_pvm);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gi->water_depth_tex[!gi->water_depth_cur]);
-	glUniform1i(glGetUniformLocation(prog, "tex"), 0);
+	glUniform1i(loc->tex, 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, gi->ws_temp_tex[gi->ws_temp_cur]);
-	glUniform1i(glGetUniformLocation(prog, "temp_tex"), 1);
+	glUniform1i(loc->temp_tex, 1);
 
-	glUniform2f(glGetUniformLocation(prog, "tp"), gi->tp.x, gi->tp.y);
-	glUniform1f(glGetUniformLocation(prog, "thrust"), gi->thrust);
-	glUniform2f(glGetUniformLocation(prog, "wp"), gi->wp.x, gi->wp.y);
-	glUniform1f(glGetUniformLocation(prog, "wind"), gi->wind);
-	glUniform1f(glGetUniformLocation(prog, "precip_intens"),
+	glUniform2f(loc->tp, gi->tp.x, gi->tp.y);
+	glUniform1f(loc->thrust, gi->thrust);
+	glUniform2f(loc->wp, gi->wp.x, gi->wp.y);
+	glUniform1f(loc->wind, gi->wind);
+	glUniform1f(loc->precip_intens,
 	    precip_intens * gi->glass->slant_factor);
-	glUniform1f(glGetUniformLocation(prog, "window_ice"),
-	    dr_getf(&drs.window_ice));
+	glUniform1f(loc->window_ice, dr_getf(&drs.window_ice));
 
 	glutils_draw_quads(&gi->water_norm_quads, prog);
 
@@ -2075,6 +2102,53 @@ stage1_prog_loc_resolve(GLuint prog, rain_stage1_loc_t *loc)
 	loc->wind_temp = glGetUniformLocation(prog, "wind_temp");
 }
 
+static void
+droplets_paint_loc_resolve(droplets_paint_loc_t *loc, GLuint prog)
+{
+	ASSERT(loc != NULL);
+	ASSERT(prog != 0);
+
+	loc->pos = glGetAttribLocation(prog, "pos");
+	loc->ctr = glGetAttribLocation(prog, "ctr");
+	loc->radius = glGetAttribLocation(prog, "radius");
+	loc->size = glGetAttribLocation(prog, "size");
+}
+
+static void
+droplets_move_loc_resolve(droplets_move_loc_t *loc, GLuint prog)
+{
+	loc->ws_temp_tex = glGetUniformLocation(prog, "ws_temp_tex");
+	loc->cur_t = glGetUniformLocation(prog, "cur_t");
+	loc->d_t = glGetUniformLocation(prog, "d_t");
+	loc->rand_seed = glGetUniformLocation(prog, "rand_seed");
+	loc->gravity_point = glGetUniformLocation(prog, "gravity_point");
+	loc->gravity_force = glGetUniformLocation(prog, "gravity_force");
+	loc->wind_point = glGetUniformLocation(prog, "wind_point");
+	loc->wind_force = glGetUniformLocation(prog, "wind_force");
+	loc->thrust_point = glGetUniformLocation(prog, "thrust_point");
+	loc->thrust_force = glGetUniformLocation(prog, "thrust_force");
+	loc->precip_intens = glGetUniformLocation(prog, "precip_intens");
+	loc->min_droplet_sz = glGetUniformLocation(prog, "min_droplet_sz");
+	loc->le_temp = glGetUniformLocation(prog, "le_temp");
+}
+
+static void
+stage2_loc_resolve(stage2_loc_t *loc, GLuint prog)
+{
+	ASSERT(loc != NULL);
+	ASSERT(prog != 0);
+
+	loc->pvm = glGetUniformLocation(prog, "pvm");
+	loc->tex = glGetUniformLocation(prog, "tex");
+	loc->temp_tex = glGetUniformLocation(prog, "temp_tex");
+	loc->tp = glGetUniformLocation(prog, "tp");
+	loc->thrust = glGetUniformLocation(prog, "thrust");
+	loc->wp = glGetUniformLocation(prog, "wp");
+	loc->wind = glGetUniformLocation(prog, "wind");
+	loc->precip_intens = glGetUniformLocation(prog, "precip_intens");
+	loc->window_ice = glGetUniformLocation(prog, "window_ice");
+}
+
 bool_t
 librain_reload_gl_progs(void)
 {
@@ -2089,17 +2163,14 @@ librain_reload_gl_progs(void)
 		    !reload_gl_prog(&tails_prog, &tails_prog_info))
 			return (B_FALSE);
 
-		droplets_paint_prog_loc.pos =
-		    glGetAttribLocation(droplets_paint_prog, "pos");
-		droplets_paint_prog_loc.ctr =
-		    glGetAttribLocation(droplets_paint_prog, "ctr");
-		droplets_paint_prog_loc.radius =
-		    glGetAttribLocation(droplets_paint_prog, "radius");
-		droplets_paint_prog_loc.size =
-		    glGetAttribLocation(droplets_paint_prog, "size");
+		droplets_move_loc_resolve(&droplets_move_loc, droplets_prog);
+		droplets_paint_loc_resolve(&droplets_paint_prog_loc,
+		    droplets_paint_prog);
 
 		tails_prog_loc.pos = glGetAttribLocation(tails_prog, "pos");
 		tails_prog_loc.quant = glGetAttribLocation(tails_prog, "quant");
+
+		stage2_loc_resolve(&stage2_comp_loc, rain_stage2_comp_prog);
 	}
 
 	if (!reload_gl_prog(&z_depth_prog, &z_depth_prog_info) ||
@@ -2113,6 +2184,7 @@ librain_reload_gl_progs(void)
 		return (B_FALSE);
 	}
 
+	stage2_loc_resolve(&stage2_loc, rain_stage2_comp_prog);
 	ws_temp_comp_loc_resolve(ws_temp_prog, &ws_temp_prog_loc);
 	stage1_prog_loc_resolve(rain_stage1_prog, &rain_stage1_loc);
 
