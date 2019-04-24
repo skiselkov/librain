@@ -2184,7 +2184,7 @@ librain_reload_gl_progs(void)
 		return (B_FALSE);
 	}
 
-	stage2_loc_resolve(&stage2_loc, rain_stage2_comp_prog);
+	stage2_loc_resolve(&stage2_loc, rain_stage2_prog);
 	ws_temp_comp_loc_resolve(ws_temp_prog, &ws_temp_prog_loc);
 	stage1_prog_loc_resolve(rain_stage1_prog, &rain_stage1_loc);
 
