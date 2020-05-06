@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
 #ifndef	_GLPRIV_H_
@@ -23,6 +23,7 @@
 
 #include <acfutils/core.h>
 #include <acfutils/glew.h>
+#include <acfutils/glutils.h>
 #include <acfutils/shader.h>
 
 #ifdef	__cplusplus
@@ -150,6 +151,7 @@ gl_state_cleanup(void)
 		glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 #ifdef	__cplusplus

@@ -13,9 +13,10 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
@@ -91,7 +92,8 @@ typedef enum {
  */
 typedef enum {
 	WORLD_RENDER_TYPE_NORM = 0,
-	WORLD_RENDER_TYPE_REFLECT = 1
+	WORLD_RENDER_TYPE_REFLECT = 1,
+	WORLD_RENDER_TYPE_INVALID = 6
 } world_render_type_t;
 
 static int			xp_ver, xplm_ver;
@@ -107,13 +109,21 @@ static GLuint	ws_smudge_tex = 0;
 static GLuint	ws_smudge_fbo = 0;
 static GLint	cur_vp[4] = { -1, -1, DFL_VP_SIZE, DFL_VP_SIZE };
 static GLint	saved_vp[4] = { -1, -1, -1, -1 };
-static GLenum	saved_clip_origin;
-static GLenum	saved_depth_mode;
-static GLenum	saved_depth_func;
+static bool	cached_rev_float_z = false;
+static bool	cached_rev_y = false;
+static GLint	saved_clip_origin;
+static GLint	saved_depth_mode;
+static GLint	saved_depth_func;
 static GLfloat	saved_depth_clear;
+static GLint	saved_front_face;
 static GLint	ss_texsz[2] = { DFL_VP_SIZE, DFL_VP_SIZE };
 static float	last_rain_t = 0;
 static bool_t	rain_enabled = B_TRUE;
+
+static GLuint	priv_depth_tex = 0;
+static GLuint	priv_depth_tex_w = 0;
+static GLuint	priv_depth_tex_h = 0;
+static bool	priv_depth_override = false;
 
 static bool_t	prepare_ran = B_FALSE;
 static double	precip_intens = 0;
@@ -431,27 +441,55 @@ static struct {
 	dr_t	draw_call_type;
 	bool_t	rev_float_z_avail;
 	dr_t	rev_float_z;
+	bool_t	rev_y_avail;
+	dr_t	rev_y;
 	bool_t	aa_ratio_avail;
 	dr_t	fsaa_ratio_x;
 	dr_t	fsaa_ratio_y;
+	bool	current_gl_fbo_avail;
+	dr_t	current_gl_fbo;
 
 	bool_t	xe_present;
 	dr_t	xe_active;
 	dr_t	xe_rain;
 	dr_t	xe_snow;
+
+	bool	modern_driver_avail;
+	dr_t	modern_driver;
 } drs;
 
-#define	RAIN_COMP_PHASE		xplm_Phase_Gauges
-#define	RAIN_COMP_BEFORE	1
+#define	RAIN_COMP_PHASE			xplm_Phase_Gauges
+#define	RAIN_COMP_BEFORE		1
 
-#define	RAIN_PAINT_PHASE	xplm_Phase_Gauges
-#define	RAIN_PAINT_BEFORE	0
+#define	RAIN_PAINT_PHASE		xplm_Phase_Gauges
+#define	RAIN_PAINT_BEFORE		0
 
-#define	MTX_CAPTURE_PHASE	xplm_Phase_Airplanes
-#define	MTX_CAPTURE_BEFORE	0
+#define	MTX_CAPTURE_PHASE_LEGACY	xplm_Phase_Airplanes
+#define	MTX_CAPTURE_BEFORE_LEGACY	false
+
+#define	MTX_CAPTURE_PHASE_MODERN	xplm_Phase_Modern3D
+#define	MTX_CAPTURE_BEFORE_MODERN	false
 
 static void init_glass_stencil(glass_info_t *gi, GLuint fbo,
     unsigned w, unsigned h);
+
+static bool
+using_modern_driver(void)
+{
+	return (drs.modern_driver_avail && dr_geti(&drs.modern_driver) != 0);
+}
+
+static bool
+using_rev_float_z(void)
+{
+	return (drs.rev_float_z_avail && dr_geti(&drs.rev_float_z) != 0);
+}
+
+static bool
+using_rev_y(void)
+{
+	return (drs.rev_y_avail && dr_geti(&drs.rev_y) != 0);
+}
 
 static void
 bind_droplets_vtx_attrs(void)
@@ -602,22 +640,48 @@ update_ss_tex(void)
 	    ss_texsz[1], 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 }
 
+GLint
+librain_get_current_fbo(void)
+{
+	GLint fbo;
+
+	if (drs.current_gl_fbo_avail)
+		fbo = dr_geti(&drs.current_gl_fbo);
+	else
+		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+
+	return (fbo);
+}
+
+void
+librain_get_current_vp(GLint vp[4])
+{
+	int xp_vp[4];
+
+	ASSERT(vp != NULL);
+	VERIFY3S(dr_getvi(&drs.viewport, xp_vp, 0, 4), ==, 4);
+
+	vp[0] = xp_vp[0];		/* left */
+	vp[1] = xp_vp[1];		/* bottom */
+	vp[2] = xp_vp[2] - xp_vp[0];	/* width */
+	vp[3] = xp_vp[3] - xp_vp[1];	/* height */
+}
+
 void
 librain_refresh_screenshot(void)
 {
-	GLint old_fbo;
+	GLint old_fbo = librain_get_current_fbo();
 
-	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
+	glutils_debug_push(0, "librain_refresh_screenshot");
 
 	glBindFramebufferEXT(GL_READ_FRAMEBUFFER, old_fbo);
-	glReadBuffer(GL_COLOR_ATTACHMENT0);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, screenshot_fbo);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glBlitFramebuffer(cur_vp[0], cur_vp[1], cur_vp[0] + cur_vp[2],
 	    cur_vp[1] + cur_vp[3], 0, 0, ss_texsz[0], ss_texsz[1],
 	    GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
+
+	glutils_debug_pop();
 }
 
 void
@@ -1058,7 +1122,7 @@ rain_should_draw(void)
 static void
 gl_state_reset(void)
 {
-	glutils_reset_errors();
+	GLUTILS_RESET_ERRORS();
 	glutils_disable_all_vtx_attrs();
 }
 
@@ -1085,8 +1149,8 @@ rain_comp_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	}
 
 	gl_state_reset();
-	glGetIntegerv(GL_VIEWPORT, vp);
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+	librain_get_current_vp(vp);
+	old_fbo = librain_get_current_fbo();
 
 	for (size_t i = 0; i < num_glass_infos; i++) {
 		glass_info_t *gi = &glass_infos[i];
@@ -1134,8 +1198,8 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	}
 
 	gl_state_reset();
-	glGetIntegerv(GL_VIEWPORT, vp);
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+	librain_get_current_vp(vp);
+	old_fbo = librain_get_current_fbo();
 
 	for (size_t i = 0; i < num_glass_infos; i++)
 		rain_stage2_comp(&glass_infos[i]);
@@ -1149,32 +1213,13 @@ rain_paint_cb(XPLMDrawingPhase phase, int before, void *refcon)
 	return (1);
 }
 
-int
-capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
+static void
+update_mtx_info(unsigned idx)
 {
-	int idx;
 	int vp[4];
-	draw_call_type_t dct;
 
-	UNUSED(phase);
-	UNUSED(before);
-	UNUSED(refcon);
+	ASSERT3U(idx, <, 2);
 
-	if (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID ||
-	    dr_geti(&drs.world_render_type) != WORLD_RENDER_TYPE_NORM)
-		return (1);
-
-	dct = dr_geti(&drs.draw_call_type);
-	if (dct == DRAW_CALL_RIGHT_EYE) {
-		idx = 1;
-		num_mtx_info = 2;
-	} else if (dct == DRAW_CALL_LEFT_EYE) {
-		idx = 0;
-		num_mtx_info = 2;
-	} else {
-		idx = 0;
-		num_mtx_info = 1;
-	}
 	VERIFY3S(dr_getvf32(&drs.acf_matrix,
 	    (float *)mtx_info[idx].acf_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvf32(&drs.proj_matrix,
@@ -1193,33 +1238,42 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 		vp[2] /= ratio_x;
 		vp[3] /= ratio_y;
 	}
-
-	/*
-	 * X-Plane version 11.32 and prior had a VR bug in the SDK where
-	 * the projection matrix for the right eye was identical to the
-	 * left eye. To fix that, we grab the good left-eye matrix,
-	 * decompose the frustum out of it and swap the left and right
-	 * frustum boundaries, then recompose the matrix. This corrects
-	 * the right eye and the render now aligns properly.
-	 */
-	if (dct == DRAW_CALL_RIGHT_EYE && xp_ver <= 11320) {
-		float near_z, far_z, top, bottom, left, right;
-
-		glm_persp_decomp(mtx_info[0].proj_matrix,
-		    &near_z, &far_z, &top, &bottom, &left, &right);
-		/*
-		 * YUCK the multiplication constants here are to solve a
-		 * suspected mismatch between the left and right eye
-		 * projection matrices that X-Plane actually uses.
-		 * Unfortunately, without a fix for the problem, we have
-		 * no idea what exact values should be used.
-		 */
-		glm_frustum(-right, -left * 1.00075, bottom * 1.008, top,
-		    near_z, far_z, mtx_info[1].proj_matrix);
-	}
-
 	for (int i = 0; i < 4; i++)
 		mtx_info[idx].viewport[i] = vp[i];
+}
+
+int
+capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
+{
+	int idx;
+	draw_call_type_t dct;
+
+	UNUSED(phase);
+	UNUSED(before);
+	UNUSED(refcon);
+	/*
+	 * No GL calls take place here, so no need for GLUTILS_RESET_ERRORS()
+	 */
+	cached_rev_float_z = using_rev_float_z();
+	cached_rev_y = using_rev_y();
+
+	if (!using_modern_driver() &&
+	    (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID ||
+	    dr_geti(&drs.world_render_type) == WORLD_RENDER_TYPE_REFLECT)) {
+		return (1);
+	}
+	dct = dr_geti(&drs.draw_call_type);
+	if (dct == DRAW_CALL_RIGHT_EYE) {
+		idx = 1;
+		num_mtx_info = 2;
+	} else if (dct == DRAW_CALL_LEFT_EYE) {
+		idx = 0;
+		num_mtx_info = 2;
+	} else {
+		idx = 0;
+		num_mtx_info = 1;
+	}
+	update_mtx_info(idx);
 
 	return (1);
 }
@@ -1397,30 +1451,98 @@ compute_precip(double now)
 unsigned
 librain_get_call_count(void)
 {
-	return (num_mtx_info);
+	if (xp_ver < 11500)
+		return (num_mtx_info);
+
+	switch (dr_geti(&drs.draw_call_type)) {
+	case DRAW_CALL_LEFT_EYE:
+	case DRAW_CALL_RIGHT_EYE:
+		return (2);
+	default:
+		return (1);
+	}
+}
+
+static void
+setup_priv_depth_buf(unsigned w, unsigned h)
+{
+	if (priv_depth_tex == 0) {
+		glGenTextures(1, &priv_depth_tex);
+		ASSERT(priv_depth_tex != 0);
+	}
+	if (w != priv_depth_tex_w || h != priv_depth_tex_h) {
+		glBindTexture(GL_TEXTURE_2D, priv_depth_tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0,
+		    GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+		priv_depth_tex_w = w;
+		priv_depth_tex_h = h;
+	}
+}
+
+void
+librain_reset_clip_control(void)
+{
+	if (cached_rev_float_z) {
+		if (cached_rev_y)
+			glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
+		else
+			glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+	} else {
+		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+	}
 }
 
 void
 librain_draw_prepare_all(void)
 {
-	double now = dr_getf(&drs.sim_time);
+	double now;
+	GLint depth_type;
 
 	check_librain_init();
 
+	now = dr_getf(&drs.sim_time);
+
 	compute_precip(now);
 
-	glGetIntegerv(GL_VIEWPORT, saved_vp);
+	librain_get_current_vp(saved_vp);
 
-	if (drs.rev_float_z_avail && dr_geti(&drs.rev_float_z) != 0) {
+	if (cached_rev_float_z) {
 		glGetIntegerv(GL_CLIP_ORIGIN, (GLint *)&saved_clip_origin);
-		glGetIntegerv(GL_CLIP_DEPTH_MODE, (GLint *)&saved_depth_mode);
-		glGetIntegerv(GL_DEPTH_FUNC, (GLint *)&saved_depth_func);
+		glGetIntegerv(GL_CLIP_DEPTH_MODE, &saved_depth_mode);
+		glGetIntegerv(GL_DEPTH_FUNC, &saved_depth_func);
 		glGetFloatv(GL_DEPTH_CLEAR_VALUE, &saved_depth_clear);
 
-		glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
-		glDepthFunc(GL_LESS);
-		glClearDepth(1.0);
+		glDepthFunc(GL_GEQUAL);
+		glClearDepth(0.0);
+
+		if (cached_rev_y) {
+			glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
+
+			glGetIntegerv(GL_FRONT_FACE, &saved_front_face);
+			glFrontFace(GL_CCW);
+		} else {
+			glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+		}
 	}
+	if (using_modern_driver()) {
+		glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,
+		    GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+		    &depth_type);
+		if (depth_type == GL_NONE) {
+			/*
+			 * X-Plane's FBO is missing a depth buffer. Probably
+			 * because we were called in a 2D phase. We need to
+			 * create our own.
+			 */
+			setup_priv_depth_buf(saved_vp[2], saved_vp[3]);
+			ASSERT(priv_depth_tex != 0);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+			    GL_TEXTURE_2D, priv_depth_tex, 0);
+			priv_depth_override = true;
+		}
+	}
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -1431,9 +1553,9 @@ librain_draw_prepare_eye(unsigned call_index, bool_t force)
 	check_librain_init();
 
 	ASSERT3U(call_index, <, num_mtx_info);
-
 	update_glob_data(mtx_info[call_index].proj_matrix,
-	    mtx_info[call_index].acf_matrix, mtx_info[call_index].viewport);
+	    mtx_info[call_index].acf_matrix,
+	    mtx_info[call_index].viewport);
 
 	if (precip_intens > 0 || dr_getf(&drs.amb_temp) <= 4)
 		last_rain_t = now;
@@ -1460,6 +1582,8 @@ librain_draw_prepare_eye(unsigned call_index, bool_t force)
 
 	update_ss_tex();
 	librain_refresh_screenshot();
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -1476,15 +1600,17 @@ librain_draw_exec(void)
 	 */
 	if (!rain_should_draw())
 		return;
-#endif
+#endif	/* !APL */
 
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+	old_fbo = librain_get_current_fbo();
 
 	for (size_t i = 0; i < num_glass_infos; i++)
 		draw_ws_effects(&glass_infos[i], old_fbo);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	gl_state_cleanup();
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -1499,11 +1625,20 @@ librain_draw_finish_all(void)
 	}
 	glViewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
 
-	if (drs.rev_float_z_avail && dr_geti(&drs.rev_float_z) != 0) {
+	if (cached_rev_float_z) {
 		glClipControl(saved_clip_origin, saved_depth_mode);
 		glDepthFunc(saved_depth_func);
 		glClearDepth(saved_depth_clear);
+		if (cached_rev_y)
+			glFrontFace(saved_front_face);
 	}
+	if (priv_depth_override) {
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+		    GL_TEXTURE_2D, 0, 0);
+		priv_depth_override = false;
+	}
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -1804,8 +1939,8 @@ glass_info_init_stencils(glass_info_t *gi)
 	GLint old_fbo;
 	GLint vp[4];
 
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
-	glGetIntegerv(GL_VIEWPORT, vp);
+	old_fbo = librain_get_current_fbo();
+	librain_get_current_vp(vp);
 
 	for (int i = 0; i < 2; i++) {
 		init_glass_stencil(gi, gi->water_depth_fbo[i],
@@ -2244,6 +2379,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	ASSERT_MSG(!inited, "Multiple calls to librain_init() detected. "
 	    "De-initialize the library first using librain_fini().%s", "");
 	inited = B_TRUE;
+	GLUTILS_RESET_ERRORS();
 
 	if (!librain_glob_init())
 		return (B_FALSE);
@@ -2278,22 +2414,33 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.draw_call_type, "sim/graphics/view/draw_call_type");
 	drs.rev_float_z_avail =
 	    dr_find(&drs.rev_float_z, "sim/graphics/view/is_reverse_float_z");
+	drs.rev_y_avail =
+	    dr_find(&drs.rev_y, "sim/graphics/view/is_reverse_y");
 
 	drs.aa_ratio_avail = (dr_find(&drs.fsaa_ratio_x,
 	    "sim/private/controls/hdr/fsaa_ratio_x") &&
 	    dr_find(&drs.fsaa_ratio_y,
 	    "sim/private/controls/hdr/fsaa_ratio_y"));
+	drs.current_gl_fbo_avail = dr_find(&drs.current_gl_fbo,
+	    "sim/graphics/view/current_gl_fbo");
+	drs.modern_driver_avail = dr_find(&drs.modern_driver,
+	    "sim/graphics/view/using_modern_driver");
 
 	drs.xe_present = (dr_find(&drs.xe_active, "env/active") &&
 	    dr_find(&drs.xe_rain, "env/rain") &&
 	    dr_find(&drs.xe_snow, "env/snow"));
 
-	XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
-	    RAIN_COMP_BEFORE, NULL);
-	XPLMRegisterDrawCallback(rain_paint_cb, RAIN_PAINT_PHASE,
-	    RAIN_PAINT_BEFORE, NULL);
-	VERIFY(XPLMRegisterDrawCallback(capture_mtx, MTX_CAPTURE_PHASE,
-	    MTX_CAPTURE_BEFORE, NULL));
+	VERIFY(XPLMRegisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
+	    RAIN_COMP_BEFORE, NULL));
+	VERIFY(XPLMRegisterDrawCallback(rain_paint_cb, RAIN_PAINT_PHASE,
+	    RAIN_PAINT_BEFORE, NULL));
+	if (using_modern_driver()) {
+		VERIFY(XPLMRegisterDrawCallback(capture_mtx,
+		    MTX_CAPTURE_PHASE_MODERN, MTX_CAPTURE_BEFORE_MODERN, NULL));
+	} else {
+		VERIFY(XPLMRegisterDrawCallback(capture_mtx,
+		    MTX_CAPTURE_PHASE_LEGACY, MTX_CAPTURE_BEFORE_LEGACY, NULL));
+	}
 
 	if (!GLEW_ARB_framebuffer_object) {
 		logMsg("Cannot initialize: your OpenGL version doesn't "
@@ -2357,12 +2504,18 @@ librain_fini(void)
 {
 	if (!inited)
 		return;
+	GLUTILS_RESET_ERRORS();
 
 	free(shaderpath);
 	shaderpath = NULL;
 
-	VERIFY(XPLMUnregisterDrawCallback(capture_mtx, MTX_CAPTURE_PHASE,
-	    MTX_CAPTURE_BEFORE, NULL));
+	if (using_modern_driver()) {
+		XPLMUnregisterDrawCallback(capture_mtx,
+		    MTX_CAPTURE_PHASE_MODERN, MTX_CAPTURE_BEFORE_MODERN, NULL);
+	} else {
+		XPLMUnregisterDrawCallback(capture_mtx,
+		    MTX_CAPTURE_PHASE_LEGACY, MTX_CAPTURE_BEFORE_LEGACY, NULL);
+	}
 	XPLMUnregisterDrawCallback(rain_paint_cb, RAIN_PAINT_PHASE,
 	    RAIN_PAINT_BEFORE, NULL);
 	XPLMUnregisterDrawCallback(rain_comp_cb, RAIN_COMP_PHASE,
@@ -2382,12 +2535,17 @@ librain_fini(void)
 	DESTROY_OP(ws_smudge_fbo, 0, glDeleteFramebuffers(1, &ws_smudge_fbo));
 	DESTROY_OP(ws_smudge_tex, 0, glDeleteTextures(1, &ws_smudge_tex));
 
+	DESTROY_OP(priv_depth_tex, 0, glDeleteTextures(1, &priv_depth_tex));
+	priv_depth_tex_w = 0;
+	priv_depth_tex_h = 0;
+
 	water_effects_fini();
 
 	for (int i = 2; i < 4; i++)
 		cur_vp[i] = DFL_VP_SIZE;
 	ss_texsz[0] = DFL_VP_SIZE;
 	ss_texsz[1] = DFL_VP_SIZE;
+	GLUTILS_ASSERT_NO_ERROR();
 
 	inited = B_FALSE;
 }

@@ -13,7 +13,7 @@
  * CDDL HEADER END
 */
 /*
- * Copyright 2018 Saso Kiselkov. All rights reserved.
+ * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
 #include <stdlib.h>
@@ -332,8 +332,16 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	if (d_ice < 0.0001 && d_ice > -0.001)
 		return;
 
-	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
-	glGetIntegerv(GL_VIEWPORT, vp);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	/*
+	 * For some reason our ortho protection breaks in reverser-Z,
+	 * so fuck it and reset the clip control. We'll restore it later.
+	 */
+	glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+
+	old_fbo = librain_get_current_fbo();
+	librain_get_current_vp(vp);
 	glViewport(0, 0, surf->w, surf->h);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, priv->depth_fbo[priv->cur]);
@@ -361,7 +369,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 
 	glUseProgram(depth_prog);
 	glActiveTexture(GL_TEXTURE0);
-	XPLMBindTexture2d(priv->depth_tex[!priv->cur], GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, priv->depth_tex[!priv->cur]);
 	glUniformMatrix4fv(glGetUniformLocation(depth_prog, "pvm"), 1,
 	    GL_FALSE, (void *)priv->pvm);
 	glUniform1i(glGetUniformLocation(depth_prog, "prev"), 0);
@@ -375,7 +383,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, priv->norm_fbo);
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glUseProgram(norm_prog);
-	XPLMBindTexture2d(priv->depth_tex[priv->cur], GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, priv->depth_tex[priv->cur]);
 	glUniform1i(glGetUniformLocation(norm_prog, "depth"), 0);
 	glUniformMatrix4fv(glGetUniformLocation(norm_prog, "pvm"), 1,
 	    GL_FALSE, (void *)priv->pvm);
@@ -383,6 +391,10 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
+
+	librain_reset_clip_control();
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
 
 	priv->prev_ice = ice;
 	priv->cur = !priv->cur;
@@ -398,7 +410,7 @@ render_blur_tex(surf_ice_t *surf, int i, GLuint tex, double blur_radius)
 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	glActiveTexture(GL_TEXTURE0);
-	XPLMBindTexture2d(tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, tex);
 	glUniform1i(glGetUniformLocation(blur_prog, "tex"), 0);
 	glUniform1f(glGetUniformLocation(blur_prog, "rand_seed"),
 	    dr_getf(&drs.sim_time));
@@ -435,8 +447,8 @@ render_blur(surf_ice_t *surf, double blur_radius)
 		}
 	}
 
-	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
-	glGetIntegerv(GL_VIEWPORT, vp);
+	old_fbo = librain_get_current_fbo();
+	librain_get_current_vp(vp);
 	glViewport(0, 0, surf->w, surf->h);
 
 	glUseProgram(blur_prog);
@@ -458,6 +470,8 @@ render_obj(surf_ice_t *surf, double blur_radius)
 	if (blur_radius > 0)
 		render_blur(surf, blur_radius);
 
+	glutils_debug_push(0, "ice_render_obj(%s)", surf->name);
+
 	glUseProgram(render_prog);
 
 	glUniform1f(glGetUniformLocation(render_prog, "growth_mult"),
@@ -465,23 +479,23 @@ render_obj(surf_ice_t *surf, double blur_radius)
 	glActiveTexture(GL_TEXTURE0);
 	if (blur_radius > 0) {
 		ASSERT(priv->blur_tex[0] != 0);
-		XPLMBindTexture2d(priv->blur_tex[0], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->blur_tex[0]);
 	} else {
-		XPLMBindTexture2d(priv->depth_tex[priv->cur], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->depth_tex[priv->cur]);
 	}
 	glUniform1i(glGetUniformLocation(render_prog, "depth"), 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	if (blur_radius > 0) {
 		ASSERT(priv->blur_tex[1] != 0);
-		XPLMBindTexture2d(priv->blur_tex[1], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->blur_tex[1]);
 	} else {
-		XPLMBindTexture2d(priv->norm_tex, GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->norm_tex);
 	}
 	glUniform1i(glGetUniformLocation(render_prog, "norm"), 1);
 
 	glActiveTexture(GL_TEXTURE2);
-	XPLMBindTexture2d(librain_get_screenshot_tex(), GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, librain_get_screenshot_tex());
 	glUniform1i(glGetUniformLocation(render_prog, "bg"), 2);
 
 	glUniform3f(glGetUniformLocation(render_prog, "sun_dir"),
@@ -499,6 +513,8 @@ render_obj(surf_ice_t *surf, double blur_radius)
 
 	glUseProgram(0);
 	glActiveTexture(GL_TEXTURE0);
+
+	glutils_debug_pop();
 }
 
 static void
@@ -626,19 +642,19 @@ surf_ice_clear(surf_ice_t *surf)
 	memset(norm_buf, 0, sizeof (norm_buf));
 
 	for (int i = 0; i < 2; i++) {
-		XPLMBindTexture2d(priv->depth_tex[i], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->depth_tex[i]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, surf->w, surf->h, 0,
 		    GL_RED, GL_FLOAT, depth_buf);
 	}
-	XPLMBindTexture2d(priv->norm_tex, GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, priv->norm_tex);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, surf->w, surf->h, 0,
 	    GL_RG, GL_UNSIGNED_BYTE, norm_buf);
 
 	if (priv->blur_tex[0] != 0) {
-		XPLMBindTexture2d(priv->blur_tex[0], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->blur_tex[0]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, surf->w, surf->h, 0,
 		    GL_RED, GL_FLOAT, depth_buf);
-		XPLMBindTexture2d(priv->blur_tex[1], GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, priv->blur_tex[1]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, surf->w, surf->h, 0,
 		    GL_RG, GL_UNSIGNED_BYTE, norm_buf);
 	}
