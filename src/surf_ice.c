@@ -237,7 +237,7 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 	}
 	glGenTextures(1, &priv->norm_tex);
 	glGenFramebuffers(1, &priv->norm_fbo);
-	setup_texture(priv->norm_tex, GL_RG, surf->w, surf->h,
+	setup_texture(priv->norm_tex, GL_RG8, surf->w, surf->h,
 	    GL_RG, GL_UNSIGNED_BYTE, NULL);
 	setup_color_fbo_for_tex(priv->norm_fbo, priv->norm_tex, 0, 0, B_FALSE);
 	IF_TEXSZ(TEXSZ_ALLOC_INSTANCE(librain_ice_norm_tex, surf,
@@ -436,7 +436,7 @@ render_blur(surf_ice_t *surf, double blur_radius)
 		glGenFramebuffers(2, priv->blur_fbo);
 		setup_texture(priv->blur_tex[0], GL_R32F,
 		    surf->w, surf->h, GL_RED, GL_FLOAT, NULL);
-		setup_texture(priv->blur_tex[1], GL_RG,
+		setup_texture(priv->blur_tex[1], GL_RG8,
 		    surf->w, surf->h, GL_RG, GL_UNSIGNED_BYTE, NULL);
 		for (int i = 0; i < 2; i++) {
 			setup_color_fbo_for_tex(priv->blur_fbo[i],

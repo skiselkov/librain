@@ -472,6 +472,8 @@ static struct {
 
 static void init_glass_stencil(glass_info_t *gi, GLuint fbo,
     unsigned w, unsigned h);
+static void setup_smudge_tex(void);
+static void destroy_smudge_tex(void);
 
 static bool
 using_modern_driver(void)
@@ -620,24 +622,22 @@ update_ss_tex(void)
 
 	IF_TEXSZ(TEXSZ_FREE(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
 	    ss_texsz[0], ss_texsz[1]));
-	IF_TEXSZ(TEXSZ_FREE(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
-	    ss_texsz[0], ss_texsz[1]));
+	destroy_smudge_tex();
 
 	/* If the viewport size has changed, update the textures. */
 	ss_texsz[0] = cur_vp[2];
 	ss_texsz[1] = cur_vp[3];
+
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ss_texsz[0], ss_texsz[1],
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, ss_texsz[0], ss_texsz[1],
 	    0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
 	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
 	    ss_texsz[0], ss_texsz[1]));
 
-	glBindTexture(GL_TEXTURE_2D, ws_smudge_tex);
-	IF_TEXSZ(TEXSZ_ALLOC(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
-	    ss_texsz[0], ss_texsz[1]));
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ss_texsz[0],
-	    ss_texsz[1], 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	setup_smudge_tex();
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 GLint
@@ -682,6 +682,8 @@ librain_refresh_screenshot(void)
 	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
 
 	glutils_debug_pop();
+
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -2024,7 +2026,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		 * texture. We just ignore the depth texture.
 		 */
 #if	APL
-		setup_texture_filter(gi->water_depth_tex_stencil[i], 0,
+		setup_texture_filter(gi->water_depth_tex_stencil[i], 1,
 		    GL_DEPTH24_STENCIL8, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
 		    GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL, GL_NEAREST,
 		    GL_NEAREST);
@@ -2032,7 +2034,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 		    gi->water_depth_tex[i], gi->water_depth_tex_stencil[i],
 		    gi->water_depth_tex_stencil[i], B_TRUE);
 #else	/* !APL */
-		setup_texture_filter(gi->water_depth_tex_stencil[i], 0,
+		setup_texture_filter(gi->water_depth_tex_stencil[i], 1,
 		    GL_STENCIL_INDEX8, DEPTH_TEX_SZ(gi), DEPTH_TEX_SZ(gi),
 		    GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, NULL, GL_NEAREST,
 		    GL_NEAREST);
@@ -2051,7 +2053,7 @@ glass_info_init(glass_info_t *gi, const librain_glass_t *glass)
 	glGenTextures(1, &gi->water_norm_tex);
 	glGenFramebuffers(1, &gi->water_norm_fbo);
 
-	setup_texture_filter(gi->water_norm_tex, MIPLEVELS, GL_RG,
+	setup_texture_filter(gi->water_norm_tex, MIPLEVELS, GL_RG8,
 	    NORM_TEX_SZ(gi), NORM_TEX_SZ(gi), GL_RG, GL_UNSIGNED_BYTE, NULL,
 	    GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
 	/*
@@ -2362,6 +2364,34 @@ librain_glob_init(void)
 	return (B_TRUE);
 }
 
+static void
+setup_smudge_tex(void)
+{
+	ASSERT0(ws_smudge_tex);
+	ASSERT0(ws_smudge_fbo);
+
+	glGenTextures(1, &ws_smudge_tex);
+	glGenFramebuffers(1, &ws_smudge_fbo);
+	setup_texture(ws_smudge_tex, GL_RGBA8, ss_texsz[0], ss_texsz[1],
+	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	setup_color_fbo_for_tex(ws_smudge_fbo, ws_smudge_tex, 0, 0, B_FALSE);
+	IF_TEXSZ(TEXSZ_ALLOC(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
+	    ss_texsz[0], ss_texsz[1]));
+
+	GLUTILS_ASSERT_NO_ERROR();
+}
+
+static void
+destroy_smudge_tex(void)
+{
+	if (ws_smudge_tex != 0) {
+		IF_TEXSZ(TEXSZ_FREE(librain_ws_smudge_tex, GL_RGBA,
+		    GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
+	}
+	DESTROY_OP(ws_smudge_fbo, 0, glDeleteFramebuffers(1, &ws_smudge_fbo));
+	DESTROY_OP(ws_smudge_tex, 0, glDeleteTextures(1, &ws_smudge_tex));
+}
+
 /*
  * Initializes librain for operation. This MUST be called at plugin load
  * time.
@@ -2384,7 +2414,8 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	if (!librain_glob_init())
 		return (B_FALSE);
 
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+	old_fbo = librain_get_current_fbo();
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 	shaderpath = strdup(the_shaderpath);
 
@@ -2452,7 +2483,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	glBindTexture(GL_TEXTURE_2D, screenshot_tex);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ss_texsz[0], ss_texsz[1],
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, ss_texsz[0], ss_texsz[1],
 	    0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	IF_TEXSZ(TEXSZ_ALLOC(librain_screenshot_tex, GL_RGB, GL_UNSIGNED_BYTE,
 	    ss_texsz[0], ss_texsz[1]));
@@ -2468,13 +2499,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	 * Final render pre-stage: capture the full res displacement,
 	 * which is then used as the final smudge pass.
 	 */
-	glGenTextures(1, &ws_smudge_tex);
-	glGenFramebuffers(1, &ws_smudge_fbo);
-	setup_texture(ws_smudge_tex, GL_RGBA, ss_texsz[0], ss_texsz[1],
-	    GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	setup_color_fbo_for_tex(ws_smudge_fbo, ws_smudge_tex, 0, 0, B_FALSE);
-	IF_TEXSZ(TEXSZ_ALLOC(librain_ws_smudge_tex, GL_RGBA, GL_UNSIGNED_BYTE,
-	    ss_texsz[0], ss_texsz[1]));
+	setup_smudge_tex();
 
 	/* Must go ahead of VAO construction */
 	if (!librain_reload_gl_progs())
@@ -2528,12 +2553,7 @@ librain_fini(void)
 	DESTROY_OP(screenshot_fbo, 0, glDeleteFramebuffers(1, &screenshot_fbo));
 	DESTROY_OP(screenshot_tex, 0, glDeleteTextures(1, &screenshot_tex));
 
-	if (ws_smudge_tex != 0) {
-		IF_TEXSZ(TEXSZ_FREE(librain_ws_smudge_tex, GL_RGBA,
-		    GL_UNSIGNED_BYTE, ss_texsz[0], ss_texsz[1]));
-	}
-	DESTROY_OP(ws_smudge_fbo, 0, glDeleteFramebuffers(1, &ws_smudge_fbo));
-	DESTROY_OP(ws_smudge_tex, 0, glDeleteTextures(1, &ws_smudge_tex));
+	destroy_smudge_tex();
 
 	DESTROY_OP(priv_depth_tex, 0, glDeleteTextures(1, &priv_depth_tex));
 	priv_depth_tex_w = 0;
@@ -2545,6 +2565,7 @@ librain_fini(void)
 		cur_vp[i] = DFL_VP_SIZE;
 	ss_texsz[0] = DFL_VP_SIZE;
 	ss_texsz[1] = DFL_VP_SIZE;
+
 	GLUTILS_ASSERT_NO_ERROR();
 
 	inited = B_FALSE;

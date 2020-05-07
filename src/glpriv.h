@@ -56,6 +56,9 @@ setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
     GLsizei height, GLenum format, GLenum type, const GLvoid *data,
     GLint mag_filter, GLint min_filter)
 {
+	ASSERT(tex != 0);
+	ASSERT3S(miplevels, >, 0);
+
 	glBindTexture(GL_TEXTURE_2D, tex);
 
 	if (mag_filter != 0) {
@@ -72,13 +75,18 @@ setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
 		/*
 		 * On AMD, we MUST specify the mipmapping level
 		 * explicitly, otherwise glGenerateMipmaps can hang.
+		 * WARNING: can't do both glTexStorage2D and glTexImage2D
+		 * later to populate one mip level.
 		 */
-		glTexStorage2D(GL_TEXTURE_2D, miplevels, int_fmt,
-		    width, height);
-		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height,
-		    0, format, type, data);
-		if (data != NULL&& miplevels > 0)
+		if (data == NULL) {
+			glTexStorage2D(GL_TEXTURE_2D, miplevels, int_fmt,
+			    width, height);
 			glGenerateMipmap(GL_TEXTURE_2D);
+		} else {
+			ASSERT3S(miplevels, ==, 1);
+			glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height,
+			    0, format, type, data);
+		}
 	} else {
 		glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, width, height, 0,
 		    format, type, data);
@@ -90,13 +98,14 @@ setup_texture_filter(GLuint tex, GLint miplevels, GLint int_fmt, GLsizei width,
 		if (miplevels > 0 && data != NULL)
 			glGenerateMipmap(GL_TEXTURE_2D);
 	}
+	GLUTILS_ASSERT_NO_ERROR();
 }
 
 static void
 setup_texture(GLuint tex, GLint int_fmt, GLsizei width, GLsizei height,
     GLenum format, GLenum type, const GLvoid *data)
 {
-	setup_texture_filter(tex, 0, int_fmt, width, height, format,
+	setup_texture_filter(tex, 1, int_fmt, width, height, format,
 	    type, data, GL_LINEAR, GL_LINEAR);
 }
 
