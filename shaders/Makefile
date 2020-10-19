@@ -38,6 +38,8 @@ SPVS = \
     droplets.vert.spv \
     droplets.frag.spv \
     droplets.comp.spv \
+    droplets_1w.comp.spv \
+    droplets_2w.comp.spv \
     tails.vert.spv \
     tails.frag.spv
 
@@ -129,6 +131,11 @@ $(OUTDIR)/%.comp.spv : %.glsl
 
 $(OUTDIR)/%_comp.frag.spv : %.frag
 	$(call BUILD_SHADER,frag,-DCOMPUTE_VARIANT=1)
+
+$(OUTDIR)/droplets_1w.comp.spv : droplets.glsl
+	$(call BUILD_COMP_SHADER,comp,-DNUM_WIPERS=1)
+$(OUTDIR)/droplets_2w.comp.spv : droplets.glsl
+	$(call BUILD_COMP_SHADER,comp,-DNUM_WIPERS=2)
 
 $(addprefix $(OUTDIR)/,$(SPVS)) : | $(OUTDIR)
 

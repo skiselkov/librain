@@ -91,6 +91,9 @@ typedef struct {
 		dr_t	hot_air_radius;
 		dr_t	hot_air_temp;
 
+		dr_t	use_compute;
+		dr_t	num_droplets;
+
 		dr_t	wiper_pivot_x[MAX_WIPERS];
 		dr_t	wiper_pivot_y[MAX_WIPERS];
 		dr_t	wiper_radius_outer[MAX_WIPERS];
@@ -192,6 +195,17 @@ pre_init_validate(void)
 			    "librain/num_glass_use = %d, but "
 			    "librain/glass_%d/obj is not loaded.",
 			    num_glass_use, i);
+			return (B_FALSE);
+		}
+		if (glass_data[i].glass->qual.use_compute &&
+		    (glass_data[i].glass->qual.num_droplets == 0 ||
+		    (glass_data[i].glass->qual.num_droplets & 1023) != 0)) {
+			logMsg("librain init error: you have set "
+			    "librain/glass_%d/use_compute = 1, but"
+			    "librain/glass_%d/num_droplets contains an "
+			    "invalid value (%d). num_droplets must be "
+			    "a positive multiple of 1024.", i, i,
+			    glass_data[i].glass->qual.num_droplets);
 			return (B_FALSE);
 		}
 		glass_info[i].obj = glass_data[i].obj_data.obj;
@@ -424,6 +438,11 @@ glass_data_init(unsigned glass_i)
 	    sizeof (glass->hot_air_temp) / sizeof (float), B_TRUE,
 	    "librain/glass_%d/hot_air_temp", glass_i);
 
+	dr_create_i(&gd->drs.use_compute, (int *)&glass->qual.use_compute,
+	    B_TRUE, "librain/glass_%d/use_compute", glass_i);
+	dr_create_i(&gd->drs.num_droplets, (int *)&glass->qual.num_droplets,
+	    B_TRUE, "librain/glass_%d/num_droplets", glass_i);
+
 	for (int i = 0; i < MAX_WIPERS; i++) {
 		dr_create_f64(&gd->drs.wiper_pivot_x[i],
 		    &glass->wiper_pivot[i].x, B_TRUE,
@@ -457,6 +476,8 @@ glass_data_init(unsigned glass_i)
 	glass->gravity_factor = 0.25;
 	glass->gravity_point = VECT2(0.5, 2);
 	glass->thrust_point = VECT2(0.5, -2);
+	glass->qual.use_compute = B_TRUE;
+	glass->qual.num_droplets = 8192;
 }
 
 static void
@@ -479,6 +500,9 @@ glass_data_fini(unsigned glass_i)
 		dr_delete(&gd->drs.wiper_angle[i]);
 		dr_delete(&gd->drs.wiper_moving[i]);
 	}
+
+	dr_delete(&gd->drs.use_compute);
+	dr_delete(&gd->drs.num_droplets);
 
 	dr_delete(&gd->drs.hot_air_src);
 	dr_delete(&gd->drs.hot_air_radius);
@@ -556,13 +580,16 @@ draw_rain_effects(XPLMDrawingPhase phase, int before, void *refcon)
 	if (!librain_inited)
 		return (1);
 
-	librain_draw_prepare(B_TRUE);
-	for (int i = 0; i < MAX_Z_DEPTH_OBJS; i++) {
-		if (z_depth_objs[i].obj != NULL)
-			librain_draw_z_depth(z_depth_objs[i].obj, NULL);
+	librain_draw_prepare_all();
+	for (unsigned i = 0; i < librain_get_call_count(); i++) {
+		librain_draw_prepare_eye(i, B_FALSE);
+		for (int i = 0; i < MAX_Z_DEPTH_OBJS; i++) {
+			if (z_depth_objs[i].obj != NULL)
+				librain_draw_z_depth(z_depth_objs[i].obj, NULL);
+		}
+		librain_draw_exec();
 	}
-	librain_draw_exec();
-	librain_draw_finish();
+	librain_draw_finish_all();
 
 	return (1);
 }
