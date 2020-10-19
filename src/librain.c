@@ -665,6 +665,15 @@ librain_get_current_vp(GLint vp[4])
 	vp[1] = xp_vp[1];		/* bottom */
 	vp[2] = xp_vp[2] - xp_vp[0];	/* width */
 	vp[3] = xp_vp[3] - xp_vp[1];	/* height */
+	/*
+	 * During boot, X-Plane doesn't properly set this up, so we need
+	 * to grab the OpenGL state.
+	 */
+	if (vp[0] < -100000 || vp[0] > 100000 ||
+	    vp[1] < -100000 || vp[1] > 100000 ||
+	    vp[2] <= 0 || vp[3] <= 0) {
+		glGetIntegerv(GL_VIEWPORT, vp);
+	}
 }
 
 void
@@ -2513,6 +2522,7 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 	gl_state_cleanup();
+	GLUTILS_ASSERT_NO_ERROR();
 
 	return (B_TRUE);
 errout:
