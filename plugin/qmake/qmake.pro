@@ -70,6 +70,8 @@ linux-g++-64 {
 	QMAKE_CFLAGS += $$system("$$[LIBACFUTILS]/pkg-config-deps linux-64 \
 	    --static-openal --cflags")
 	LIBS += -L$$[LIBACFUTILS]/qmake/lin64 -lacfutils
+	LIBS += $$system("$$[LIBACFUTILS]/pkg-config-deps linux-64 \
+	    --static-openal --libs")
 }
 
 macx {
