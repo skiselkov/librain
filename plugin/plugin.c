@@ -714,3 +714,14 @@ XPluginReceiveMessage(XPLMPluginID from, int msg, void *param)
 	UNUSED(msg);
 	UNUSED(param);
 }
+
+#if	IBM
+BOOL WINAPI
+DllMain(HINSTANCE hinst, DWORD reason, LPVOID resvd)
+{
+	UNUSED(hinst);
+	UNUSED(resvd);
+	lacf_glew_dllmain_hook(reason);
+	return (TRUE);
+}
+#endif	/* IBM */
