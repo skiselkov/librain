@@ -49,7 +49,7 @@ SPIRVX_420_VERSION=420
 SPIRVX_430_VERSION=430
 SPIRVX_450_VERSION=450
 
-GLSLANG=glslang
+GLSLANG=glslangValidator
 SPIRVX=spirv-cross
 GLSL_CLEANUP=./glsl_cleanup.sh
 ECHO=/bin/echo
