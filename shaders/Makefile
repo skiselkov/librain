@@ -67,7 +67,7 @@ endif
 
 define BUILD_SHADER
 	$(call logMsg,-n \	[GLSLANG]\	)
-	$(VERB) $(GLSLANG) $(2) -G460 -o $@ $^
+	$(VERB) $(GLSLANG) $(2) -G -o $@ $^
 
 	$(call logMsg,\	[SPIRVX]\	$@)
 	$(VERB) $(SPIRVX) --version $(SPIRVX_TGT_VERSION) \
@@ -83,7 +83,7 @@ endef
 
 define BUILD_SHADER_MODERN
 	$(call logMsg,-n \	[GLSLANG]\	)
-	$(VERB) $(GLSLANG) $(2) -G460 -o $@ $^
+	$(VERB) $(GLSLANG) $(2) -G -o $@ $^
 
 	$(call logMsg,\	[SPIRVX 4.50]\	$(@:%.$(1).spv=%.$(1).glsl450))
 	$(VERB) $(SPIRVX) --version $(SPIRVX_450_VERSION) \
