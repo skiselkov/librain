@@ -678,9 +678,9 @@ surf_ice_render_pass_begin(void)
 	sun_dir[0] = 0;
 	sun_dir[1] = 0;
 	sun_dir[2] = -1;
-	glm_vec_rotate(sun_dir, DEG2RAD(dr_getf(&drs.sun_pitch)),
+	glm_vec3_rotate(sun_dir, DEG2RAD(dr_getf(&drs.sun_pitch)),
 	    (vec3){1, 0, 0});
-	glm_vec_rotate(sun_dir, DEG2RAD(dr_getf(&drs.sun_hdg)),
+	glm_vec3_rotate(sun_dir, DEG2RAD(dr_getf(&drs.sun_hdg)),
 	    (vec3){0, -1, 0});
 
 	glm_mat4_identity(m1);
