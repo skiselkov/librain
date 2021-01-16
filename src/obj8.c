@@ -31,8 +31,10 @@
 #include <acfutils/thread.h>
 
 #include "glpriv.h"
-#include "librain.h"
 #include "obj8.h"
+#ifdef	DLLMODE
+#include "librain.h"
+#endif
 
 #define	ANIM_ALLOC_STEP	8
 /*
@@ -686,8 +688,13 @@ obj8_parse(const char *filename, vect3_t pos_offset)
 	FILE *fp;
 	obj8_t *obj;
 
+#ifdef	DLLMODE
+	/*
+	 * This is only required in DLL mode in order to get GLEw initialized.
+	 */
 	if (!librain_glob_init())
 		return (NULL);
+#endif	/* defined(DLLMODE) */
 	fp = fopen(filename, "rb");
 
 	if (fp == NULL) {
