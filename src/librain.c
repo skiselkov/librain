@@ -1253,25 +1253,24 @@ update_mtx_info(unsigned idx)
 		mtx_info[idx].viewport[i] = vp[i];
 }
 
-int
-capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
+static void
+capture_mtx_impl(void)
 {
 	int idx;
+#if	!APL
 	draw_call_type_t dct;
-
-	UNUSED(phase);
-	UNUSED(before);
-	UNUSED(refcon);
+#endif
 	/*
 	 * No GL calls take place here, so no need for GLUTILS_RESET_ERRORS()
 	 */
 	cached_rev_float_z = using_rev_float_z();
 	cached_rev_y = using_rev_y();
 
+#if	!APL
 	if (!using_modern_driver() &&
 	    (dr_geti(&drs.plane_render_type) != PLANE_RENDER_SOLID ||
 	    dr_geti(&drs.world_render_type) == WORLD_RENDER_TYPE_REFLECT)) {
-		return (1);
+		return;
 	}
 	dct = dr_geti(&drs.draw_call_type);
 	if (dct == DRAW_CALL_RIGHT_EYE) {
@@ -1284,8 +1283,21 @@ capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
 		idx = 0;
 		num_mtx_info = 1;
 	}
+#else	/* APL */
+	/* On Apple, we don't have Modern3D, but also no stereo 3D drawing */
+	idx = 0;
+	num_mtx_info = 1;
+#endif	/* APL */
 	update_mtx_info(idx);
+}
 
+static int
+capture_mtx(XPLMDrawingPhase phase, int before, void *refcon)
+{
+	UNUSED(phase);
+	UNUSED(before);
+	UNUSED(refcon);
+	capture_mtx_impl();
 	return (1);
 }
 
@@ -1512,6 +1524,15 @@ librain_draw_prepare_all(void)
 	check_librain_init();
 
 	now = dr_getf(&drs.sim_time);
+
+#if	APL
+	/*
+	 * On Apple, we don't have a Modern3D callback to capture drawing
+	 * matrices, so we need to grab them from here. Fortunately, there
+	 * is no stereo 3D support on Apple, so that won't be an issue.
+	 */
+	capture_mtx_impl();
+#endif	/* APL */
 
 	compute_precip(now);
 
@@ -2434,7 +2455,16 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 	fdr_find(&drs.plane_render_type, "sim/graphics/view/plane_render_type");
 	fdr_find(&drs.world_render_type, "sim/graphics/view/world_render_type");
 	fdr_find(&drs.sim_time, "sim/time/total_running_time_sec");
+#if	!APL
 	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix");
+#else	/* APL */
+	/*
+	 * On Apple, we don't have a Modern3D callback, so we need to fetch
+	 * the projection matrix from the draw callback, which happens in a
+	 * 2D phase.
+	 */
+	fdr_find(&drs.proj_matrix, "sim/graphics/view/projection_matrix_3d");
+#endif	/* APL */
 	fdr_find(&drs.acf_matrix, "sim/graphics/view/acf_matrix");
 	fdr_find(&drs.viewport, "sim/graphics/view/viewport");
 	fdr_find(&drs.precip_rat,
