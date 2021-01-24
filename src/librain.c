@@ -653,18 +653,27 @@ librain_get_current_fbo(void)
 	return (fbo);
 }
 
+static void
+fix_right_eye_vp(GLint vp[4])
+{
+	/*
+	 * There's a bug in X-Plane where fetching the viewport via the
+	 * dataref will result in a X-offset of 0 on the right eye in
+	 * stereo 3D. That cannot be, as then both the left & right eye
+	 * viewports would overlap. So shift over the right eye by the
+	 * viewport width to compensate. In case X-Plane ever fixes this
+	 * bug, we first check that the viewport X offset was indeed zero
+	 */
+	if (dr_geti(&drs.draw_call_type) == DRAW_CALL_RIGHT_EYE && vp[0] == 0)
+		vp[0] += vp[2];
+}
+
 void
 librain_get_current_vp(GLint vp[4])
 {
-	int xp_vp[4];
-
 	ASSERT(vp != NULL);
-	VERIFY3S(dr_getvi(&drs.viewport, xp_vp, 0, 4), ==, 4);
-
-	vp[0] = xp_vp[0];		/* left */
-	vp[1] = xp_vp[1];		/* bottom */
-	vp[2] = xp_vp[2] - xp_vp[0];	/* width */
-	vp[3] = xp_vp[3] - xp_vp[1];	/* height */
+	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+	fix_right_eye_vp(vp);
 	/*
 	 * During boot, X-Plane doesn't properly set this up, so we need
 	 * to grab the OpenGL state.
@@ -1236,6 +1245,7 @@ update_mtx_info(unsigned idx)
 	VERIFY3S(dr_getvf32(&drs.proj_matrix,
 	    (float *)mtx_info[idx].proj_matrix, 0, 16), ==, 16);
 	VERIFY3S(dr_getvi(&drs.viewport, vp, 0, 4), ==, 4);
+	fix_right_eye_vp(vp);
 	if (drs.aa_ratio_avail) {
 		/*
 		 * Anti-aliasing messes with the viewport, so we need to
@@ -1474,16 +1484,7 @@ compute_precip(double now)
 unsigned
 librain_get_call_count(void)
 {
-	if (xp_ver < 11500)
-		return (num_mtx_info);
-
-	switch (dr_geti(&drs.draw_call_type)) {
-	case DRAW_CALL_LEFT_EYE:
-	case DRAW_CALL_RIGHT_EYE:
-		return (2);
-	default:
-		return (1);
-	}
+	return (num_mtx_info);
 }
 
 static void
