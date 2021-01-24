@@ -317,7 +317,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
     bool_t deice_on)
 {
 	GLint old_fbo;
-	int vp[4];
+	vec4 vp;
 	GLint depth_prog;
 	double d_ice;
 	surf_ice_impl_t *priv = surf->priv;
@@ -341,7 +341,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
 
 	old_fbo = librain_get_current_fbo();
-	librain_get_current_vp(vp);
+	librain_get_vp(vp);
 	glViewport(0, 0, surf->w, surf->h);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER, priv->depth_fbo[priv->cur]);
@@ -390,7 +390,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glutils_draw_quads(&priv->quads, norm_prog);
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
-	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, old_fbo);
+	glBindFramebufferEXT(GL_FRAMEBUFFER, old_fbo);
 
 	librain_reset_clip_control();
 	glEnable(GL_CULL_FACE);
@@ -426,7 +426,7 @@ render_blur(surf_ice_t *surf, double blur_radius)
 {
 	surf_ice_impl_t *priv = surf->priv;
 	GLint old_fbo;
-	int vp[4];
+	vec4 vp;
 
 	glutils_debug_push(0, "ice_render_blur(%s)", surf->name);
 
@@ -448,7 +448,7 @@ render_blur(surf_ice_t *surf, double blur_radius)
 	}
 
 	old_fbo = librain_get_current_fbo();
-	librain_get_current_vp(vp);
+	librain_get_vp(vp);
 	glViewport(0, 0, surf->w, surf->h);
 
 	glUseProgram(blur_prog);
