@@ -865,8 +865,9 @@ rotation_get_angle(obj8_cmd_t *cmd)
 		}
 	}
 
-	VERIFY_MSG(0, "Something went really wrong during animation "
+	logMsg("Something went really wrong during animation "
 	    "of %s with value %f", cmd->dr.name, val);
+	VERIFY_FAIL();
 }
 
 void
