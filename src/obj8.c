@@ -64,6 +64,9 @@ typedef enum {
 	OBJ8_CMD_ANIM_HIDE_SHOW,
 	OBJ8_CMD_ANIM_TRANS,
 	OBJ8_CMD_ANIM_ROTATE,
+	OBJ8_CMD_ATTR_LIGHT_LEVEL,
+	OBJ8_CMD_ATTR_DRAW_ENABLE,
+	OBJ8_CMD_ATTR_DRAW_DISABLE,
 	OBJ8_NUM_CMDS
 } obj8_cmd_type_t;
 
@@ -72,6 +75,7 @@ typedef struct {
 	unsigned	n_vtx;		/* number of vertices in geometry */
 	char		group_id[32];	/* Contents of X-GROUP-ID attribute */
 	bool_t		double_sided;
+	unsigned	manip_idx;
 	list_node_t	node;
 } obj8_geom_t;
 
@@ -103,6 +107,10 @@ typedef struct obj8_cmd_s {
 			double	*values;
 			vect3_t	*pos;
 		} trans;
+		struct {
+			float	min_val;
+			float	max_val;
+		} attr_light_level;
 		obj8_geom_t	tris;
 	};
 	list_node_t	list_node;
@@ -110,12 +118,24 @@ typedef struct obj8_cmd_s {
 
 struct obj8_s {
 	char		*filename;
+	/*
+	 * These are populated by the loader.
+	 */
+	char		*tex_filename;
+	char		*norm_filename;
+	char		*lit_filename;
+	obj8_manip_t	*manips;
+	unsigned	n_manips;
 
 	GLuint		last_prog;
+	/* uniforms */
 	GLint		pvm_loc;
+	GLint		light_level_loc;
+	/* vertex attributes */
 	GLint		pos_loc;
 	GLint		norm_loc;
 	GLint		tex0_loc;
+
 	void		*vtx_table;
 	GLuint		vtx_buf;
 	unsigned	vtx_cap;
@@ -159,13 +179,14 @@ typedef struct {
 
 static void
 obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
-    unsigned off, unsigned len, GLuint vtx_cap, const GLuint *idx_table,
-    GLuint idx_cap)
+    unsigned manip_idx, unsigned off, unsigned len, GLuint vtx_cap,
+    const GLuint *idx_table, GLuint idx_cap)
 {
 	geom->vtx_off = off;
 	geom->n_vtx = len;
 	strlcpy(geom->group_id, group_id, sizeof (geom->group_id));
 	geom->double_sided = double_sided;
+	geom->manip_idx = manip_idx;
 
 	for (GLuint x = geom->vtx_off; x < geom->vtx_off + geom->n_vtx; x++) {
 		GLuint idx;
@@ -267,30 +288,6 @@ parse_trans_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	return (B_TRUE);
 }
 
-/*
- * X-Plane wraps rotations around the "shorter way", so here we adjust
- * rotation offsets in terms of deltas from the previous point.
- */
-static void
-normalize_rotate_angle(obj8_cmd_t *cmd, size_t n)
-{
-	double prev, delta;
-
-	ASSERT3U(cmd->type, ==, OBJ8_CMD_ANIM_ROTATE);
-	ASSERT3U(cmd->rotate.n_pts, >, n);
-
-	if (n == 0)
-		prev = 0;
-	else
-		prev = cmd->rotate.pts[n - 1].y;
-	delta = cmd->rotate.pts[n].y - prev;
-	while (delta > 180)
-		delta -= 360;
-	while (delta < -180)
-		delta += 360;
-	cmd->rotate.pts[n].y = prev + delta;
-}
-
 static bool_t
 parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
     int linenr)
@@ -316,7 +313,6 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 		    filename, linenr);
 		return (B_FALSE);
 	}
-	normalize_rotate_angle(cmd, n);
 
 	return (B_TRUE);
 }
@@ -338,6 +334,7 @@ obj8_parse_worker(void *userinfo)
 	obj8_cmd_t	*cur_cmd = NULL;
 	obj8_cmd_t	*cur_anim = NULL;
 	vect3_t		offset;
+	unsigned	cur_manip = -1u;
 
 	obj8_load_info_t *info;
 	const char	*filename;
@@ -435,7 +432,7 @@ obj8_parse_worker(void *userinfo)
 			}
 			cmd = obj8_cmd_alloc(OBJ8_CMD_TRIS, cur_cmd);
 			obj8_geom_init(&cmd->tris, group_id, double_sided,
-			    off, len, vtx_cap, idx_table, idx_cap);
+			    cur_manip, off, len, vtx_cap, idx_table, idx_cap);
 		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
 			cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, cur_cmd);
 		} else if (strncmp(line, "ANIM_end", 10) == 0) {
@@ -551,7 +548,31 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
-			normalize_rotate_angle(cmd, 1);
+		} else if (strncmp(line, "ATTR_light_level", 16) == 0) {
+			char dr_name[256] = { 0 };
+			float min_val, max_val;
+			/*
+			 * The dataref name is optional, so skip creating
+			 * the command if it is empty.
+			 */
+			if (sscanf(line, "ATTR_light_level %f %f %255s",
+			    &min_val, &max_val, dr_name) == 3) {
+				obj8_cmd_t *cmd = obj8_cmd_alloc(
+				    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
+				cmd->attr_light_level.min_val = min_val;
+				cmd->attr_light_level.max_val = max_val;
+				strlcpy(cmd->dr_name, dr_name,
+				    sizeof (cmd->dr_name));
+			}
+		} else if (strncmp(line, "ATTR_draw_enable", 16) == 0) {
+			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_ENABLE,
+			    cur_cmd);
+		} else if (strncmp(line, "ATTR_draw_disable", 17) == 0) {
+			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_DISABLE,
+			    cur_cmd);
+		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
+			cur_manip = -1;
+		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -575,6 +596,24 @@ obj8_parse_worker(void *userinfo)
 			double_sided = B_TRUE;
 		} else if (strncmp(line, "X-SINGLE-SIDED", 14) == 0) {
 			double_sided = B_FALSE;
+		} else if (strncmp(line, "TEXTURE_NORMAL", 14) == 0) {
+			char buf[128];
+			if (sscanf(line, "TEXTURE_NORMAL %127s", buf) == 1) {
+				obj->norm_filename = path_last_comp_subst(
+				    obj->filename, buf);
+			}
+		} else if (strncmp(line, "TEXTURE_LIT", 11) == 0) {
+			char buf[128];
+			if (sscanf(line, "TEXTURE_LIT %127s", buf) == 1) {
+				obj->lit_filename = path_last_comp_subst(
+				    obj->filename, buf);
+			}
+		} else if (strncmp(line, "TEXTURE", 7) == 0) {
+			char buf[128];
+			if (sscanf(line, "TEXTURE %127s", buf) == 1) {
+				obj->tex_filename = path_last_comp_subst(
+				    obj->filename, buf);
+			}
 		}
 	}
 
@@ -637,8 +676,8 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	return (obj);
 }
 
-static bool_t
-upload_data(obj8_t *obj)
+static inline void
+wait_load_complete(obj8_t *obj)
 {
 	if (!obj->load_complete) {
 		mutex_enter(&obj->lock);
@@ -646,6 +685,12 @@ upload_data(obj8_t *obj)
 			cv_wait(&obj->cv, &obj->lock);
 		mutex_exit(&obj->lock);
 	}
+}
+
+static bool_t
+upload_data(obj8_t *obj)
+{
+	wait_load_complete(obj);
 	/*
 	 * Once the initial data load is complete, upload the tables and
 	 * dispose of the in-memory copies as they are no longer needed.
@@ -729,8 +774,12 @@ obj8_cmd_free(obj8_cmd_t *cmd)
 	case OBJ8_CMD_ANIM_ROTATE:
 		free(cmd->rotate.pts);
 		break;
+	case OBJ8_CMD_ATTR_LIGHT_LEVEL:
+	case OBJ8_CMD_ATTR_DRAW_ENABLE:
+	case OBJ8_CMD_ATTR_DRAW_DISABLE:
+		break;
 	default:
-		VERIFY(0);
+		VERIFY_FAIL();
 	}
 	free(cmd);
 }
@@ -742,6 +791,8 @@ obj8_free(obj8_t *obj)
 
 	obj->load_stop = B_TRUE;
 	thread_join(&obj->loader);
+	mutex_destroy(&obj->lock);
+	cv_destroy(&obj->cv);
 
 	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
@@ -756,6 +807,9 @@ obj8_free(obj8_t *obj)
 	}
 	free(obj->idx_table);
 	free(obj->filename);
+	free(obj->tex_filename);
+	free(obj->norm_filename);
+	free(obj->lit_filename);
 
 	free(obj);
 }
@@ -813,8 +867,7 @@ cmd_dr_read(obj8_cmd_t *cmd)
 static void
 geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
-	if (obj->pvm_loc != -1)
-		glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
+	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -874,7 +927,7 @@ void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     const mat4 pvm_in)
 {
-	bool_t do_show = B_TRUE;
+	bool_t do_show = B_TRUE, do_draw = B_TRUE;
 	mat4 pvm;
 
 	UNUSED(obj);
@@ -885,12 +938,12 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
 		switch (subcmd->type) {
 		case OBJ8_CMD_GROUP:
-			if (!do_show)
+			if (!do_show || !do_draw)
 				break;
 			obj8_draw_group_cmd(obj, subcmd, groupname, pvm);
 			break;
 		case OBJ8_CMD_TRIS:
-			if (!do_show)
+			if (!do_show || !do_draw)
 				break;
 			if (groupname == NULL ||
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
@@ -952,6 +1005,20 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			glm_translate(pvm, xlate);
 			break;
 		}
+		case OBJ8_CMD_ATTR_LIGHT_LEVEL: {
+			float raw = cmd_dr_read(subcmd);
+			float value = iter_fract(raw,
+			    subcmd->attr_light_level.min_val,
+			    subcmd->attr_light_level.max_val, true);
+			glUniform1f(obj->light_level_loc, value);
+			break;
+		}
+		case OBJ8_CMD_ATTR_DRAW_ENABLE:
+			do_draw = B_TRUE;
+			break;
+		case OBJ8_CMD_ATTR_DRAW_DISABLE:
+			do_draw = B_FALSE;
+			break;
 		default:
 			break;
 		}
@@ -964,10 +1031,14 @@ setup_arrays(obj8_t *obj, GLuint prog)
 {
 	if (obj->last_prog != prog) {
 		obj->last_prog = prog;
+		/* uniforms */
+		obj->pvm_loc = glGetUniformLocation(prog, "pvm");
+		obj->light_level_loc = glGetUniformLocation(prog,
+		    "ATTR_light_level");
+		/* vertex attributes */
 		obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
 		obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
 		obj->tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-		obj->pvm_loc = glGetUniformLocation(prog, "pvm");
 		GLUTILS_ASSERT_NO_ERROR();
 	}
 
@@ -1041,4 +1112,31 @@ obj8_get_filename(const obj8_t *obj)
 {
 	ASSERT(obj != NULL);
 	return (obj->filename);
+}
+
+const char *
+obj8_get_tex_filename(const obj8_t *obj, bool wait_load)
+{
+	ASSERT(obj != NULL);
+	if (wait_load)
+		wait_load_complete((obj8_t *)obj);
+	return (obj->tex_filename);
+}
+
+const char *
+obj8_get_norm_filename(const obj8_t *obj, bool wait_load)
+{
+	ASSERT(obj != NULL);
+	if (wait_load)
+		wait_load_complete((obj8_t *)obj);
+	return (obj->norm_filename);
+}
+
+const char *
+obj8_get_lit_filename(const obj8_t *obj, bool wait_load)
+{
+	ASSERT(obj != NULL);
+	if (wait_load)
+		wait_load_complete((obj8_t *)obj);
+	return (obj->lit_filename);
 }
