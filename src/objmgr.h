@@ -34,7 +34,7 @@ objmgr_t *objmgr_new(void);
 void objmgr_destroy(objmgr_t *mgr);
 
 objmgr_obj_t *objmgr_add_obj(objmgr_t *mgr, const char *filename,
-    bool lazy_load_textures);
+    bool lazy_load_textures, bool load_norm);
 void objmgr_remove_obj(objmgr_t *mgr, objmgr_obj_t *obj);
 
 obj8_t *objmgr_get_obj8(const objmgr_obj_t *obj);

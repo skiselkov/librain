@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2019 Saso Kiselkov. All rights reserved.
+ * Copyright 2021 Saso Kiselkov. All rights reserved.
  */
 
 #include <stddef.h>
@@ -117,40 +117,43 @@ typedef struct obj8_cmd_s {
 } obj8_cmd_t;
 
 struct obj8_s {
-	char		*filename;
+	char			*filename;
 	/*
 	 * These are populated by the loader.
 	 */
-	char		*tex_filename;
-	char		*norm_filename;
-	char		*lit_filename;
-	obj8_manip_t	*manips;
-	unsigned	n_manips;
+	char			*tex_filename;
+	char			*norm_filename;
+	char			*lit_filename;
+	obj8_manip_t		*manips;
+	unsigned		n_manips;
+	unsigned		cap_manips;
+	obj8_render_mode_t	render_mode;
 
-	GLuint		last_prog;
+	GLuint			last_prog;
 	/* uniforms */
-	GLint		pvm_loc;
-	GLint		light_level_loc;
+	GLint			pvm_loc;
+	GLint			light_level_loc;
+	GLint			manip_idx_loc;
 	/* vertex attributes */
-	GLint		pos_loc;
-	GLint		norm_loc;
-	GLint		tex0_loc;
+	GLint			pos_loc;
+	GLint			norm_loc;
+	GLint			tex0_loc;
 
-	void		*vtx_table;
-	GLuint		vtx_buf;
-	unsigned	vtx_cap;
-	void		*idx_table;
-	GLuint		idx_buf;
-	unsigned	idx_cap;
-	mat4		matrix;
-	obj8_cmd_t	*top;
+	void			*vtx_table;
+	GLuint			vtx_buf;
+	unsigned		vtx_cap;
+	void			*idx_table;
+	GLuint			idx_buf;
+	unsigned		idx_cap;
+	mat4			matrix;
+	obj8_cmd_t		*top;
 
-	thread_t	loader;
-	mutex_t		lock;
-	condvar_t	cv;
-	bool_t		load_complete;
-	bool_t		load_error;
-	bool_t		load_stop;
+	thread_t		loader;
+	mutex_t			lock;
+	condvar_t		cv;
+	bool_t			load_complete;
+	bool_t			load_error;
+	bool_t			load_stop;
 };
 
 typedef struct {
@@ -317,6 +320,138 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	return (B_TRUE);
 }
 
+static obj8_manip_cursor_t
+str2cursor(const char *str)
+{
+	ASSERT(str);
+	if (strcmp(str, "four_arrows") == 0)
+		return (OBJ8_CURSOR_FOUR_ARROWS);
+	if (strcmp(str, "hand") == 0)
+		return (OBJ8_CURSOR_HAND);
+	if (strcmp(str, "button") == 0)
+		return (OBJ8_CURSOR_BUTTON);
+	if (strcmp(str, "rotate_small") == 0)
+		return (OBJ8_CURSOR_ROTATE_SMALL);
+	if (strcmp(str, "rotate_small_left") == 0)
+		return (OBJ8_CURSOR_ROTATE_SMALL_LEFT);
+	if (strcmp(str, "rotate_small_right") == 0)
+		return (OBJ8_CURSOR_ROTATE_SMALL_RIGHT);
+	if (strcmp(str, "rotate_medium") == 0)
+		return (OBJ8_CURSOR_ROTATE_MEDIUM);
+	if (strcmp(str, "rotate_medium_left") == 0)
+		return (OBJ8_CURSOR_ROTATE_MEDIUM_LEFT);
+	if (strcmp(str, "rotate_medium_righT") == 0)
+		return (OBJ8_CURSOR_ROTATE_MEDIUM_RIGHT);
+	if (strcmp(str, "rotate_large") == 0)
+		return (OBJ8_CURSOR_ROTATE_LARGE);
+	if (strcmp(str, "rotate_large_left") == 0)
+		return (OBJ8_CURSOR_ROTATE_LARGE_LEFT);
+	if (strcmp(str, "rotate_large_right") == 0)
+		return (OBJ8_CURSOR_ROTATE_LARGE_RIGHT);
+	if (strcmp(str, "up_down") == 0)
+		return (OBJ8_CURSOR_UP_DOWN);
+	if (strcmp(str, "down") == 0)
+		return (OBJ8_CURSOR_DOWN);
+	if (strcmp(str, "up") == 0)
+		return (OBJ8_CURSOR_UP);
+	if (strcmp(str, "left_right") == 0)
+		return (OBJ8_CURSOR_LEFT_RIGHT);
+	if (strcmp(str, "right") == 0)
+		return (OBJ8_CURSOR_RIGHT);
+	if (strcmp(str, "left") == 0)
+		return (OBJ8_CURSOR_LEFT);
+	return (OBJ8_CURSOR_ARROW);
+}
+
+static obj8_manip_t *
+alloc_manip(obj8_t *obj, obj8_manip_type_t type, const char *cursor)
+{
+	obj8_manip_t *manip;
+
+	ASSERT(obj != NULL);
+	ASSERT(cursor != NULL);
+
+	if (obj->n_manips == obj->cap_manips) {
+		obj->cap_manips += 32;
+		obj->manips = safe_realloc(obj->manips, obj->cap_manips *
+		    sizeof (*obj->manips));
+	}
+	obj->n_manips++;
+	manip = &obj->manips[obj->n_manips - 1];
+	memset(manip, 0, sizeof (*manip));
+	manip->type = type;
+	manip->cursor = str2cursor(cursor);
+
+	return (manip);
+}
+
+static unsigned
+parse_ATTR_manip_command(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND, cursor);
+	manip->cmd = XPLMFindCommand(cmdname);
+	if (manip->cmd == NULL)
+		return (-1u);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_knob %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_KNOB, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_axis(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	vect3_t d;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_axis %31s %lf %lf %lf %255s %255s",
+	    cursor, &d.x, &d.y, &d.z, pos_cmdname, neg_cmdname) != 6) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_AXIS, cursor);
+	manip->cmd_axis.d = d;
+	manip->cmd_axis.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_axis.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_axis.pos_cmd == NULL ||
+	    manip->cmd_axis.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
 static void
 obj8_parse_worker(void *userinfo)
 {
@@ -353,8 +488,8 @@ obj8_parse_worker(void *userinfo)
 	offset = vect3_add(pos_offset, info->cg_offset);
 	glm_translate_make(obj->matrix, (vec3){offset.x, offset.y, offset.z});
 
-	for (int linenr = 1; getline(&line, &cap, fp) > 0 && !obj->load_stop;
-	    linenr++) {
+	for (int linenr = 1; lacf_getline(&line, &cap, fp) > 0 &&
+	    !obj->load_stop; linenr++) {
 		strip_space(line);
 
 		if (strncmp(line, "VT", 2) == 0) {
@@ -572,7 +707,12 @@ obj8_parse_worker(void *userinfo)
 			    cur_cmd);
 		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
 			cur_manip = -1;
-		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
+		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+			cur_manip = parse_ATTR_manip_command_axis(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
+			cur_manip = parse_ATTR_manip_command_knob(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command", 18) == 0) {
+			cur_manip = parse_ATTR_manip_command(line, obj);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -690,6 +830,8 @@ wait_load_complete(obj8_t *obj)
 static bool_t
 upload_data(obj8_t *obj)
 {
+	if (!obj->load_complete)
+		return (B_FALSE);
 	wait_load_complete(obj);
 	/*
 	 * Once the initial data load is complete, upload the tables and
@@ -810,6 +952,7 @@ obj8_free(obj8_t *obj)
 	free(obj->tex_filename);
 	free(obj->norm_filename);
 	free(obj->lit_filename);
+	free(obj->manips);
 
 	free(obj);
 }
@@ -868,6 +1011,7 @@ static void
 geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
 	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
+	glUniform1f(obj->manip_idx_loc, geom->manip_idx);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -927,7 +1071,7 @@ void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     const mat4 pvm_in)
 {
-	bool_t do_show = B_TRUE, do_draw = B_TRUE;
+	bool_t hide = B_FALSE, do_draw = B_TRUE;
 	mat4 pvm;
 
 	UNUSED(obj);
@@ -938,13 +1082,18 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
 		switch (subcmd->type) {
 		case OBJ8_CMD_GROUP:
-			if (!do_show || !do_draw)
+			if (hide || (!do_draw &&
+			    obj->render_mode != OBJ8_RENDER_MODE_MANIP_ONLY)) {
 				break;
+			}
 			obj8_draw_group_cmd(obj, subcmd, groupname, pvm);
 			break;
 		case OBJ8_CMD_TRIS:
-			if (!do_show || !do_draw)
+			if (hide || (!do_draw &&
+			    (obj->render_mode != OBJ8_RENDER_MODE_MANIP_ONLY ||
+			    cmd->tris.manip_idx == -1u))) {
 				break;
+			}
 			if (groupname == NULL ||
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
 				if (subcmd->tris.double_sided) {
@@ -961,7 +1110,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			PROT_BAD_ANIM_VAL(val, subcmd, break);
 			if (subcmd->hide_show.val[0] <= val &&
 			    subcmd->hide_show.val[1] >= val)
-				do_show = subcmd->hide_show.set_val;
+				hide = !subcmd->hide_show.set_val;
 			break;
 		}
 		case OBJ8_CMD_ANIM_ROTATE:
@@ -1035,6 +1184,7 @@ setup_arrays(obj8_t *obj, GLuint prog)
 		obj->pvm_loc = glGetUniformLocation(prog, "pvm");
 		obj->light_level_loc = glGetUniformLocation(prog,
 		    "ATTR_light_level");
+		obj->manip_idx_loc = glGetUniformLocation(prog, "manip_idx");
 		/* vertex attributes */
 		obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
 		obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
@@ -1105,6 +1255,39 @@ obj8_set_matrix(obj8_t *obj, mat4 matrix)
 	glm_translate_make(m1, (vec3){0,
 	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))});
 	glm_mat4_mul(matrix, m1, obj->matrix);
+}
+
+obj8_render_mode_t
+obj8_get_render_mode(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->render_mode);
+}
+
+void
+obj8_set_render_mode(obj8_t *obj, obj8_render_mode_t mode)
+{
+	ASSERT(obj != NULL);
+	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY);
+	obj->render_mode = mode;
+}
+
+unsigned
+obj8_get_num_manips(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	if (!obj->load_complete)
+		return (0);
+	return (obj->n_manips);
+}
+
+const obj8_manip_t *
+obj8_get_manip(const obj8_t *obj, unsigned idx)
+{
+	ASSERT(obj != NULL);
+	ASSERT3U(idx, <, obj->n_manips);
+	return (&obj->manips[idx]);
 }
 
 const char *

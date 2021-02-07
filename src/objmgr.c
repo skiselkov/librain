@@ -48,6 +48,7 @@ struct objmgr_obj_s {
 	const char	*filename;	/* held by the obj8_t below */
 	obj8_t		*obj;
 	unsigned	refcnt;
+	bool		load_norm;
 	objmgr_tex_t	*tex;
 	objmgr_tex_t	*norm;
 	objmgr_tex_t	*lit;
@@ -174,12 +175,13 @@ complete_texture_load(objmgr_tex_t *tex)
 			glGenTextures(1, &tex->tex);
 			VERIFY(tex->tex != 0);
 			XPLMBindTexture2d(tex->tex, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
-			    GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-			    GL_LINEAR);
 			glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, tex->width,
 			    tex->height, 0, fmt, type, tex->pixels);
+			glGenerateMipmap(GL_TEXTURE_2D);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+			    GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+			    GL_LINEAR_MIPMAP_LINEAR);
 		} else {
 			logMsg("%s: unsupported color type/bit depth combo: "
 			    "%d/%d", tex->filename, tex->color_type,
@@ -225,11 +227,13 @@ obj_load_textures(objmgr_t *mgr, objmgr_obj_t *obj)
 		if (obj->tex == NULL)
 			return (false);
 	}
-	tex_filename = obj8_get_norm_filename(obj->obj, false);
-	if (tex_filename != NULL && obj->norm == NULL) {
-		obj->norm = add_tex(mgr, tex_filename);
-		if (obj->norm == NULL)
-			return (false);
+	if (obj->load_norm) {
+		tex_filename = obj8_get_norm_filename(obj->obj, false);
+		if (tex_filename != NULL && obj->norm == NULL) {
+			obj->norm = add_tex(mgr, tex_filename);
+			if (obj->norm == NULL)
+				return (false);
+		}
 	}
 	tex_filename = obj8_get_lit_filename(obj->obj, false);
 	if (tex_filename != NULL && obj->lit == NULL) {
@@ -282,7 +286,8 @@ objmgr_destroy(objmgr_t *mgr)
 }
 
 objmgr_obj_t *
-objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures)
+objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures,
+    bool load_norm)
 {
 	const objmgr_obj_t srch = { .filename = filename };
 	objmgr_obj_t *obj;
@@ -296,6 +301,7 @@ objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures)
 		obj = safe_calloc(1, sizeof (*obj));
 		obj->obj = obj8_parse(filename, ZERO_VECT3);
 		obj->refcnt = 1;
+		obj->load_norm = load_norm;
 		if (obj->obj == NULL)
 			goto errout;
 		obj->filename = obj8_get_filename(obj->obj);

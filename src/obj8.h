@@ -50,8 +50,31 @@ typedef enum {
 	OBJ8_MANIP_DRAG_XY
 } obj8_manip_type_t;
 
+typedef enum {
+	OBJ8_CURSOR_FOUR_ARROWS,
+	OBJ8_CURSOR_HAND,
+	OBJ8_CURSOR_BUTTON,
+	OBJ8_CURSOR_ROTATE_SMALL,
+	OBJ8_CURSOR_ROTATE_SMALL_LEFT,
+	OBJ8_CURSOR_ROTATE_SMALL_RIGHT,
+	OBJ8_CURSOR_ROTATE_MEDIUM,
+	OBJ8_CURSOR_ROTATE_MEDIUM_LEFT,
+	OBJ8_CURSOR_ROTATE_MEDIUM_RIGHT,
+	OBJ8_CURSOR_ROTATE_LARGE,
+	OBJ8_CURSOR_ROTATE_LARGE_LEFT,
+	OBJ8_CURSOR_ROTATE_LARGE_RIGHT,
+	OBJ8_CURSOR_UP_DOWN,
+	OBJ8_CURSOR_DOWN,
+	OBJ8_CURSOR_UP,
+	OBJ8_CURSOR_LEFT_RIGHT,
+	OBJ8_CURSOR_RIGHT,
+	OBJ8_CURSOR_LEFT,
+	OBJ8_CURSOR_ARROW
+} obj8_manip_cursor_t;
+
 typedef struct {
 	obj8_manip_type_t	type;
+	obj8_manip_cursor_t	cursor;
 	union {
 		struct {
 			float		min, max;
@@ -60,7 +83,7 @@ typedef struct {
 		} manip_axis_knob;
 		XPLMCommandRef		cmd;
 		struct {
-			float		dx, dy, dz;
+			vect3_t		d;
 			XPLMCommandRef	pos_cmd;
 			XPLMCommandRef	neg_cmd;
 		} cmd_axis;
@@ -94,11 +117,23 @@ typedef struct {
 	};
 } obj8_manip_t;
 
+typedef enum {
+	OBJ8_RENDER_MODE_NORM,
+	OBJ8_RENDER_MODE_MANIP_ONLY
+} obj8_render_mode_t;
+
 LIBRAIN_EXPORT obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
 LIBRAIN_EXPORT void obj8_free(obj8_t *obj);
 LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
     GLuint prog, const mat4 mvp);
 LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
+
+LIBRAIN_EXPORT obj8_render_mode_t obj8_get_render_mode(const obj8_t *obj);
+LIBRAIN_EXPORT void obj8_set_render_mode(obj8_t *obj, obj8_render_mode_t mode);
+
+LIBRAIN_EXPORT unsigned obj8_get_num_manips(const obj8_t *obj);
+LIBRAIN_EXPORT const obj8_manip_t *obj8_get_manip(const obj8_t *obj,
+    unsigned idx);
 
 LIBRAIN_EXPORT const char *obj8_get_filename(const obj8_t *obj);
 LIBRAIN_EXPORT const char *obj8_get_tex_filename(const obj8_t *obj,
