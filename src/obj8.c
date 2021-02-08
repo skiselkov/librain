@@ -379,6 +379,7 @@ alloc_manip(obj8_t *obj, obj8_manip_type_t type, const char *cursor)
 	obj->n_manips++;
 	manip = &obj->manips[obj->n_manips - 1];
 	memset(manip, 0, sizeof (*manip));
+	manip->idx = obj->n_manips - 1;
 	manip->type = type;
 	manip->cursor = str2cursor(cursor);
 
@@ -449,6 +450,41 @@ parse_ATTR_manip_command_axis(const char *line, obj8_t *obj)
 	    manip->cmd_axis.neg_cmd == NULL) {
 		return (-1u);
 	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_drag_rotate(const char *line, obj8_t *obj, vect3_t offset)
+{
+	obj8_manip_t *manip;
+	vect3_t xyz, d;
+	float angle1, angle2, lift, v1min, v1max, v2min, v2max;
+	char cursor[32], dr1_name[256], dr2_name[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_drag_rotate %31s %lf %lf %lf "
+	    "%lf %lf %lf %f %f %f %f %f %f %f %255s %255s", cursor,
+	    &xyz.x, &xyz.y, &xyz.z, &d.x, &d.y, &d.z, &angle1, &angle2,
+	    &lift, &v1min, &v1max, &v2min, &v2max, dr1_name, dr2_name) != 16) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_DRAG_ROTATE, cursor);
+	manip->drag_rot.xyz = vect3_add(offset, xyz);
+	manip->drag_rot.dir = d;
+	manip->drag_rot.angle1 = angle1;
+	manip->drag_rot.angle2 = angle2;
+	manip->drag_rot.lift = lift;
+	manip->drag_rot.v1min = v1min;
+	manip->drag_rot.v1max = v1max;
+	manip->drag_rot.v2min = v2min;
+	manip->drag_rot.v2max = v2max;
+	manip->drag_rot.have_dr1 = dr_find(&manip->drag_rot.dr1, "%s",
+	    dr1_name);
+	manip->drag_rot.have_dr2 = dr_find(&manip->drag_rot.dr2, "%s",
+	    dr2_name);
+
 	return (obj->n_manips - 1);
 }
 
@@ -713,6 +749,9 @@ obj8_parse_worker(void *userinfo)
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command", 18) == 0) {
 			cur_manip = parse_ATTR_manip_command(line, obj);
+		} else if (strncmp(line, "ATTR_manip_drag_rotate", 22) == 0) {
+			cur_manip = parse_ATTR_manip_drag_rotate(line, obj,
+			    offset);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -952,6 +991,7 @@ obj8_free(obj8_t *obj)
 	free(obj->tex_filename);
 	free(obj->norm_filename);
 	free(obj->lit_filename);
+
 	free(obj->manips);
 
 	free(obj);
@@ -1067,6 +1107,57 @@ rotation_get_angle(obj8_cmd_t *cmd)
 	VERIFY_FAIL();
 }
 
+static inline void
+handle_cmd_anim_rotate(obj8_cmd_t *subcmd, mat4 pvm)
+{
+	ASSERT(subcmd != NULL);
+	ASSERT(pvm != NULL);
+	glm_rotate(pvm, DEG2RAD(rotation_get_angle(subcmd)),
+	    (vec3){ subcmd->rotate.axis.x,
+	    subcmd->rotate.axis.y, subcmd->rotate.axis.z });
+}
+
+static void
+handle_cmd_anim_trans(obj8_cmd_t *subcmd, mat4 pvm)
+{
+	double val;
+	vec3 xlate = {0, 0, 0};
+
+	ASSERT(subcmd != NULL);
+	ASSERT(pvm != NULL);
+	val = cmd_dr_read(subcmd);
+
+	PROT_BAD_ANIM_VAL(val, subcmd, break);
+	if (subcmd->trans.n_pts == 1) {
+		/*
+		 * single-point translations simply set position
+		 */
+		xlate[0] = subcmd->trans.pos[0].x;
+		xlate[1] = subcmd->trans.pos[0].y;
+		xlate[2] = subcmd->trans.pos[0].z;
+	}
+	for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
+		double v1 = MIN(subcmd->trans.values[i],
+		    subcmd->trans.values[i + 1]);
+		double v2 = MAX(subcmd->trans.values[i],
+		    subcmd->trans.values[i + 1]);
+		if (v1 <= val && val <= v2) {
+			double rat = (v2 - v1 != 0.0 ?
+			    (val - v1) / (v2 - v1) : 0.0);
+
+			xlate[0] = wavg(subcmd->trans.pos[i].x,
+			    subcmd->trans.pos[i + 1].x, rat);
+			xlate[1] = wavg(subcmd->trans.pos[i].y,
+			    subcmd->trans.pos[i + 1].y, rat);
+			xlate[2] = wavg(subcmd->trans.pos[i].z,
+			    subcmd->trans.pos[i + 1].z, rat);
+			break;
+		}
+	}
+
+	glm_translate(pvm, xlate);
+}
+
 void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     const mat4 pvm_in)
@@ -1074,7 +1165,8 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	bool_t hide = B_FALSE, do_draw = B_TRUE;
 	mat4 pvm;
 
-	UNUSED(obj);
+	ASSERT(obj != NULL);
+	ASSERT(cmd != NULL);
 	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
 	memcpy(pvm, pvm_in, sizeof (pvm));
 
@@ -1114,46 +1206,11 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			break;
 		}
 		case OBJ8_CMD_ANIM_ROTATE:
-			glm_rotate(pvm, DEG2RAD(rotation_get_angle(subcmd)),
-			    (vec3){ subcmd->rotate.axis.x,
-			    subcmd->rotate.axis.y, subcmd->rotate.axis.z });
+			handle_cmd_anim_rotate(subcmd, pvm);
 			break;
-		case OBJ8_CMD_ANIM_TRANS: {
-			double val = cmd_dr_read(subcmd);
-			vec3 xlate = {0, 0, 0};
-
-			PROT_BAD_ANIM_VAL(val, subcmd, break);
-			if (subcmd->trans.n_pts == 1) {
-				/*
-				 * single-point translations simply set
-				 * position
-				 */
-				xlate[0] = subcmd->trans.pos[0].x;
-				xlate[1] = subcmd->trans.pos[0].y;
-				xlate[2] = subcmd->trans.pos[0].z;
-			}
-			for (size_t i = 0; i + 1 < subcmd->trans.n_pts; i++) {
-				double v1 = MIN(subcmd->trans.values[i],
-				    subcmd->trans.values[i + 1]);
-				double v2 = MAX(subcmd->trans.values[i],
-				    subcmd->trans.values[i + 1]);
-				if (v1 <= val && val <= v2) {
-					double rat = (v2 - v1 != 0.0 ?
-					    (val - v1) / (v2 - v1) : 0.0);
-
-					xlate[0] = wavg(subcmd->trans.pos[i].x,
-					    subcmd->trans.pos[i + 1].x, rat);
-					xlate[1] = wavg(subcmd->trans.pos[i].y,
-					    subcmd->trans.pos[i + 1].y, rat);
-					xlate[2] = wavg(subcmd->trans.pos[i].z,
-					    subcmd->trans.pos[i + 1].z, rat);
-					break;
-				}
-			}
-
-			glm_translate(pvm, xlate);
+		case OBJ8_CMD_ANIM_TRANS:
+			handle_cmd_anim_trans(subcmd, pvm);
 			break;
-		}
 		case OBJ8_CMD_ATTR_LIGHT_LEVEL: {
 			float raw = cmd_dr_read(subcmd);
 			float value = iter_fract(raw,

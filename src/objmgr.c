@@ -179,7 +179,7 @@ complete_texture_load(objmgr_tex_t *tex)
 			    tex->height, 0, fmt, type, tex->pixels);
 			glGenerateMipmap(GL_TEXTURE_2D);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
-			    GL_LINEAR_MIPMAP_LINEAR);
+			    GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
 			    GL_LINEAR_MIPMAP_LINEAR);
 		} else {

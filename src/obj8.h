@@ -73,6 +73,7 @@ typedef enum {
 } obj8_manip_cursor_t;
 
 typedef struct {
+	unsigned		idx;
 	obj8_manip_type_t	type;
 	obj8_manip_cursor_t	cursor;
 	union {
@@ -100,14 +101,15 @@ typedef struct {
 			float		v1, v2;
 		} drag_axis;
 		struct {
-			float		x, y, z;
-			float		dx, dy, dz;
+			vect3_t		xyz;
+			vect3_t		dir;
 			float		angle1, angle2;
 			float		lift;
 			float		v1min, v1max;
 			float		v2min, v2max;
+			bool		have_dr1, have_dr2;
 			dr_t		dr1, dr2;
-		} drag_rotate;
+		} drag_rot;
 		struct {
 			float		dx, dy;
 			float		v1min, v1max;
