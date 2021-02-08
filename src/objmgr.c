@@ -170,7 +170,7 @@ complete_texture_load(objmgr_tex_t *tex)
 		ASSERT0(tex->load_started);
 		ASSERT(tex->pixels != NULL);
 
-		if (png2gltexfmt(tex->color_type, tex->bit_depth,
+		if (glutils_png2gltexfmt(tex->color_type, tex->bit_depth,
 		    &int_fmt, &fmt, &type)) {
 			glGenTextures(1, &tex->tex);
 			VERIFY(tex->tex != 0);
