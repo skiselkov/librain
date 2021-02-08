@@ -802,7 +802,7 @@ obj8_parse_worker(void *userinfo)
 	obj->vtx_cap = vtx_cap;
 	obj->idx_cap = idx_cap;
 
-	lacf_free(line);
+	free(line);
 
 	fclose(info->fp);
 	free(info);
