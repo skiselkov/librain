@@ -116,7 +116,7 @@ load_texture(void *arg)
 	ASSERT(tex->load_started);
 	ASSERT0(tex->load_complete);
 
-	tex->pixels = png_load_from_file_any(tex->filename, &tex->width,
+	tex->pixels = png_load_from_file_rgb_auto(tex->filename, &tex->width,
 	    &tex->height, &tex->color_type, &tex->bit_depth);
 	mutex_enter(&tex->lock);
 	if (tex->pixels != NULL)
