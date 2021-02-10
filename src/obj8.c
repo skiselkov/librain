@@ -128,6 +128,7 @@ struct obj8_s {
 	unsigned		n_manips;
 	unsigned		cap_manips;
 	obj8_render_mode_t	render_mode;
+	float			light_level_override;
 
 	GLuint			last_prog;
 	/* uniforms */
@@ -175,9 +176,9 @@ typedef struct {
 } vec3_32f_t;
 
 typedef struct {
-	vec3_32f_t	pos;
-	vec3_32f_t	norm;
-	vec2_32f_t	tex;
+	vec3		pos;
+	vec3		norm;
+	vec2		tex;
 } obj8_vtx_t;
 
 static void
@@ -537,9 +538,9 @@ obj8_parse_worker(void *userinfo)
 			}
 			vtx = &vtx_table[cur_vtx];
 			if (sscanf(line, "VT %f %f %f %f %f %f %f %f",
-			    &vtx->pos.x, &vtx->pos.y, &vtx->pos.z,
-			    &vtx->norm.x, &vtx->norm.y, &vtx->norm.z,
-			    &vtx->tex.x, &vtx->tex.y) != 8) {
+			    &vtx->pos[0], &vtx->pos[1], &vtx->pos[2],
+			    &vtx->norm[0], &vtx->norm[1], &vtx->norm[2],
+			    &vtx->tex[0], &vtx->tex[1]) != 8) {
 				logMsg("%s:%d: parsing of VT line failed",
 				    filename, linenr);
 				goto errout;
@@ -842,6 +843,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	mutex_init(&obj->lock);
 	cv_init(&obj->cv);
 	obj->filename = strdup(filename);
+	obj->light_level_override = NAN;
 
 	info = safe_calloc(1, sizeof (*info));
 	info->fp = fp;
@@ -885,8 +887,14 @@ upload_data(obj8_t *obj)
 
 		glGenBuffers(1, &obj->vtx_buf);
 		glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
-		glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap *
-		    sizeof (obj8_vtx_t), obj->vtx_table, GL_STATIC_DRAW);
+		if (GLEW_ARB_buffer_storage) {
+			glBufferStorage(GL_ARRAY_BUFFER, obj->vtx_cap *
+			    sizeof (obj8_vtx_t), obj->vtx_table, 0);
+		} else {
+			glBufferData(GL_ARRAY_BUFFER, obj->vtx_cap *
+			    sizeof (obj8_vtx_t), obj->vtx_table,
+			    GL_STATIC_DRAW);
+		}
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_vtx_buf, obj,
 		    obj->filename, 0, obj->vtx_cap * sizeof (obj8_vtx_t)));
@@ -895,8 +903,13 @@ upload_data(obj8_t *obj)
 
 		glGenBuffers(1, &obj->idx_buf);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, obj->idx_cap *
-		    sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
+		if (GLEW_ARB_buffer_storage) {
+			glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, obj->idx_cap *
+			    sizeof (GLuint), obj->idx_table, 0);
+		} else {
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, obj->idx_cap *
+			    sizeof (GLuint), obj->idx_table, GL_STATIC_DRAW);
+		}
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		IF_TEXSZ(TEXSZ_ALLOC_BYTES_INSTANCE(obj8_idx_buf, obj,
 		    obj->filename, 0, obj->idx_cap * sizeof (GLuint)));
@@ -1211,14 +1224,15 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_ANIM_TRANS:
 			handle_cmd_anim_trans(subcmd, pvm);
 			break;
-		case OBJ8_CMD_ATTR_LIGHT_LEVEL: {
-			float raw = cmd_dr_read(subcmd);
-			float value = iter_fract(raw,
-			    subcmd->attr_light_level.min_val,
-			    subcmd->attr_light_level.max_val, true);
-			glUniform1f(obj->light_level_loc, value);
+		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
+			if (isnan(obj->light_level_override)) {
+				float raw = cmd_dr_read(subcmd);
+				float value = iter_fract(raw,
+				    subcmd->attr_light_level.min_val,
+				    subcmd->attr_light_level.max_val, true);
+				glUniform1f(obj->light_level_loc, value);
+			}
 			break;
-		}
 		case OBJ8_CMD_ATTR_DRAW_ENABLE:
 			do_draw = B_TRUE;
 			break;
@@ -1246,16 +1260,13 @@ setup_arrays(obj8_t *obj, GLuint prog)
 		obj->pos_loc = glGetAttribLocation(prog, "vtx_pos");
 		obj->norm_loc = glGetAttribLocation(prog, "vtx_norm");
 		obj->tex0_loc = glGetAttribLocation(prog, "vtx_tex0");
-		GLUTILS_ASSERT_NO_ERROR();
 	}
-
 	glutils_enable_vtx_attr_ptr(obj->pos_loc, 3, GL_FLOAT,
 	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, pos));
 	glutils_enable_vtx_attr_ptr(obj->norm_loc, 3, GL_FLOAT,
 	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, norm));
 	glutils_enable_vtx_attr_ptr(obj->tex0_loc, 2, GL_FLOAT,
 	    GL_FALSE, sizeof (obj8_vtx_t), offsetof(obj8_vtx_t, tex));
-	GLUTILS_ASSERT_NO_ERROR();
 }
 
 void
@@ -1266,19 +1277,27 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 
 	ASSERT(prog != 0);
 
-	glutils_reset_errors();
-
 	if (!upload_data(obj))
 		return;
 
 	glutils_debug_push(0, "obj8_draw_group(%s)",
 	    lacf_basename(obj->filename));
-
+#if	APL
+	/*
+	 * Leaving this on on MacOS breaks glDrawElements and makes it
+	 * perform horribly.
+	 */
+	glDisableClientState(GL_VERTEX_ARRAY);
+#endif	/* APL */
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
 	setup_arrays(obj, prog);
 
+	if (!isnan(obj->light_level_override))
+		glUniform1f(obj->light_level_loc, obj->light_level_override);
+	else
+		glUniform1f(obj->light_level_loc, 0);
 	glm_mat4_mul((vec4 *)pvm_in, obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
@@ -1288,6 +1307,7 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 	glutils_disable_vtx_attr_ptr(obj->tex0_loc);
 
 	glutils_debug_pop();
+
 	GLUTILS_ASSERT_NO_ERROR();
 }
 
@@ -1379,4 +1399,18 @@ obj8_get_lit_filename(const obj8_t *obj, bool wait_load)
 	if (wait_load)
 		wait_load_complete((obj8_t *)obj);
 	return (obj->lit_filename);
+}
+
+void
+obj8_set_light_level_override(obj8_t *obj, float value)
+{
+	ASSERT(obj != NULL);
+	obj->light_level_override = value;
+}
+
+float
+obj8_get_light_level_override(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->light_level_override);
 }
