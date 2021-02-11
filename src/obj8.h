@@ -23,6 +23,7 @@
 
 #include <XPLMUtilities.h>
 
+#include <acfutils/avl.h>
 #include <acfutils/dr.h>
 #include <acfutils/geom.h>
 #include <acfutils/glew.h>
@@ -124,8 +125,18 @@ typedef enum {
 	OBJ8_RENDER_MODE_MANIP_ONLY
 } obj8_render_mode_t;
 
+typedef struct {
+	unsigned	n_drs;
+	avl_tree_t	tree;
+	list_t		list;
+	bool		complete;
+	float		*values;
+} obj8_drset_t;
+
 LIBRAIN_EXPORT obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
 LIBRAIN_EXPORT void obj8_free(obj8_t *obj);
+LIBRAIN_EXPORT bool obj8_is_load_complete(const obj8_t *obj);
+
 LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
     GLuint prog, const mat4 mvp);
 LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
@@ -147,6 +158,27 @@ LIBRAIN_EXPORT const char *obj8_get_norm_filename(const obj8_t *obj,
     bool wait_load);
 LIBRAIN_EXPORT const char *obj8_get_lit_filename(const obj8_t *obj,
     bool wait_load);
+
+LIBRAIN_EXPORT void obj8_set_drset_auto_update(obj8_t *obj, bool flag);
+LIBRAIN_EXPORT bool obj8_get_drset_auto_update(const obj8_t *obj);
+LIBRAIN_EXPORT obj8_drset_t *obj8_get_drset(const obj8_t *obj);
+
+LIBRAIN_EXPORT obj8_drset_t *obj8_drset_new(void);
+LIBRAIN_EXPORT void obj8_drset_destroy(obj8_drset_t *drset);
+LIBRAIN_EXPORT void obj8_drset_mark_complete(obj8_drset_t *drset);
+
+LIBRAIN_EXPORT unsigned obj8_drset_add(obj8_drset_t *drset, const char *name);
+LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
+LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
+    unsigned idx);
+
+static inline float
+obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
+{
+	ASSERT(drset != NULL);
+	ASSERT3U(idx, <, drset->n_drs);
+	return (drset->values[idx]);
+}
 
 #ifdef __cplusplus
 }

@@ -38,8 +38,19 @@ objmgr_obj_t *objmgr_add_obj(objmgr_t *mgr, const char *filename,
 void objmgr_remove_obj(objmgr_t *mgr, objmgr_obj_t *obj);
 
 obj8_t *objmgr_get_obj8(const objmgr_obj_t *obj);
+bool objmgr_is_tex_load_complete(objmgr_obj_t *obj);
 void objmgr_bind_textures(objmgr_t *mgr, objmgr_obj_t *obj,
     unsigned start_idx, int *tex_idx, int *norm_idx, int *lit_idx);
+
+typedef void (*objmgr_foreach_cb_t)(objmgr_t *mgr, objmgr_obj_t *obj,
+    void *userinfo);
+void objmgr_foreach_obj(objmgr_t *mgr, objmgr_foreach_cb_t cb, void *userinfo);
+
+void objmgr_mark_drset_needs_update(objmgr_obj_t *obj);
+bool objmgr_get_drset_needs_update(const objmgr_obj_t *obj);
+void objmgr_drset_update(objmgr_obj_t *obj, bool force);
+bool objmgr_get_drset_has_changed(const objmgr_obj_t *obj);
+void objmgr_reset_drset_has_changed(objmgr_obj_t *obj);
 
 unsigned objmgr_get_num_objs(const objmgr_t *mgr);
 unsigned objmgr_get_num_texs(const objmgr_t *mgr);

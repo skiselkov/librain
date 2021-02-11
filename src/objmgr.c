@@ -49,6 +49,8 @@ struct objmgr_obj_s {
 	obj8_t		*obj;
 	unsigned	refcnt;
 	bool		load_norm;
+	bool		drset_needs_update;
+	bool		drset_has_changed;
 	objmgr_tex_t	*tex;
 	objmgr_tex_t	*norm;
 	objmgr_tex_t	*lit;
@@ -359,6 +361,15 @@ objmgr_get_obj8(const objmgr_obj_t *obj)
 	return (obj->obj);
 }
 
+bool
+objmgr_is_tex_load_complete(objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	return ((obj->tex == NULL || complete_texture_load(obj->tex)) &&
+	    (obj->norm == NULL || complete_texture_load(obj->norm)) &&
+	    (obj->lit == NULL || complete_texture_load(obj->lit)));
+}
+
 static unsigned
 bind_texture(objmgr_tex_t *tex, unsigned idx, int *out_idx)
 {
@@ -387,6 +398,57 @@ objmgr_bind_textures(objmgr_t *mgr, objmgr_obj_t *obj, unsigned start_idx,
 	start_idx = bind_texture(obj->tex, start_idx, tex_idx);
 	start_idx = bind_texture(obj->norm, start_idx, norm_idx);
 	start_idx = bind_texture(obj->lit, start_idx, lit_idx);
+}
+
+void
+objmgr_foreach_obj(objmgr_t *mgr, objmgr_foreach_cb_t cb, void *userinfo)
+{
+	ASSERT(mgr != NULL);
+	ASSERT(cb != NULL);
+
+	for (objmgr_obj_t *obj = avl_first(&mgr->objs); obj != NULL;
+	    obj = AVL_NEXT(&mgr->objs, obj)) {
+		cb(mgr, obj, userinfo);
+	}
+}
+
+void
+objmgr_mark_drset_needs_update(objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	obj->drset_needs_update = true;
+}
+
+bool
+objmgr_get_drset_needs_update(const objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->drset_needs_update);
+}
+
+void
+objmgr_drset_update(objmgr_obj_t *obj, bool force)
+{
+	ASSERT(obj != NULL);
+	if (obj->drset_needs_update || force) {
+		obj->drset_needs_update = false;
+		obj->drset_has_changed = obj8_drset_update(
+		    obj8_get_drset(obj->obj));
+	}
+}
+
+bool
+objmgr_get_drset_has_changed(const objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->drset_has_changed);
+}
+
+void
+objmgr_reset_drset_has_changed(objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	obj->drset_has_changed = false;
 }
 
 unsigned

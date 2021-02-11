@@ -45,16 +45,6 @@
  */
 #define	MAX_DR_LOOKUPS	10
 
-#define	PROT_BAD_ANIM_VAL(__val, __cmd, __bail) \
-	do { \
-		if (!isfinite((__val))) { \
-			logMsg("Bad animation dataref %s = %f. Bailing out. " \
-			    "Report this as a bug and attach the log file.", \
-			    (__cmd)->dr_name, (__val)); \
-			__bail; \
-		} \
-	} while (0)
-
 TEXSZ_MK_TOKEN(obj8_vtx_buf);
 TEXSZ_MK_TOKEN(obj8_idx_buf);
 
@@ -82,11 +72,7 @@ typedef struct {
 typedef struct obj8_cmd_s {
 	obj8_cmd_type_t		type;
 	struct obj8_cmd_s	*parent;
-	dr_t			dr;
-	int			dr_offset;
-	char			dr_name[128];
-	bool_t			dr_found;
-	unsigned		dr_lookup_done;
+	unsigned		drset_idx;
 	union {
 		struct {
 			list_t	cmds;
@@ -129,6 +115,8 @@ struct obj8_s {
 	unsigned		cap_manips;
 	obj8_render_mode_t	render_mode;
 	float			light_level_override;
+	obj8_drset_t		*drset;
+	bool			drset_auto_update;
 
 	GLuint			last_prog;
 	/* uniforms */
@@ -165,21 +153,22 @@ typedef struct {
 } obj8_load_info_t;
 
 typedef struct {
-	GLfloat		x;
-	GLfloat		y;
-} vec2_32f_t;
-
-typedef struct {
-	GLfloat		x;
-	GLfloat		y;
-	GLfloat		z;
-} vec3_32f_t;
-
-typedef struct {
 	vec3		pos;
 	vec3		norm;
 	vec2		tex;
 } obj8_vtx_t;
+
+typedef struct {
+	unsigned	index;
+	int		dr_offset;
+	char		dr_name[128];
+	bool		dr_found;
+	unsigned	dr_lookup_done;
+	dr_t		dr;
+
+	avl_node_t	tree_node;
+	list_node_t	list_node;
+} drset_dr_t;
 
 static void
 obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
@@ -223,8 +212,8 @@ obj8_cmd_alloc(obj8_cmd_type_t type, obj8_cmd_t *parent)
 }
 
 static bool_t
-parse_hide_show(bool_t set_val, const char *fmt, const char *line,
-    const char *filename, int linenr, obj8_cmd_t *parent)
+parse_hide_show(obj8_t *obj, bool_t set_val, const char *fmt,
+    const char *line, const char *filename, int linenr, obj8_cmd_t *parent)
 {
 	char dr_name[256] = { 0 };
 	obj8_cmd_t *cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_HIDE_SHOW, parent);
@@ -237,7 +226,7 @@ parse_hide_show(bool_t set_val, const char *fmt, const char *line,
 		return (B_FALSE);
 	}
 	cmd->hide_show.set_val = set_val;
-	strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
+	cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
 
 	return (B_TRUE);
 }
@@ -273,9 +262,9 @@ parse_trans_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	if (cmd->trans.n_pts_cap == cmd->trans.n_pts) {
 		int new_cap = cmd->trans.n_pts_cap + ANIM_ALLOC_STEP;
 
-		cmd->trans.values = realloc(cmd->trans.values,
+		cmd->trans.values = safe_realloc(cmd->trans.values,
 		    new_cap * sizeof (*cmd->trans.values));
-		cmd->trans.pos = realloc(cmd->trans.pos,
+		cmd->trans.pos = safe_realloc(cmd->trans.pos,
 		    new_cap * sizeof (*cmd->trans.pos));
 		cmd->trans.n_pts_cap = new_cap;
 	}
@@ -305,7 +294,7 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 	if (cmd->rotate.n_pts_cap == cmd->rotate.n_pts) {
 		int new_cap = cmd->rotate.n_pts_cap + ANIM_ALLOC_STEP;
 
-		cmd->rotate.pts = realloc(cmd->rotate.pts,
+		cmd->rotate.pts = safe_realloc(cmd->rotate.pts,
 		    new_cap * sizeof (*cmd->rotate.pts));
 		cmd->rotate.n_pts_cap = new_cap;
 	}
@@ -615,11 +604,13 @@ obj8_parse_worker(void *userinfo)
 			}
 			cur_cmd = cur_cmd->parent;
 		} else if (strncmp(line, "ANIM_show", 9) == 0) {
-			if (!parse_hide_show(B_TRUE, "ANIM_show %lf %lf %255s",
+			if (!parse_hide_show(obj, B_TRUE,
+			    "ANIM_show %lf %lf %255s",
 			    line, filename, linenr, cur_cmd))
 				goto errout;
 		} else if (strncmp(line, "ANIM_hide", 9) == 0) {
-			if (!parse_hide_show(B_FALSE, "ANIM_hide %lf %lf %255s",
+			if (!parse_hide_show(obj, B_FALSE,
+			    "ANIM_hide %lf %lf %255s",
 			    line, filename, linenr, cur_cmd))
 				goto errout;
 		} else if (strncmp(line, "ANIM_trans_begin", 16) == 0) {
@@ -639,7 +630,7 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
-			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
+			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
 			char dr_name[256];
@@ -659,7 +650,7 @@ obj8_parse_worker(void *userinfo)
 				    "ANIM_rotate_begin", filename, linenr);
 				goto errout;
 			}
-			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
+			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_trans_end", 14) == 0 ||
 		    strncmp(line, "ANIM_rotate_end", 15) == 0) {
@@ -685,8 +676,9 @@ obj8_parse_worker(void *userinfo)
 			cmd->trans.n_pts = 2;
 			cmd->trans.n_pts_cap = 2;
 			cmd->trans.values =
-			    calloc(sizeof (*cmd->trans.values), 2);
-			cmd->trans.pos = calloc(sizeof (*cmd->trans.pos), 2);
+			    safe_calloc(sizeof (*cmd->trans.values), 2);
+			cmd->trans.pos = safe_calloc(sizeof (*cmd->trans.pos),
+			    2);
 			l = sscanf(line, "ANIM_trans %lf %lf %lf %lf %lf %lf "
 			    "%lf %lf %255s",
 			    &cmd->trans.pos[0].x, &cmd->trans.pos[0].y,
@@ -699,7 +691,7 @@ obj8_parse_worker(void *userinfo)
 				    filename, linenr, l);
 				goto errout;
 			}
-			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
+			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
 		} else if (strncmp(line, "ANIM_rotate", 11) == 0) {
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
@@ -707,7 +699,8 @@ obj8_parse_worker(void *userinfo)
 			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_ROTATE, cur_cmd);
 			cmd->rotate.n_pts = 2;
 			cmd->rotate.n_pts_cap = 2;
-			cmd->rotate.pts = calloc(sizeof (*cmd->rotate.pts), 2);
+			cmd->rotate.pts = safe_calloc(sizeof (*cmd->rotate.pts),
+			    2);
 			if (sscanf(line, "ANIM_rotate %lf %lf %lf %lf %lf "
 			    "%lf %lf %255s",
 			    &cmd->rotate.axis.x, &cmd->rotate.axis.y,
@@ -719,7 +712,7 @@ obj8_parse_worker(void *userinfo)
 				    filename, linenr);
 				goto errout;
 			}
-			strlcpy(cmd->dr_name, dr_name, sizeof (cmd->dr_name));
+			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
 		} else if (strncmp(line, "ATTR_light_level", 16) == 0) {
 			char dr_name[256] = { 0 };
 			float min_val, max_val;
@@ -733,8 +726,8 @@ obj8_parse_worker(void *userinfo)
 				    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 				cmd->attr_light_level.min_val = min_val;
 				cmd->attr_light_level.max_val = max_val;
-				strlcpy(cmd->dr_name, dr_name,
-				    sizeof (cmd->dr_name));
+				cmd->drset_idx = obj8_drset_add(obj->drset,
+				    dr_name);
 			}
 		} else if (strncmp(line, "ATTR_draw_enable", 16) == 0) {
 			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_ENABLE,
@@ -808,6 +801,8 @@ obj8_parse_worker(void *userinfo)
 	fclose(info->fp);
 	free(info);
 
+	obj8_drset_mark_complete(obj->drset);
+
 	mutex_enter(&obj->lock);
 	obj->load_complete = B_TRUE;
 	cv_broadcast(&obj->cv);
@@ -844,6 +839,8 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	cv_init(&obj->cv);
 	obj->filename = strdup(filename);
 	obj->light_level_override = NAN;
+	obj->drset_auto_update = true;
+	obj->drset = obj8_drset_new();
 
 	info = safe_calloc(1, sizeof (*info));
 	info->fp = fp;
@@ -881,9 +878,6 @@ upload_data(obj8_t *obj)
 	if (obj->vtx_buf == 0 && !obj->load_error) {
 		ASSERT(obj->vtx_table != NULL);
 		ASSERT(obj->idx_table != NULL);
-
-		/* Make sure outside GL errors don't confuse us */
-		glutils_reset_errors();
 
 		glGenBuffers(1, &obj->vtx_buf);
 		glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
@@ -978,6 +972,13 @@ obj8_cmd_free(obj8_cmd_t *cmd)
 	free(cmd);
 }
 
+bool
+obj8_is_load_complete(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->load_complete);
+}
+
 void
 obj8_free(obj8_t *obj)
 {
@@ -1007,57 +1008,15 @@ obj8_free(obj8_t *obj)
 
 	free(obj->manips);
 
+	obj8_drset_destroy(obj->drset);
+
 	free(obj);
 }
 
-static bool_t
-find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+static inline float
+cmd_dr_read(const obj8_t *obj, obj8_cmd_t *cmd)
 {
-	char *bracket;
-
-	if (dr_find(dr, "%s", dr_name)) {
-		*offset = -1;
-		return (B_TRUE);
-	}
-
-	bracket = strrchr(dr_name, '[');
-	if (bracket != NULL) {
-		int cap;
-
-		*bracket = 0;
-		if (!dr_find(dr, "%s", dr_name))
-			return (B_FALSE);
-		cap = dr_getvi(dr, NULL, 0, 0);
-		if (cap == 0)
-			return (B_FALSE);
-		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
-		return (B_TRUE);
-	}
-
-	return (B_FALSE);
-}
-
-static double
-cmd_dr_read(obj8_cmd_t *cmd)
-{
-	double v;
-
-	if (COND_UNLIKELY(!cmd->dr_found)) {
-		if (COND_LIKELY(cmd->dr_lookup_done > MAX_DR_LOOKUPS))
-			return (0);
-		cmd->dr_lookup_done++;
-		if (!find_dr_with_offset(cmd->dr_name, &cmd->dr,
-		    &cmd->dr_offset)) {
-			return (0);
-		}
-		cmd->dr_found = B_TRUE;
-	}
-	if (cmd->dr_offset > 0)
-		dr_getvf(&cmd->dr, &v, cmd->dr_offset, 1);
-	else
-		v = dr_getf(&cmd->dr);
-
-	return (v);
+	return (obj8_drset_getf(obj->drset, cmd->drset_idx));
 }
 
 static void
@@ -1075,18 +1034,18 @@ anim_extrapolate_1D(double *v_p, vect2_t v1, vect2_t v2)
 	if ((v1.x < v2.x && (*v_p < v1.x || *v_p > v2.x)) ||
 	    (v1.x > v2.x && (*v_p > v1.x || *v_p < v2.x))) {
 		*v_p = fx_lin(*v_p, v1.x, v1.y, v2.x, v2.y);
+		ASSERT(!isnan(*v_p));
 		return (B_TRUE);
 	}
 	return (B_FALSE);
 }
 
 static double
-rotation_get_angle(obj8_cmd_t *cmd)
+rotation_get_angle(const obj8_t *obj, obj8_cmd_t *cmd)
 {
-	double val = cmd_dr_read(cmd);
+	double val = cmd_dr_read(obj, cmd);
 	size_t n = cmd->rotate.n_pts;
 
-	PROT_BAD_ANIM_VAL(val, cmd, return (0));
 	/* Too few points to animate anything */
 	if (n == 0)
 		return (0);
@@ -1115,32 +1074,33 @@ rotation_get_angle(obj8_cmd_t *cmd)
 		}
 	}
 
-	logMsg("Something went really wrong during animation "
-	    "of %s with value %f", cmd->dr.name, val);
+	logMsg("Something went really wrong during animation of %s with value "
+	    "%f", obj8_drset_get_dr_name(obj->drset, cmd->drset_idx), val);
+
 	VERIFY_FAIL();
 }
 
 static inline void
-handle_cmd_anim_rotate(obj8_cmd_t *subcmd, mat4 pvm)
+handle_cmd_anim_rotate(const obj8_t *obj, obj8_cmd_t *subcmd, mat4 pvm)
 {
+	ASSERT(obj != NULL);
 	ASSERT(subcmd != NULL);
 	ASSERT(pvm != NULL);
-	glm_rotate(pvm, DEG2RAD(rotation_get_angle(subcmd)),
+	glm_rotate(pvm, DEG2RAD(rotation_get_angle(obj, subcmd)),
 	    (vec3){ subcmd->rotate.axis.x,
 	    subcmd->rotate.axis.y, subcmd->rotate.axis.z });
 }
 
 static void
-handle_cmd_anim_trans(obj8_cmd_t *subcmd, mat4 pvm)
+handle_cmd_anim_trans(const obj8_t *obj, obj8_cmd_t *subcmd, mat4 pvm)
 {
 	double val;
 	vec3 xlate = {0, 0, 0};
 
 	ASSERT(subcmd != NULL);
 	ASSERT(pvm != NULL);
-	val = cmd_dr_read(subcmd);
+	val = cmd_dr_read(obj, subcmd);
 
-	PROT_BAD_ANIM_VAL(val, subcmd, break);
 	if (subcmd->trans.n_pts == 1) {
 		/*
 		 * single-point translations simply set position
@@ -1210,23 +1170,22 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			}
 			break;
 		case OBJ8_CMD_ANIM_HIDE_SHOW: {
-			double val = cmd_dr_read(subcmd);
+			double val = cmd_dr_read(obj, subcmd);
 
-			PROT_BAD_ANIM_VAL(val, subcmd, break);
 			if (subcmd->hide_show.val[0] <= val &&
 			    subcmd->hide_show.val[1] >= val)
 				hide = !subcmd->hide_show.set_val;
 			break;
 		}
 		case OBJ8_CMD_ANIM_ROTATE:
-			handle_cmd_anim_rotate(subcmd, pvm);
+			handle_cmd_anim_rotate(obj, subcmd, pvm);
 			break;
 		case OBJ8_CMD_ANIM_TRANS:
-			handle_cmd_anim_trans(subcmd, pvm);
+			handle_cmd_anim_trans(obj, subcmd, pvm);
 			break;
 		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
 			if (isnan(obj->light_level_override)) {
-				float raw = cmd_dr_read(subcmd);
+				float raw = cmd_dr_read(obj, subcmd);
 				float value = iter_fract(raw,
 				    subcmd->attr_light_level.min_val,
 				    subcmd->attr_light_level.max_val, true);
@@ -1243,7 +1202,6 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			break;
 		}
 	}
-	GLUTILS_ASSERT_NO_ERROR();
 }
 
 static void
@@ -1279,6 +1237,9 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 
 	if (!upload_data(obj))
 		return;
+
+	if (obj->drset_auto_update)
+		(void)obj8_drset_update(obj->drset);
 
 	glutils_debug_push(0, "obj8_draw_group(%s)",
 	    lacf_basename(obj->filename));
@@ -1413,4 +1374,196 @@ obj8_get_light_level_override(const obj8_t *obj)
 {
 	ASSERT(obj != NULL);
 	return (obj->light_level_override);
+}
+
+void
+obj8_set_drset_auto_update(obj8_t *obj, bool flag)
+{
+	ASSERT(obj != NULL);
+	obj->drset_auto_update = flag;
+}
+
+bool
+obj8_get_drset_auto_update(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->drset_auto_update);
+}
+
+obj8_drset_t *
+obj8_get_drset(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	return (obj->drset);
+}
+
+static int
+drset_dr_compar(const void *a, const void *b)
+{
+	const drset_dr_t *dr_a = a, *dr_b = b;
+	int res = strcmp(dr_a->dr_name, dr_b->dr_name);
+
+	if (res < 0)
+		return (-1);
+	if (res > 0)
+		return (1);
+	return (0);
+}
+
+obj8_drset_t *
+obj8_drset_new(void)
+{
+	obj8_drset_t *drset = safe_calloc(1, sizeof (*drset));
+	avl_create(&drset->tree, drset_dr_compar, sizeof (drset_dr_t),
+	    offsetof(drset_dr_t, tree_node));
+	list_create(&drset->list, sizeof (drset_dr_t),
+	    offsetof(drset_dr_t, list_node));
+	return (drset);
+}
+
+void
+obj8_drset_destroy(obj8_drset_t *drset)
+{
+	void *cookie = NULL;
+	drset_dr_t *dr;
+
+	if (drset == NULL)
+		return;
+	/*
+	 * Nodes are held in the list, so just destroy the tree quickly.
+	 */
+	while (avl_destroy_nodes(&drset->tree, &cookie) != NULL)
+		;
+	avl_destroy(&drset->tree);
+	while ((dr = list_remove_head(&drset->list)) != NULL)
+		free(dr);
+	list_destroy(&drset->list);
+	free(drset->values);
+
+	free(drset);
+}
+
+unsigned
+obj8_drset_add(obj8_drset_t *drset, const char *name)
+{
+	drset_dr_t srch = {};
+	avl_index_t where;
+	drset_dr_t *dr;
+
+	ASSERT(drset != NULL);
+	ASSERT(!drset->complete);
+	ASSERT(name != NULL);
+
+	strlcpy(srch.dr_name, name, sizeof (srch.dr_name));
+	dr = avl_find(&drset->tree, &srch, &where);
+	if (dr == NULL) {
+		dr = safe_calloc(1, sizeof (*dr));
+		strlcpy(dr->dr_name, name, sizeof (dr->dr_name));
+		dr->index = drset->n_drs++;
+		avl_insert(&drset->tree, dr, where);
+		list_insert_tail(&drset->list, dr);
+	}
+	return (dr->index);
+}
+
+void
+obj8_drset_mark_complete(obj8_drset_t *drset)
+{
+	ASSERT(drset != NULL);
+	drset->values = safe_calloc(drset->n_drs, sizeof (*drset->values));
+	drset->complete = true;
+}
+
+static bool
+find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+{
+	char *bracket;
+
+	if (dr_find(dr, "%s", dr_name)) {
+		*offset = -1;
+		return (true);
+	}
+	bracket = strrchr(dr_name, '[');
+	if (bracket != NULL) {
+		int cap;
+
+		*bracket = 0;
+		if (!dr_find(dr, "%s", dr_name))
+			return (false);
+		cap = dr_getvf32(dr, NULL, 0, 0);
+		if (cap == 0)
+			return (false);
+		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
+		return (true);
+	}
+
+	return (false);
+}
+
+static inline float
+drset_dr_updatef(drset_dr_t *dr)
+{
+	float v;
+
+	if (COND_UNLIKELY(!dr->dr_found)) {
+		if (COND_LIKELY(dr->dr_lookup_done > MAX_DR_LOOKUPS))
+			return (0);
+		dr->dr_lookup_done++;
+		if (!find_dr_with_offset(dr->dr_name, &dr->dr,
+		    &dr->dr_offset)) {
+			return (0);
+		}
+		dr->dr_found = true;
+	}
+	if (dr->dr_offset > 0)
+		dr_getvf32(&dr->dr, &v, dr->dr_offset, 1);
+	else
+		v = dr_getf(&dr->dr);
+	if (COND_UNLIKELY(!isfinite(v))) {
+		logMsg("Bad animation dataref %s = %f. Bailing out. "
+		    "Report this as a bug and attach the log file.",
+		    dr->dr_name, v);
+		return (0);
+	}
+
+	return (v);
+}
+
+bool
+obj8_drset_update(obj8_drset_t *drset)
+{
+	unsigned idx;
+	float *vals;
+
+	ASSERT(drset != NULL);
+
+	if (!drset->complete)
+		return (false);
+
+	vals = safe_malloc(drset->n_drs * sizeof (*vals));
+	idx = 0;
+	ASSERT3U(list_count(&drset->list), ==, drset->n_drs);
+	for (drset_dr_t *dr = list_head(&drset->list); dr != NULL;
+	    dr = list_next(&drset->list, dr), idx++) {
+		vals[idx] = drset_dr_updatef(dr);
+	}
+	ASSERT(drset->values != NULL);
+	if (memcmp(drset->values, vals, drset->n_drs * sizeof (*vals)) == 0) {
+		free(vals);
+		return (false);
+	} else {
+		free(drset->values);
+		drset->values = vals;
+		return (true);
+	}
+}
+
+const char *
+obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
+{
+	drset_dr_t *dr;
+	ASSERT(drset != NULL);
+	ASSERT3U(idx, <, drset->n_drs);
+	dr = list_get_i(&drset->list, idx);
+	return (dr->dr_name);
 }
