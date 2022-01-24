@@ -13,8 +13,10 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2021 Saso Kiselkov. All rights reserved.
+ * Copyright 2022 Saso Kiselkov. All rights reserved.
  */
+
+#include <SOIL/SOIL.h>
 
 #include <acfutils/avl.h>
 #include <acfutils/glutils.h>
@@ -37,8 +39,10 @@ typedef struct {
 	mutex_t		lock;
 	bool		load_started;
 	bool		load_complete;
+	bool		load_dds;
 	bool		load_error;
 	uint8_t		*pixels;
+	size_t		buflen;		/* used for DDS loads */
 	thread_t	loader;
 
 	avl_node_t	node;
@@ -108,16 +112,29 @@ free_tex(objmgr_tex_t *tex)
 static void
 load_texture(void *arg)
 {
-	/*
-	 * TODO: add support for DDS textures
-	 */
 	objmgr_tex_t *tex;
+	char *dds_filename, *dds_filename_up;
 
 	ASSERT(arg != NULL);
 	tex = arg;
 	ASSERT(tex->load_started);
 	ASSERT0(tex->load_complete);
 
+	dds_filename = path_ext_subst(tex->filename, "dds");
+	dds_filename_up = path_ext_subst(tex->filename, "DDS");
+	if ((file_exists(dds_filename, NULL) &&
+	    (tex->pixels = file2buf(dds_filename, &tex->buflen)) != NULL) ||
+	    (file_exists(dds_filename_up, NULL) &&
+	    (tex->pixels = file2buf(dds_filename_up, &tex->buflen)) != NULL)) {
+		mutex_enter(&tex->lock);
+		tex->load_complete = true;
+		tex->load_dds = true;
+		tex->load_started = false;
+		mutex_exit(&tex->lock);
+		LACF_DESTROY(dds_filename);
+		LACF_DESTROY(dds_filename_up);
+		return;
+	}
 	tex->pixels = png_load_from_file_rgb_auto(tex->filename, &tex->width,
 	    &tex->height, &tex->color_type, &tex->bit_depth);
 	mutex_enter(&tex->lock);
@@ -127,6 +144,8 @@ load_texture(void *arg)
 		tex->load_error = true;
 	tex->load_started = false;
 	mutex_exit(&tex->lock);
+	LACF_DESTROY(dds_filename);
+	LACF_DESTROY(dds_filename_up);
 }
 
 static objmgr_tex_t *
@@ -172,8 +191,18 @@ complete_texture_load(objmgr_tex_t *tex)
 		ASSERT0(tex->load_started);
 		ASSERT(tex->pixels != NULL);
 
-		if (glutils_png2gltexfmt(tex->color_type, tex->bit_depth,
-		    &int_fmt, &fmt, &type)) {
+		if (tex->load_dds) {
+			tex->tex = SOIL_load_OGL_texture_from_memory(
+			    tex->pixels, tex->buflen, 0, 0,
+			    SOIL_FLAG_DDS_LOAD_DIRECT);
+			if (tex->tex == 0) {
+				logMsg("%s: DDS texture load error, file "
+				    "data is corrupt", tex->filename);
+				tex->load_complete = false;
+				tex->load_error = true;
+			}
+		} else if (glutils_png2gltexfmt(tex->color_type,
+		    tex->bit_depth, &int_fmt, &fmt, &type)) {
 			glGenTextures(1, &tex->tex);
 			VERIFY(tex->tex != 0);
 			XPLMBindTexture2d(tex->tex, 0);
