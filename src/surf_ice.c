@@ -13,7 +13,7 @@
  * CDDL HEADER END
 */
 /*
- * Copyright 2020 Saso Kiselkov. All rights reserved.
+ * Copyright 2022 Saso Kiselkov. All rights reserved.
  */
 
 #include <stdlib.h>
@@ -542,7 +542,10 @@ act_ice_state_resync(surf_ice_t *surf, double ice)
 			IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(librain_ice_packbuf,
 			    surf, surf->w * surf->h * sizeof (GLfloat)));
 			glDeleteBuffers(1, &priv->packbuf);
-			priv->packbuf_sync = NULL;
+			if (priv->packbuf_sync != NULL) {
+				glDeleteSync(priv->packbuf_sync);
+				priv->packbuf_sync = NULL;
+			}
 			priv->packbuf = 0;
 		}
 	} else {
@@ -572,6 +575,7 @@ act_ice_state_resync(surf_ice_t *surf, double ice)
 				if (ptr != NULL)
 					recompute_coverage(surf, ptr);
 				glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+				glDeleteSync(priv->packbuf_sync);
 				priv->packbuf_sync = NULL;
 			}
 		} else if (cur_real_t - priv->last_resync_t >
@@ -579,6 +583,7 @@ act_ice_state_resync(surf_ice_t *surf, double ice)
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, priv->packbuf);
 			glReadPixels(0, 0, surf->w, surf->h, GL_RED, GL_FLOAT,
 			    NULL);
+			ASSERT3P(priv->packbuf_sync, ==, NULL);
 			priv->packbuf_sync =
 			    glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
