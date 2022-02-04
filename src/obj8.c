@@ -735,7 +735,8 @@ obj8_parse_worker(void *userinfo)
 		} else if (strncmp(line, "ATTR_draw_disable", 17) == 0) {
 			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_DISABLE,
 			    cur_cmd);
-		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
+		} else if (strncmp(line, "ATTR_manip_none", 15) == 0 ||
+		    strncmp(line, "ATTR_manip_noop", 15) == 0) {
 			cur_manip = -1;
 		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
