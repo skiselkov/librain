@@ -114,6 +114,7 @@ struct obj8_s {
 	unsigned		n_manips;
 	unsigned		cap_manips;
 	obj8_render_mode_t	render_mode;
+	int32_t			render_mode_arg;
 	float			light_level_override;
 	obj8_drset_t		*drset;
 	bool			drset_auto_update;
@@ -313,7 +314,7 @@ parse_rotate_key(const char *line, obj8_cmd_t *cmd, const char *filename,
 static obj8_manip_cursor_t
 str2cursor(const char *str)
 {
-	ASSERT(str);
+	ASSERT(str != NULL);
 	if (strcmp(str, "four_arrows") == 0)
 		return (OBJ8_CURSOR_FOUR_ARROWS);
 	if (strcmp(str, "hand") == 0)
@@ -389,9 +390,39 @@ parse_ATTR_manip_command(const char *line, obj8_t *obj)
 		return (-1u);
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND, cursor);
 	manip->cmd = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
 	if (manip->cmd == NULL)
 		return (-1u);
 
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_toggle(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], dr_name[256];
+	float v1, v2;
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_toggle %31s %f %f %255s",
+	    cursor, &v1, &v2, dr_name) != 4) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_TOGGLE, cursor);
+	manip->toggle.drset_idx = obj8_drset_add(obj->drset, dr_name);
+	manip->toggle.v1 = v1;
+	manip->toggle.v2 = v2;
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_noop(obj8_t *obj)
+{
+	(void)alloc_manip(obj, OBJ8_MANIP_NOOP, "arrow");
 	return (obj->n_manips - 1);
 }
 
@@ -470,10 +501,61 @@ parse_ATTR_manip_drag_rotate(const char *line, obj8_t *obj, vect3_t offset)
 	manip->drag_rot.v1max = v1max;
 	manip->drag_rot.v2min = v2min;
 	manip->drag_rot.v2max = v2max;
-	manip->drag_rot.have_dr1 = dr_find(&manip->drag_rot.dr1, "%s",
-	    dr1_name);
-	manip->drag_rot.have_dr2 = dr_find(&manip->drag_rot.dr2, "%s",
-	    dr2_name);
+	manip->drag_rot.drset_idx1 = obj8_drset_add(obj->drset, dr1_name);
+	manip->drag_rot.drset_idx2 = obj8_drset_add(obj->drset, dr2_name);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_drag_axis(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	float dx, dy, dz, v1, v2;
+	char cursor[32], dr_name[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_drag_axis %31s %f %f %f %f %f %255s",
+	    cursor, &dx, &dy, &dz, &v1, &v2, dr_name) != 7) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_DRAG_AXIS, cursor);
+	manip->drag_axis.dx = dx;
+	manip->drag_axis.dy = dy;
+	manip->drag_axis.dz = dz;
+	manip->drag_axis.v1 = v1;
+	manip->drag_axis.v2 = v2;
+	manip->drag_axis.drset_idx = obj8_drset_add(obj->drset, dr_name);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_drag_xy(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	float dx, dy, v1min, v1max, v2min, v2max;
+	char cursor[32], dr1_name[256], dr2_name[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_drag_xy %31s %f %f %f %f %f %f "
+	    "%255s %255s", cursor, &dx, &dy, &v1min, &v1max, &v2min,
+	    &v2max, dr1_name, dr2_name) != 9) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_DRAG_XY, cursor);
+	manip->drag_xy.dx = dx;
+	manip->drag_xy.dy = dy;
+	manip->drag_xy.v1min = v1min;
+	manip->drag_xy.v1max = v1max;
+	manip->drag_xy.v2min = v2min;
+	manip->drag_xy.v2max = v2max;
+	manip->drag_rot.drset_idx1 = obj8_drset_add(obj->drset, dr1_name);
+	manip->drag_rot.drset_idx2 = obj8_drset_add(obj->drset, dr2_name);
 
 	return (obj->n_manips - 1);
 }
@@ -735,8 +817,7 @@ obj8_parse_worker(void *userinfo)
 		} else if (strncmp(line, "ATTR_draw_disable", 17) == 0) {
 			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_DISABLE,
 			    cur_cmd);
-		} else if (strncmp(line, "ATTR_manip_none", 15) == 0 ||
-		    strncmp(line, "ATTR_manip_noop", 15) == 0) {
+		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
 			cur_manip = -1;
 		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
@@ -747,6 +828,14 @@ obj8_parse_worker(void *userinfo)
 		} else if (strncmp(line, "ATTR_manip_drag_rotate", 22) == 0) {
 			cur_manip = parse_ATTR_manip_drag_rotate(line, obj,
 			    offset);
+		} else if (strncmp(line, "ATTR_manip_drag_axis", 20) == 0) {
+			cur_manip = parse_ATTR_manip_drag_axis(line, obj);
+		} else if (strncmp(line, "ATTR_manip_drag_xy", 18) == 0) {
+			cur_manip = parse_ATTR_manip_drag_xy(line, obj);
+		} else if (strncmp(line, "ATTR_manip_toggle", 17) == 0) {
+			cur_manip = parse_ATTR_manip_toggle(line, obj);
+		} else if (strncmp(line, "ATTR_manip_noop", 15) == 0) {
+			cur_manip = parse_ATTR_manip_noop(obj);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -1132,6 +1221,13 @@ handle_cmd_anim_trans(const obj8_t *obj, obj8_cmd_t *subcmd, mat4 pvm)
 	glm_translate(pvm, xlate);
 }
 
+static inline bool
+render_mode_is_manip_only(obj8_render_mode_t mode)
+{
+	return (mode == OBJ8_RENDER_MODE_MANIP_ONLY ||
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
+}
+
 void
 obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
     const mat4 pvm_in)
@@ -1149,16 +1245,44 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		switch (subcmd->type) {
 		case OBJ8_CMD_GROUP:
 			if (hide || (!do_draw &&
-			    obj->render_mode != OBJ8_RENDER_MODE_MANIP_ONLY)) {
+			    !render_mode_is_manip_only(obj->render_mode))) {
 				break;
 			}
 			obj8_draw_group_cmd(obj, subcmd, groupname, pvm);
 			break;
 		case OBJ8_CMD_TRIS:
-			if (hide || (!do_draw &&
-			    (obj->render_mode != OBJ8_RENDER_MODE_MANIP_ONLY ||
-			    cmd->tris.manip_idx == -1u))) {
+			/* Don't draw if we're hidden */
+			if (hide)
 				break;
+			if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
+				/*
+				 * If we're in normal rendering mode, don't
+				 * draw if ATTR_draw_disable is active.
+				 */
+				if (!do_draw)
+					break;
+			} else if (obj->render_mode ==
+			    OBJ8_RENDER_MODE_MANIP_ONLY) {
+				/*
+				 * If we're in manipulator drawing mode,
+				 * don't draw if this isn't a manipulator.
+				 */
+				if (subcmd->tris.manip_idx == -1u)
+					break;
+			} else {
+				ASSERT3U(obj->render_mode, ==,
+				    OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
+				/*
+				 * If we're in single-manipulator drawing mode,
+				 * don't draw if this isn't a manipulator,
+				 * or the manipulator index doesn't match the
+				 * one manipulator we do want to draw.
+				 */
+				if (subcmd->tris.manip_idx == -1u ||
+				    (int)subcmd->tris.manip_idx !=
+				    obj->render_mode_arg) {
+					break;
+				}
 			}
 			if (groupname == NULL ||
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
@@ -1306,10 +1430,17 @@ obj8_get_render_mode(const obj8_t *obj)
 void
 obj8_set_render_mode(obj8_t *obj, obj8_render_mode_t mode)
 {
+	obj8_set_render_mode2(obj, mode, 0);
+}
+
+void
+obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode, int32_t arg)
+{
 	ASSERT(obj != NULL);
 	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY);
 	obj->render_mode = mode;
+	obj->render_mode_arg = arg;
 }
 
 unsigned

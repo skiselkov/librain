@@ -48,7 +48,9 @@ typedef enum {
 	OBJ8_MANIP_COMMAND_SWITCH_UD,
 	OBJ8_MANIP_DRAG_AXIS,
 	OBJ8_MANIP_DRAG_ROTATE,
-	OBJ8_MANIP_DRAG_XY
+	OBJ8_MANIP_DRAG_XY,
+	OBJ8_MANIP_TOGGLE,
+	OBJ8_MANIP_NOOP
 } obj8_manip_type_t;
 
 typedef enum {
@@ -77,6 +79,7 @@ typedef struct {
 	unsigned		idx;
 	obj8_manip_type_t	type;
 	obj8_manip_cursor_t	cursor;
+	char			cmdname[128];
 	union {
 		struct {
 			float		min, max;
@@ -100,6 +103,7 @@ typedef struct {
 		struct {
 			float		dx, dy, dz;
 			float		v1, v2;
+			unsigned	drset_idx;
 		} drag_axis;
 		struct {
 			vect3_t		xyz;
@@ -108,21 +112,25 @@ typedef struct {
 			float		lift;
 			float		v1min, v1max;
 			float		v2min, v2max;
-			bool		have_dr1, have_dr2;
-			dr_t		dr1, dr2;
+			unsigned	drset_idx1, drset_idx2;
 		} drag_rot;
 		struct {
 			float		dx, dy;
 			float		v1min, v1max;
 			float		v2min, v2max;
-			dr_t		dr1, dr2;
+			unsigned	drset_idx1, drset_idx2;
 		} drag_xy;
+		struct {
+			unsigned	drset_idx;
+			float		v1, v2;
+		} toggle;
 	};
 } obj8_manip_t;
 
 typedef enum {
 	OBJ8_RENDER_MODE_NORM,
-	OBJ8_RENDER_MODE_MANIP_ONLY
+	OBJ8_RENDER_MODE_MANIP_ONLY,
+	OBJ8_RENDER_MODE_MANIP_ONLY_ONE
 } obj8_render_mode_t;
 
 typedef struct {
@@ -143,6 +151,8 @@ LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
 
 LIBRAIN_EXPORT obj8_render_mode_t obj8_get_render_mode(const obj8_t *obj);
 LIBRAIN_EXPORT void obj8_set_render_mode(obj8_t *obj, obj8_render_mode_t mode);
+LIBRAIN_EXPORT void obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode,
+    int32_t arg);
 
 LIBRAIN_EXPORT unsigned obj8_get_num_manips(const obj8_t *obj);
 LIBRAIN_EXPORT const obj8_manip_t *obj8_get_manip(const obj8_t *obj,
