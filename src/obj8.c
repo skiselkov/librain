@@ -427,6 +427,35 @@ parse_ATTR_manip_noop(obj8_t *obj)
 }
 
 static unsigned
+parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	
+	float		min, max;
+	float		d_click, d_hold;
+	char cursor[32], dr_name[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_axis_knob %31s %f %f %f %f %255s",
+	    cursor, &min, &max, &d_click, &d_hold, dr_name) != 6) {
+		return (-1u);
+	}
+
+	manip = alloc_manip(obj, OBJ8_MANIP_AXIS_KNOB, cursor);
+	manip->manip_axis_knob.min = min;
+	manip->manip_axis_knob.max = max;
+	manip->manip_axis_knob.d_click = d_click;
+	manip->manip_axis_knob.d_hold = d_hold;
+	if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
+		return (-1u);
+	}
+
+	return (obj->n_manips - 1);
+}		
+
+static unsigned
 parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
 {
 	obj8_manip_t *manip;
@@ -446,6 +475,92 @@ parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
 	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	if (manip->cmd == NULL)
+		return (-1u);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	if (manip->cmd == NULL)
+		return (-1u);
+
 	return (obj->n_manips - 1);
 }
 
@@ -819,10 +934,20 @@ obj8_parse_worker(void *userinfo)
 			    cur_cmd);
 		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
 			cur_manip = -1;
-		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
+			cur_manip = parse_ATTR_manip_axis_knob(line, obj);
+		}else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_left_right2", 37) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_lr2(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_up_down2", 34) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_ud2(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_left_right", 36) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_lr(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_up_down", 33) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_ud(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command", 18) == 0) {
 			cur_manip = parse_ATTR_manip_command(line, obj);
 		} else if (strncmp(line, "ATTR_manip_drag_rotate", 22) == 0) {

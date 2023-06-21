@@ -50,7 +50,9 @@ typedef enum {
 	OBJ8_MANIP_DRAG_ROTATE,
 	OBJ8_MANIP_DRAG_XY,
 	OBJ8_MANIP_TOGGLE,
-	OBJ8_MANIP_NOOP
+	OBJ8_MANIP_NOOP,
+	OBJ8_MANIP_COMMAND_SWITCH_LR2,
+	OBJ8_MANIP_COMMAND_SWITCH_UD2
 } obj8_manip_type_t;
 
 typedef enum {
@@ -100,6 +102,7 @@ typedef struct {
 			XPLMCommandRef	pos_cmd;
 			XPLMCommandRef	neg_cmd;
 		} cmd_sw;
+		XPLMCommandRef	cmd_sw2;
 		struct {
 			float		dx, dy, dz;
 			float		v1, v2;
