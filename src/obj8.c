@@ -186,17 +186,15 @@ typedef struct {
 	list_node_t	list_node;
 } drset_dr_t;
 
-<<<<<<< HEAD
 void obj8_debug_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd);
 void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int *counter,
     unsigned int todraw, const mat4 pvm_in);
-=======
+
 static inline bool
 use_vaos(void)
 {
 	return (GLEW_VERSION_3_0);
 }
->>>>>>> 25a21aa (Add OBJ8 rendering support for better encapsulation in a background thread.)
 
 static void
 obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
@@ -524,13 +522,20 @@ parse_ATTR_manip_noop(obj8_t *obj)
 static unsigned
 parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 {
+<<<<<<< HEAD
 	//logMsg("[DEBUG] Parsing ATTR_manip_axis_knob with line:\n%s", line);
 
+=======
+>>>>>>> a986655 (Added additional manipulators to obj8 parser)
 	obj8_manip_t *manip;
 	
 	float		min, max;
 	float		d_click, d_hold;
+<<<<<<< HEAD
 	char cursor[32], dr_name[256], dr_name_copy[256]; 
+=======
+	char cursor[32], dr_name[256];
+>>>>>>> a986655 (Added additional manipulators to obj8 parser)
 
 	ASSERT(line != NULL);
 	ASSERT(obj != NULL);
@@ -545,11 +550,15 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 	manip->manip_axis_knob.max = max;
 	manip->manip_axis_knob.d_click = d_click;
 	manip->manip_axis_knob.d_hold = d_hold;
+<<<<<<< HEAD
 
 	
 	strcpy(dr_name_copy, dr_name);
 
 	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
+=======
+	if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
+>>>>>>> a986655 (Added additional manipulators to obj8 parser)
 		return (-1u);
 	}
 
@@ -661,6 +670,92 @@ parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
 	//if (manip->cmd == NULL)
 	//	return (-1u);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	if (manip->cmd == NULL)
+		return (-1u);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	if (manip->cmd == NULL)
+		return (-1u);
 
 	return (obj->n_manips - 1);
 }
@@ -1061,7 +1156,11 @@ obj8_parse_worker(void *userinfo)
 			cur_manip = -1;
 		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
 			cur_manip = parse_ATTR_manip_axis_knob(line, obj);
+<<<<<<< HEAD
 		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+=======
+		}else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+>>>>>>> a986655 (Added additional manipulators to obj8 parser)
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);

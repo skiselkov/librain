@@ -53,7 +53,10 @@ typedef enum {
 	OBJ8_MANIP_DRAG_ROTATE,
 	OBJ8_MANIP_DRAG_XY,
 	OBJ8_MANIP_TOGGLE,
+<<<<<<< HEAD
 	OBJ8_MANIP_PUSH,
+=======
+>>>>>>> a986655 (Added additional manipulators to obj8 parser)
 	OBJ8_MANIP_NOOP,
 	OBJ8_MANIP_COMMAND_SWITCH_LR2,
 	OBJ8_MANIP_COMMAND_SWITCH_UD2
