@@ -135,7 +135,7 @@ struct obj8_s {
 	void			*idx_table;
 	GLuint			idx_buf;
 	unsigned		idx_cap;
-	mat4			matrix;
+	mat4			*matrix;
 	obj8_cmd_t		*top;
 
 	thread_t		loader;
@@ -594,7 +594,7 @@ obj8_parse_worker(void *userinfo)
 	obj->top = cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, NULL);
 
 	offset = vect3_add(pos_offset, info->cg_offset);
-	glm_translate_make(obj->matrix, (vec3){offset.x, offset.y, offset.z});
+	glm_translate_make(*obj->matrix, (vec3){offset.x, offset.y, offset.z});
 
 	for (int linenr = 1; lacf_getline(&line, &cap, fp) > 0 &&
 	    !obj->load_stop; linenr++) {
@@ -925,9 +925,10 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	fdr_find(&cgZ_orig, "sim/aircraft/weight/acf_cgZ_original");
 
 	obj = safe_calloc(1, sizeof (*obj));
+	obj->matrix = safe_aligned_calloc(MAT4_ALLOC_ALIGN, 1, sizeof (mat4));
 	mutex_init(&obj->lock);
 	cv_init(&obj->cv);
-	obj->filename = strdup(filename);
+	obj->filename = safe_strdup(filename);
 	obj->light_level_override = NAN;
 	obj->drset_auto_update = true;
 	obj->drset = obj8_drset_new();
@@ -1100,6 +1101,7 @@ obj8_free(obj8_t *obj)
 
 	obj8_drset_destroy(obj->drset);
 
+	free(obj->matrix);
 	free(obj);
 }
 
@@ -1384,7 +1386,7 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 		glUniform1f(obj->light_level_loc, obj->light_level_override);
 	else
 		glUniform1f(obj->light_level_loc, 0);
-	glm_mat4_mul((vec4 *)pvm_in, obj->matrix, pvm);
+	glm_mat4_mul((vec4 *)pvm_in, *obj->matrix, pvm);
 	obj8_draw_group_cmd(obj, obj->top, groupname, pvm);
 
 	gl_state_cleanup();
@@ -1417,7 +1419,7 @@ obj8_set_matrix(obj8_t *obj, mat4 matrix)
 
 	glm_translate_make(m1, (vec3){0,
 	    -FEET2MET(dr_getf(&cgY_orig)), -FEET2MET(dr_getf(&cgZ_orig))});
-	glm_mat4_mul(matrix, m1, obj->matrix);
+	glm_mat4_mul(matrix, m1, *obj->matrix);
 }
 
 obj8_render_mode_t

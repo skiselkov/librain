@@ -64,7 +64,7 @@ struct surf_ice_impl_s {
 	char		*group_id;
 	uint64_t	last_ice_t;
 	double		prev_render_t;
-	mat4		pvm;
+	mat4		*pvm;
 };
 
 static bool_t inited = B_FALSE;
@@ -223,6 +223,7 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 	temp_tex = safe_calloc(sizeof (*temp_tex), surf->w * surf->h);
 
 	priv = safe_calloc(1, sizeof (*priv));
+	priv->pvm = safe_aligned_calloc(MAT4_ALLOC_ALIGN, 1, sizeof (mat4));
 	surf->priv = priv;
 
 	glGenTextures(2, priv->depth_tex);
@@ -248,7 +249,7 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 	priv->obj = obj;
 	if (group_id != NULL)
 		priv->group_id = strdup(group_id);
-	glm_ortho(0, surf->w, 0, surf->h, 0, 1, priv->pvm);
+	glm_ortho(0, surf->w, 0, surf->h, 0, 1, *priv->pvm);
 
 	free(temp_tex);
 }
@@ -293,6 +294,7 @@ surf_ice_fini(surf_ice_t *surf)
 	glutils_destroy_quads(&priv->quads);
 	free(priv->group_id);
 
+	free(priv->pvm);
 	free(priv);
 }
 
@@ -371,7 +373,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, priv->depth_tex[!priv->cur]);
 	glUniformMatrix4fv(glGetUniformLocation(depth_prog, "pvm"), 1,
-	    GL_FALSE, (void *)priv->pvm);
+	    GL_FALSE, (void *)*priv->pvm);
 	glUniform1i(glGetUniformLocation(depth_prog, "prev"), 0);
 	glUniform1f(glGetUniformLocation(depth_prog, "ice"), ice);
 	glUniform1f(glGetUniformLocation(depth_prog, "d_ice"), d_ice);
@@ -386,7 +388,7 @@ update_depth(surf_ice_t *surf, double cur_sim_t, double d_t, double ice,
 	glBindTexture(GL_TEXTURE_2D, priv->depth_tex[priv->cur]);
 	glUniform1i(glGetUniformLocation(norm_prog, "depth"), 0);
 	glUniformMatrix4fv(glGetUniformLocation(norm_prog, "pvm"), 1,
-	    GL_FALSE, (void *)priv->pvm);
+	    GL_FALSE, (void *)*priv->pvm);
 	glutils_draw_quads(&priv->quads, norm_prog);
 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
@@ -417,7 +419,7 @@ render_blur_tex(surf_ice_t *surf, int i, GLuint tex, double blur_radius)
 	glUniform1f(glGetUniformLocation(blur_prog, "blur_radius"),
 	    blur_radius);
 	glUniformMatrix4fv(glGetUniformLocation(blur_prog, "pvm"), 1,
-	    GL_FALSE, (void *)priv->pvm);
+	    GL_FALSE, (void *)*priv->pvm);
 	glutils_draw_quads(&priv->quads, blur_prog);
 }
 
