@@ -190,6 +190,9 @@ obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
 	return (drset->values[idx]);
 }
 
+LIBRAIN_EXPORT dr_t *obj8_drset_get_dr(const obj8_drset_t *drset,
+    unsigned idx);
+
 #ifdef __cplusplus
 }
 #endif

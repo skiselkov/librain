@@ -1692,6 +1692,16 @@ obj8_drset_update(obj8_drset_t *drset)
 	}
 }
 
+dr_t *
+obj8_drset_get_dr(const obj8_drset_t *drset, unsigned idx)
+{
+	drset_dr_t *dr;
+	ASSERT(drset != NULL);
+	ASSERT3U(idx, <, drset->n_drs);
+	dr = list_get_i(&drset->list, idx);
+	return (dr->dr_found ? &dr->dr : NULL);
+}
+
 const char *
 obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 {
