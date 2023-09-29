@@ -30,7 +30,7 @@
 #include <acfutils/safe_alloc.h>
 #include <acfutils/thread.h>
 
-#include "glpriv.h"
+#include "librain_glpriv.h"
 #include "obj8.h"
 #ifdef	DLLMODE
 #include "librain.h"

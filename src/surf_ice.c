@@ -29,7 +29,7 @@
 
 #include <cglm/cglm.h>
 
-#include "glpriv.h"
+#include "librain_glpriv.h"
 #include "librain.h"
 #include "surf_ice.h"
 
