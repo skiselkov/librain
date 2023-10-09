@@ -37,7 +37,7 @@
 #include <acfutils/shader.h>
 #include <acfutils/time.h>
 
-#include "glpriv.h"
+#include "librain_glpriv.h"
 #include "librain.h"
 #include "../shaders/droplets_data.h"
 

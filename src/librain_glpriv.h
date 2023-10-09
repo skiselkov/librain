@@ -16,8 +16,8 @@
  * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
-#ifndef	_GLPRIV_H_
-#define	_GLPRIV_H_
+#ifndef	_LIBRAIN_GLPRIV_H_
+#define	_LIBRAIN_GLPRIV_H_
 
 #include <XPLMGraphics.h>
 
@@ -165,4 +165,4 @@ gl_state_cleanup(void)
 }
 #endif
 
-#endif	/* _GLPRIV_H_ */
+#endif	/* _LIBRAIN_GLPRIV_H_ */

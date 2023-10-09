@@ -26,7 +26,7 @@
 #ifndef	_LIBRAIN_COMMON_H_
 #define	_LIBRAIN_COMMON_H_
 
-#include "glpriv.h"
+#include "librain_glpriv.h"
 
 #ifdef	__cplusplus
 extern "C" {
