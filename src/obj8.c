@@ -522,20 +522,12 @@ parse_ATTR_manip_noop(obj8_t *obj)
 static unsigned
 parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 {
-<<<<<<< HEAD
-	//logMsg("[DEBUG] Parsing ATTR_manip_axis_knob with line:\n%s", line);
 
-=======
->>>>>>> a986655 (Added additional manipulators to obj8 parser)
 	obj8_manip_t *manip;
 	
 	float		min, max;
 	float		d_click, d_hold;
-<<<<<<< HEAD
 	char cursor[32], dr_name[256], dr_name_copy[256]; 
-=======
-	char cursor[32], dr_name[256];
->>>>>>> a986655 (Added additional manipulators to obj8 parser)
 
 	ASSERT(line != NULL);
 	ASSERT(obj != NULL);
@@ -550,15 +542,12 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 	manip->manip_axis_knob.max = max;
 	manip->manip_axis_knob.d_click = d_click;
 	manip->manip_axis_knob.d_hold = d_hold;
-<<<<<<< HEAD
 
-	
 	strcpy(dr_name_copy, dr_name);
 
 	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
-=======
-	if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
->>>>>>> a986655 (Added additional manipulators to obj8 parser)
+
+//	if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
 		return (-1u);
 	}
 
@@ -2154,9 +2143,13 @@ obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode, int32_t arg)
 {
 	ASSERT(obj != NULL);
 	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
+<<<<<<< HEAD
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY ||
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE 
 	    || mode == OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE);
+=======
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY || mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
+>>>>>>> 98b0890 (rebase to saso changes)
 	obj->render_mode = mode;
 	obj->render_mode_arg = arg;
 }
