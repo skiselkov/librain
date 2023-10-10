@@ -1565,7 +1565,7 @@ obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode, int32_t arg)
 {
 	ASSERT(obj != NULL);
 	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
-	    mode == OBJ8_RENDER_MODE_MANIP_ONLY);
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY || mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
 	obj->render_mode = mode;
 	obj->render_mode_arg = arg;
 }
