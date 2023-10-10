@@ -452,6 +452,8 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 		return (-1u);
 	}
 
+	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
+
 	return (obj->n_manips - 1);
 }		
 
