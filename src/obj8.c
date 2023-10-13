@@ -422,6 +422,7 @@ parse_ATTR_manip_toggle(const char *line, obj8_t *obj)
 static unsigned
 parse_ATTR_manip_noop(obj8_t *obj)
 {
+	return 0;
 	(void)alloc_manip(obj, OBJ8_MANIP_NOOP, "arrow");
 	return (obj->n_manips - 1);
 }
@@ -962,7 +963,9 @@ obj8_parse_worker(void *userinfo)
 		} else if (strncmp(line, "ATTR_manip_toggle", 17) == 0) {
 			cur_manip = parse_ATTR_manip_toggle(line, obj);
 		} else if (strncmp(line, "ATTR_manip_noop", 15) == 0) {
-			cur_manip = parse_ATTR_manip_noop(obj);
+			//logMsg("[DEBUG] Found ATTR_manip_noop line of:\n%s", line);
+			//cur_manip = parse_ATTR_manip_noop(obj);
+			parse_ATTR_manip_noop(obj);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -1836,5 +1839,65 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 	ASSERT(drset != NULL);
 	ASSERT3U(idx, <, drset->n_drs);
 	dr = list_get_i(&drset->list, idx);
+	//logMsg("[DEBUG] obj8_drset_get_dr_name called for index %d and name of %s is found", idx, dr->dr_name);
 	return (dr->dr_name);
+}
+
+
+int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
+{
+	drset_dr_t *dr;
+	ASSERT(drset != NULL);
+	ASSERT3U(idx, <, drset->n_drs);
+	dr = list_get_i(&drset->list, idx);
+	//logMsg("[DEBUG] obj8_drset_get_dr_offset called for index %d and dr_offset of %d is found", idx, dr->dr_offset);
+	return (dr->dr_offset);
+}
+
+const char *
+obj8_manip_type_t_name(obj8_manip_type_t type_val)
+{
+	switch(type_val) {
+		case OBJ8_MANIP_AXIS_KNOB:
+			return "OBJ8_MANIP_AXIS_KNOB";
+			break;
+		case OBJ8_MANIP_COMMAND:
+			return "OBJ8_MANIP_COMMAND";
+			break;
+		case OBJ8_MANIP_COMMAND_AXIS:
+			return "OBJ8_MANIP_COMMAND_AXIS";
+			break;
+		case OBJ8_MANIP_COMMAND_KNOB:
+			return "OBJ8_MANIP_COMMAND_KNOB";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_LR:
+			return "OBJ8_MANIP_COMMAND_SWITCH_LR";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_UD:
+			return "OBJ8_MANIP_COMMAND_SWITCH_UD";
+			break;
+		case OBJ8_MANIP_DRAG_AXIS:
+			return "OBJ8_MANIP_DRAG_AXIS";
+			break;
+		case OBJ8_MANIP_DRAG_ROTATE:
+			return "OBJ8_MANIP_DRAG_ROTATE";
+			break;
+		case OBJ8_MANIP_DRAG_XY:
+			return "OBJ8_MANIP_DRAG_XY";
+			break;
+		case OBJ8_MANIP_TOGGLE:
+			return "OBJ8_MANIP_TOGGLE";
+			break;
+		case OBJ8_MANIP_NOOP:
+			return "OBJ8_MANIP_NOOP";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_LR2:
+			return "OBJ8_MANIP_COMMAND_SWITCH_LR2";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_UD2:
+			return "OBJ8_MANIP_COMMAND_SWITCH_UD2";
+			break;
+		default:
+			return "UNKONWN";
+	}
 }

@@ -185,6 +185,10 @@ LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
 LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
 
+LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
+
+LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
+
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
 {
