@@ -1024,13 +1024,8 @@ obj8_parse_worker(void *userinfo)
 				    "ANIM_trans_begin", filename, linenr);
 				goto errout;
 			}
-<<<<<<< HEAD
 			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_TRANS, cur_cmd);
-			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name);
-=======
-			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
->>>>>>> 25a21aa (Add OBJ8 rendering support for better encapsulation in a background thread.)
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
 			char dr_name[256];
@@ -1178,6 +1173,7 @@ obj8_parse_worker(void *userinfo)
 			//logMsg("[DEBUG] Found ATTR_manip_noop line of:\n%s", line);
 			//cur_manip = parse_ATTR_manip_noop(obj);
 			parse_ATTR_manip_noop(obj);
+<<<<<<< HEAD
 		} else if (strncmp(line, "ATTR_manip_push", 15) == 0) {
 			cur_manip = parse_ATTR_manip_push(line, obj);
 		} else if (strncmp(line, "ATTR_manip_keyframe", 19) == 0) {
@@ -1199,6 +1195,8 @@ obj8_parse_worker(void *userinfo)
 			//	goto errout;
 		} else if (strncmp(line, "ATTR_manip_", 11) == 0) {
 			logMsg("[ERROR] Found unhandled manipulator line: %s", line);
+=======
+>>>>>>> 3309201 (do not include noop manipulators)
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -2492,6 +2490,10 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 	return (dr->dr_name);
 }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3309201 (do not include noop manipulators)
 int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
 {
 	drset_dr_t *dr;
@@ -2536,9 +2538,12 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 		case OBJ8_MANIP_TOGGLE:
 			return "OBJ8_MANIP_TOGGLE";
 			break;
+<<<<<<< HEAD
 		case OBJ8_MANIP_PUSH:
 			return "OBJ8_MANIP_PUSH";
 			break;
+=======
+>>>>>>> 3309201 (do not include noop manipulators)
 		case OBJ8_MANIP_NOOP:
 			return "OBJ8_MANIP_NOOP";
 			break;
@@ -2551,6 +2556,7 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 		default:
 			return "UNKONWN";
 	}
+<<<<<<< HEAD
 }
 
 void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in)
@@ -2667,4 +2673,6 @@ obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
 	assert(cmd->type == OBJ8_CMD_TRIS);
 	obj8_geom_t *tris = &(cmd->tris);
 	tris->hover_detectable = detectable;
+=======
+>>>>>>> 3309201 (do not include noop manipulators)
 }
