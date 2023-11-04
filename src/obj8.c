@@ -1436,6 +1436,8 @@ obj8_is_load_complete(const obj8_t *obj)
 void
 obj8_free(obj8_t *obj)
 {
+	ASSERT(obj != NULL);
+
 	obj8_cmd_free(obj->top);
 	obj->load_stop = B_TRUE;
 	thread_join(&obj->loader);

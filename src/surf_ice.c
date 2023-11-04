@@ -257,6 +257,7 @@ surf_ice_init(surf_ice_t *surf, obj8_t *obj, const char *group_id)
 void
 surf_ice_fini(surf_ice_t *surf)
 {
+	ASSERT(surf != NULL);
 	surf_ice_impl_t *priv = surf->priv;
 
 	if (priv == NULL)
@@ -294,7 +295,7 @@ surf_ice_fini(surf_ice_t *surf)
 	glutils_destroy_quads(&priv->quads);
 	free(priv->group_id);
 
-	free(priv->pvm);
+	aligned_free(priv->pvm);
 	free(priv);
 }
 
