@@ -35,7 +35,7 @@ INCLUDEPATH += $$[LIBACFUTILS]/SDK/CHeaders/XPLM
 INCLUDEPATH += $$[LIBACFUTILS]/SDK/CHeaders/Widgets
 INCLUDEPATH += $$[LIBACFUTILS]/glew
 INCLUDEPATH += $$[LIBACFUTILS]/cglm/cglm-0.4.1/include
-QMAKE_CFLAGS += -std=c99 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
+QMAKE_CFLAGS += -std=c11 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
 QMAKE_CFLAGS += -Wunused-result -Wno-missing-field-initializers
 
 # Make sure to disable Qmake's own warnings system, because it overrides
@@ -89,7 +89,7 @@ linux-g++-64 {
 
 macx {
 	DEFINES += APL=1 IBM=0 LIN=0
-	QMAKE_CFLAGS += -mmacosx-version-min=10.9
+ 	QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.15
 }
 
 macx-clang {
@@ -105,6 +105,13 @@ macx-clang {
 	LIBS += -F$$[LIBACFUTILS]/SDK/Libraries/Mac
 	LIBS += -framework OpenGL
 	LIBS += -framework XPLM
+
+	LIBS += -framework Cocoa
+
+	SOILPATH = "/Users/jsnapp/Documents/SharedFlight/Simple-OpenGL-Image-Library"
+	LIBS += "-L$${SOILPATH}/build" -lSOIL
+	INCLUDEPATH += "$${SOILPATH}/src"
+
 }
 
 HEADERS += ../src/*.h

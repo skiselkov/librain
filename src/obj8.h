@@ -50,7 +50,9 @@ typedef enum {
 	OBJ8_MANIP_DRAG_ROTATE,
 	OBJ8_MANIP_DRAG_XY,
 	OBJ8_MANIP_TOGGLE,
-	OBJ8_MANIP_NOOP
+	OBJ8_MANIP_NOOP,
+	OBJ8_MANIP_COMMAND_SWITCH_LR2,
+	OBJ8_MANIP_COMMAND_SWITCH_UD2
 } obj8_manip_type_t;
 
 typedef enum {
@@ -100,6 +102,7 @@ typedef struct {
 			XPLMCommandRef	pos_cmd;
 			XPLMCommandRef	neg_cmd;
 		} cmd_sw;
+		XPLMCommandRef	cmd_sw2;
 		struct {
 			float		dx, dy, dz;
 			float		v1, v2;
@@ -181,6 +184,10 @@ LIBRAIN_EXPORT unsigned obj8_drset_add(obj8_drset_t *drset, const char *name);
 LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
 LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
+
+LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
+
+LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
 
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
