@@ -126,6 +126,27 @@ static int draw_rain_effects(
 }
 ```
 
+EDIT: For newer librain code use the following "draw_rain_effects":
+
+```cpp
+static int
+draw_rain_effects(XPLMDrawingPhase phase, int before, void* refcon)
+{
+	UNUSED(phase);
+	UNUSED(before);
+	UNUSED(refcon);
+
+	librain_draw_prepare_all();
+	for (unsigned i = 0; i < librain_get_call_count(); i++) {
+		librain_draw_prepare_eye(i, B_FALSE);
+		librain_draw_exec();
+	}
+	librain_draw_finish_all();
+
+	return (1);
+}
+```
+
 You have to call `librain_draw_z_depth(...)` for all the objects which can
 block the view of the glass element that receives the rain animation. This
 is used to populate the z-buffer of the scene and occlude the rendered
