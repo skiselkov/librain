@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2021 Saso Kiselkov. All rights reserved.
+ * Copyright 2023 Saso Kiselkov. All rights reserved.
  */
 
 #ifndef	_LIBRAIN_OBJMGR_H_
@@ -34,11 +34,13 @@ objmgr_t *objmgr_new(void);
 void objmgr_destroy(objmgr_t *mgr);
 
 objmgr_obj_t *objmgr_add_obj(objmgr_t *mgr, const char *filename,
-    bool lazy_load_textures, bool load_norm);
+    bool lazy_load_textures, bool load_norm, bool allow_dds_albedo,
+    bool allow_dds_lit);
 void objmgr_remove_obj(objmgr_t *mgr, objmgr_obj_t *obj);
 
 obj8_t *objmgr_get_obj8(const objmgr_obj_t *obj);
-bool objmgr_is_tex_load_complete(objmgr_obj_t *obj);
+const char *objmgr_get_obj_filename(const objmgr_obj_t *obj);
+bool objmgr_tex_needs_upload(const objmgr_obj_t *obj);
 void objmgr_bind_textures(objmgr_t *mgr, objmgr_obj_t *obj,
     unsigned start_idx, int *tex_idx, int *norm_idx, int *lit_idx);
 

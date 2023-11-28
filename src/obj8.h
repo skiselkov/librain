@@ -13,7 +13,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2021 Saso Kiselkov. All rights reserved.
+ * Copyright 2023 Saso Kiselkov. All rights reserved.
  */
 
 #ifndef	_OBJ8_H_
@@ -28,6 +28,7 @@
 #include <acfutils/geom.h>
 #include <acfutils/glew.h>
 #include <acfutils/list.h>
+#include <acfutils/thread.h>
 
 #include <cglm/cglm.h>
 
@@ -138,12 +139,14 @@ typedef struct {
 	avl_tree_t	tree;
 	list_t		list;
 	bool		complete;
-	float		*values;
+	mutex_t		lock;
+	float		*values;	/* protected by `lock` above */
+	float		*trig_deltas;	// constant after init
 } obj8_drset_t;
 
 LIBRAIN_EXPORT obj8_t *obj8_parse(const char *filename, vect3_t pos_offset);
 LIBRAIN_EXPORT void obj8_free(obj8_t *obj);
-LIBRAIN_EXPORT bool obj8_is_load_complete(const obj8_t *obj);
+LIBRAIN_EXPORT bool obj8_needs_upload(const obj8_t *obj);
 
 LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
     GLuint prog, const mat4 mvp);
@@ -177,7 +180,8 @@ LIBRAIN_EXPORT obj8_drset_t *obj8_drset_new(void);
 LIBRAIN_EXPORT void obj8_drset_destroy(obj8_drset_t *drset);
 LIBRAIN_EXPORT void obj8_drset_mark_complete(obj8_drset_t *drset);
 
-LIBRAIN_EXPORT unsigned obj8_drset_add(obj8_drset_t *drset, const char *name);
+LIBRAIN_EXPORT unsigned obj8_drset_add(obj8_drset_t *drset, const char *name,
+    float trig_delta);
 LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
 LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
@@ -186,9 +190,16 @@ static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
 {
 	ASSERT(drset != NULL);
+	ASSERT(drset->complete);
 	ASSERT3U(idx, <, drset->n_drs);
-	return (drset->values[idx]);
+	mutex_enter((mutex_t *)&drset->lock);
+	float value = drset->values[idx];
+	mutex_exit((mutex_t *)&drset->lock);
+	return (value);
 }
+
+LIBRAIN_EXPORT size_t obj8_drset_get_all(const obj8_drset_t *drset,
+    float *out_values, size_t cap);
 
 LIBRAIN_EXPORT dr_t *obj8_drset_get_dr(const obj8_drset_t *drset,
     unsigned idx);

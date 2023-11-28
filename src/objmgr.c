@@ -13,11 +13,14 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2022 Saso Kiselkov. All rights reserved.
+ * Copyright 2023 Saso Kiselkov. All rights reserved.
  */
 
+#if	defined(LIBRAIN_SOIL_VERSION) && LIBRAIN_SOIL_VERSION == 2
+#include <SOIL2/SOIL2.h>
+#else
 #include <SOIL/SOIL.h>
-
+#endif
 #include <acfutils/avl.h>
 #include <acfutils/glutils.h>
 #include <acfutils/glew.h>
@@ -28,9 +31,10 @@
 #include "objmgr.h"
 
 typedef struct {
+	objmgr_t	*mgr;
 	GLuint		tex;
 	char		*filename;
-	unsigned	refcnt;
+	unsigned	refcnt;		// protected by objmgr->lock
 	int		width;
 	int		height;
 	int		color_type;
@@ -39,6 +43,7 @@ typedef struct {
 	mutex_t		lock;
 	bool		load_started;
 	bool		load_complete;
+	bool		allow_dds;
 	bool		load_dds;
 	bool		load_error;
 	uint8_t		*pixels;
@@ -51,8 +56,10 @@ typedef struct {
 struct objmgr_obj_s {
 	const char	*filename;	/* held by the obj8_t below */
 	obj8_t		*obj;
-	unsigned	refcnt;
+	unsigned	refcnt;		// protected by objmgr->lock
 	bool		load_norm;
+	bool		allow_dds_albedo;
+	bool		allow_dds_lit;
 	bool		drset_needs_update;
 	bool		drset_has_changed;
 	objmgr_tex_t	*tex;
@@ -62,8 +69,9 @@ struct objmgr_obj_s {
 };
 
 struct objmgr_s {
-	avl_tree_t	texs;
-	avl_tree_t	objs;
+	avl_tree_t	texs;		// protected by lock
+	avl_tree_t	objs;		// protected by lock
+	mutex_t		lock;
 };
 
 static int
@@ -105,35 +113,39 @@ free_tex(objmgr_tex_t *tex)
 		glDeleteTextures(1, &tex->tex);
 	free(tex->filename);
 	mutex_destroy(&tex->lock);
-	memset(tex, 0, sizeof (*tex));
-	free(tex);
+	ZERO_FREE(tex);
 }
 
 static void
 load_texture(void *arg)
 {
 	objmgr_tex_t *tex;
-	char *dds_filename, *dds_filename_up;
 
 	ASSERT(arg != NULL);
 	tex = arg;
 	ASSERT(tex->load_started);
 	ASSERT0(tex->load_complete);
 
-	dds_filename = path_ext_subst(tex->filename, "dds");
-	dds_filename_up = path_ext_subst(tex->filename, "DDS");
-	if ((file_exists(dds_filename, NULL) &&
-	    (tex->pixels = file2buf(dds_filename, &tex->buflen)) != NULL) ||
-	    (file_exists(dds_filename_up, NULL) &&
-	    (tex->pixels = file2buf(dds_filename_up, &tex->buflen)) != NULL)) {
-		mutex_enter(&tex->lock);
-		tex->load_complete = true;
-		tex->load_dds = true;
-		tex->load_started = false;
-		mutex_exit(&tex->lock);
+	if (tex->allow_dds) {
+		char *dds_filename = path_ext_subst(tex->filename, "dds");
+		char *dds_filename_up = path_ext_subst(tex->filename, "DDS");
+		if ((file_exists(dds_filename, NULL) &&
+		    (tex->pixels = file2buf(dds_filename, &tex->buflen)) !=
+		    NULL) ||
+		    (file_exists(dds_filename_up, NULL) &&
+		    (tex->pixels = file2buf(dds_filename_up, &tex->buflen)) !=
+		    NULL)) {
+			mutex_enter(&tex->lock);
+			tex->load_complete = true;
+			tex->load_dds = true;
+			tex->load_started = false;
+			mutex_exit(&tex->lock);
+			LACF_DESTROY(dds_filename);
+			LACF_DESTROY(dds_filename_up);
+			return;
+		}
 		LACF_DESTROY(dds_filename);
 		LACF_DESTROY(dds_filename_up);
-		return;
 	}
 	tex->pixels = png_load_from_file_rgb_auto(tex->filename, &tex->width,
 	    &tex->height, &tex->color_type, &tex->bit_depth);
@@ -144,12 +156,10 @@ load_texture(void *arg)
 		tex->load_error = true;
 	tex->load_started = false;
 	mutex_exit(&tex->lock);
-	LACF_DESTROY(dds_filename);
-	LACF_DESTROY(dds_filename_up);
 }
 
 static objmgr_tex_t *
-add_tex(objmgr_t *mgr, const char *filename)
+add_tex(objmgr_t *mgr, const char *filename, bool allow_dds)
 {
 	const objmgr_tex_t srch = { .filename = (char *)filename };
 	avl_index_t where;
@@ -158,11 +168,14 @@ add_tex(objmgr_t *mgr, const char *filename)
 	ASSERT(mgr != NULL);
 	ASSERT(filename != NULL);
 
+	mutex_enter(&mgr->lock);
 	tex = avl_find(&mgr->texs, &srch, &where);
 	if (tex == NULL) {
 		tex = safe_calloc(1, sizeof (*tex));
+		tex->mgr = mgr;
 		tex->refcnt = 1;
 		tex->filename = safe_strdup(filename);
+		tex->allow_dds = allow_dds;
 		mutex_init(&tex->lock);
 
 		tex->load_started = true;
@@ -172,6 +185,7 @@ add_tex(objmgr_t *mgr, const char *filename)
 	} else {
 		tex->refcnt++;
 	}
+	mutex_exit(&mgr->lock);
 
 	return (tex);
 }
@@ -186,8 +200,15 @@ complete_texture_load(objmgr_tex_t *tex)
 		GLint int_fmt, fmt, type;
 
 		mutex_exit(&tex->lock);
+
 		thread_join(&tex->loader);
 
+		mutex_enter(&tex->lock);
+		if (tex->tex != 0) {
+			ASSERT3P(tex->pixels, ==, NULL);
+			mutex_exit(&tex->lock);
+			return (tex->tex != 0);
+		}
 		ASSERT0(tex->load_started);
 		ASSERT(tex->pixels != NULL);
 
@@ -205,7 +226,8 @@ complete_texture_load(objmgr_tex_t *tex)
 		    tex->bit_depth, &int_fmt, &fmt, &type)) {
 			glGenTextures(1, &tex->tex);
 			VERIFY(tex->tex != 0);
-			XPLMBindTexture2d(tex->tex, 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, tex->tex);
 			glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, tex->width,
 			    tex->height, 0, fmt, type, tex->pixels);
 			glGenerateMipmap(GL_TEXTURE_2D);
@@ -222,9 +244,9 @@ complete_texture_load(objmgr_tex_t *tex)
 		}
 		lacf_free(tex->pixels);
 		tex->pixels = NULL;
-	} else {
-		mutex_exit(&tex->lock);
+		GLUTILS_ASSERT_NO_ERROR();
 	}
+	mutex_exit(&tex->lock);
 
 	return (tex->tex != 0);
 }
@@ -236,11 +258,13 @@ remove_tex(objmgr_t *mgr, objmgr_tex_t *tex)
 	ASSERT(tex != NULL);
 	ASSERT3U(tex->refcnt, >, 0);
 
+	mutex_enter(&mgr->lock);
 	tex->refcnt--;
 	if (tex->refcnt == 0) {
 		avl_remove(&mgr->texs, tex);
 		free_tex(tex);
 	}
+	mutex_exit(&mgr->lock);
 }
 
 static bool
@@ -254,21 +278,21 @@ obj_load_textures(objmgr_t *mgr, objmgr_obj_t *obj)
 
 	tex_filename = obj8_get_tex_filename(obj->obj, false);
 	if (tex_filename != NULL && obj->tex == NULL) {
-		obj->tex = add_tex(mgr, tex_filename);
+		obj->tex = add_tex(mgr, tex_filename, obj->allow_dds_albedo);
 		if (obj->tex == NULL)
 			return (false);
 	}
 	if (obj->load_norm) {
 		tex_filename = obj8_get_norm_filename(obj->obj, false);
 		if (tex_filename != NULL && obj->norm == NULL) {
-			obj->norm = add_tex(mgr, tex_filename);
+			obj->norm = add_tex(mgr, tex_filename, false);
 			if (obj->norm == NULL)
 				return (false);
 		}
 	}
 	tex_filename = obj8_get_lit_filename(obj->obj, false);
 	if (tex_filename != NULL && obj->lit == NULL) {
-		obj->lit = add_tex(mgr, tex_filename);
+		obj->lit = add_tex(mgr, tex_filename, obj->allow_dds_lit);
 		if (obj->lit == NULL)
 			return (false);
 	}
@@ -285,6 +309,7 @@ objmgr_new(void)
 	    offsetof(objmgr_tex_t, node));
 	avl_create(&mgr->objs, obj_compar, sizeof (objmgr_obj_t),
 	    offsetof(objmgr_obj_t, node));
+	mutex_init(&mgr->lock);
 
 	return (mgr);
 }
@@ -312,13 +337,14 @@ objmgr_destroy(objmgr_t *mgr)
 		free_tex(tex);
 	}
 	avl_destroy(&mgr->texs);
+	mutex_destroy(&mgr->lock);
 
 	free(mgr);
 }
 
 objmgr_obj_t *
 objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures,
-    bool load_norm)
+    bool load_norm, bool allow_dds_albedo, bool allow_dds_lit)
 {
 	const objmgr_obj_t srch = { .filename = filename };
 	objmgr_obj_t *obj;
@@ -327,12 +353,16 @@ objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures,
 	ASSERT(mgr != NULL);
 	ASSERT(filename != NULL);
 
+	mutex_enter(&mgr->lock);
+
 	obj = avl_find(&mgr->objs, &srch, &where);
 	if (obj == NULL) {
 		obj = safe_calloc(1, sizeof (*obj));
 		obj->obj = obj8_parse(filename, ZERO_VECT3);
 		obj->refcnt = 1;
 		obj->load_norm = load_norm;
+		obj->allow_dds_albedo = allow_dds_albedo;
+		obj->allow_dds_lit = allow_dds_lit;
 		if (obj->obj == NULL)
 			goto errout;
 		obj->filename = obj8_get_filename(obj->obj);
@@ -343,6 +373,7 @@ objmgr_add_obj(objmgr_t *mgr, const char *filename, bool lazy_load_textures,
 	} else {
 		obj->refcnt++;
 	}
+	mutex_exit(&mgr->lock);
 
 	return (obj);
 errout:
@@ -354,7 +385,8 @@ errout:
 		remove_tex(mgr, obj->norm);
 	if (obj->lit != NULL)
 		remove_tex(mgr, obj->lit);
-	free(obj);
+	ZERO_FREE(obj);
+	mutex_exit(&mgr->lock);
 
 	return (NULL);
 }
@@ -365,6 +397,8 @@ objmgr_remove_obj(objmgr_t *mgr, objmgr_obj_t *obj)
 	ASSERT(mgr != NULL);
 	ASSERT(obj != NULL);
 	ASSERT(obj->refcnt != 0);
+
+	mutex_enter(&mgr->lock);
 
 	obj->refcnt--;
 	if (obj->refcnt == 0) {
@@ -378,8 +412,9 @@ objmgr_remove_obj(objmgr_t *mgr, objmgr_obj_t *obj)
 			remove_tex(mgr, obj->lit);
 		ASSERT(obj->obj != NULL);
 		obj8_free(obj->obj);
-		free(obj);
+		ZERO_FREE(obj);
 	}
+	mutex_exit(&mgr->lock);
 }
 
 obj8_t *
@@ -390,22 +425,43 @@ objmgr_get_obj8(const objmgr_obj_t *obj)
 	return (obj->obj);
 }
 
-bool
-objmgr_is_tex_load_complete(objmgr_obj_t *obj)
+const char *
+objmgr_get_obj_filename(const objmgr_obj_t *obj)
 {
 	ASSERT(obj != NULL);
-	return ((obj->tex == NULL || complete_texture_load(obj->tex)) &&
-	    (obj->norm == NULL || complete_texture_load(obj->norm)) &&
-	    (obj->lit == NULL || complete_texture_load(obj->lit)));
+	ASSERT(obj->filename != NULL);
+	return (obj->filename);
+}
+
+static bool
+can_complete_tex_load(const objmgr_tex_t *tex)
+{
+	ASSERT(tex != NULL);
+	mutex_enter((mutex_t *)&tex->lock);
+	bool result = (tex->load_complete && tex->pixels != NULL);
+	mutex_exit((mutex_t *)&tex->lock);
+	return (result);
+}
+
+bool
+objmgr_tex_needs_upload(const objmgr_obj_t *obj)
+{
+	ASSERT(obj != NULL);
+	return ((obj->tex != NULL && can_complete_tex_load(obj->tex)) &&
+	    (obj->norm != NULL && can_complete_tex_load(obj->norm)) &&
+	    (obj->lit != NULL && can_complete_tex_load(obj->lit)));
 }
 
 static unsigned
 bind_texture(objmgr_tex_t *tex, unsigned idx, int *out_idx)
 {
+	/* tex can be NULL */
+	ASSERT3U(idx, <, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
 	if (out_idx != NULL) {
 		if (tex != NULL && complete_texture_load(tex)) {
 			ASSERT(tex->tex != 0);
-			XPLMBindTexture2d(tex->tex, idx);
+			glActiveTexture(GL_TEXTURE0 + idx);
+			glBindTexture(GL_TEXTURE_2D, tex->tex);
 			*out_idx = idx;
 			idx++;
 		} else {
