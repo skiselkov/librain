@@ -141,10 +141,10 @@ struct obj8_s {
 	 */
 	thread_id_t		upload_thread_id;
 	GLuint			vao;
-	void			*vtx_table;
+	obj8_vtx_t		*vtx_table;
 	GLuint			vtx_buf;
 	unsigned		vtx_cap;
-	void			*idx_table;
+	GLuint			*idx_table;
 	GLuint			idx_buf;
 	unsigned		idx_cap;
 	mat4			*matrix;
@@ -164,12 +164,6 @@ typedef struct {
 	vect3_t		cg_offset;
 	obj8_t		*obj;
 } obj8_load_info_t;
-
-typedef struct {
-	vec3		pos;
-	vec3		norm;
-	vec2		tex;
-} obj8_vtx_t;
 
 typedef struct {
 	unsigned	index;
@@ -1108,6 +1102,73 @@ obj8_needs_upload(const obj8_t *obj)
 {
 	ASSERT(obj != NULL);
 	return (obj->load_complete && !obj->load_error && obj->vtx_buf == 0);
+}
+
+static unsigned
+extract_tris_group(const obj8_t *obj, const obj8_cmd_t *cmd,
+    obj8_vtx_t *data, unsigned cap)
+{
+	int n_vtx = 0;
+
+	ASSERT(obj != NULL);
+	ASSERT(cmd != NULL);
+	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
+	ASSERT(data != NULL || cap == 0);
+
+	for (const obj8_cmd_t *subcmd = list_head(&cmd->group.cmds);
+	    subcmd != NULL; subcmd = list_next(&cmd->group.cmds, subcmd)) {
+		switch (subcmd->type) {
+		case OBJ8_CMD_GROUP: {
+			unsigned n = extract_tris_group(obj, subcmd, data, cap);
+			data = MIN(data + n, data + cap);
+			if (cap > n) {
+				cap -= n;
+			} else {
+				cap = 0;
+			}
+			n_vtx += n;
+			break;
+		}
+		case OBJ8_CMD_TRIS:
+			for (unsigned i = 0; i < subcmd->tris.n_vtx; i++) {
+				if (cap != 0) {
+					*data = obj->vtx_table[obj->idx_table[
+					    subcmd->tris.vtx_off + i]];
+					data++;
+					cap--;
+				}
+			}
+			n_vtx += subcmd->tris.n_vtx;
+			break;
+		default:
+			break;
+		}
+	}
+	return (n_vtx);
+}
+
+int
+obj8_get_triangle_data(obj8_t *obj, obj8_vtx_t *data, unsigned cap)
+{
+	ASSERT(obj != NULL);
+	ASSERT(data != NULL || cap == 0);
+	// wait for the data load to complete
+	mutex_enter(&obj->lock);
+	while (!obj->load_complete) {
+		cv_wait(&obj->cv, &obj->lock);
+	}
+	mutex_exit(&obj->lock);
+	// data load error?
+	if (obj->load_error) {
+		memset(data, 0, cap * sizeof (*data));
+		return (-1);
+	}
+	// no data present anymore?
+	if (obj->vtx_table == NULL || obj->idx_table == NULL) {
+		memset(data, 0, cap * sizeof (*data));
+		return (0);
+	}
+	return (extract_tris_group(obj, obj->top, data, cap));
 }
 
 void
