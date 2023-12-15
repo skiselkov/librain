@@ -638,16 +638,14 @@ void
 surf_ice_clear(surf_ice_t *surf)
 {
 	surf_ice_impl_t *priv = surf->priv;
-	GLfloat depth_buf[surf->w * surf->h];
-	uint16_t norm_buf[surf->w * surf->h];
+	GLfloat *depth_buf = safe_calloc(surf->w * surf->h,
+	    sizeof (*depth_buf));
+	uint16_t *norm_buf = safe_calloc(surf->w * surf->h, sizeof (*norm_buf));
 
 	ASSERT(priv != NULL);
 	priv->prev_ice = 0;
 
 	glutils_debug_push(0, "surf_ice_clear(%s)", surf->name);
-
-	memset(depth_buf, 0, sizeof (depth_buf));
-	memset(norm_buf, 0, sizeof (norm_buf));
 
 	for (int i = 0; i < 2; i++) {
 		glBindTexture(GL_TEXTURE_2D, priv->depth_tex[i]);
@@ -668,6 +666,9 @@ surf_ice_clear(surf_ice_t *surf)
 	}
 
 	glutils_debug_pop();
+
+	free(depth_buf);
+	free(norm_buf);
 }
 
 bool_t
