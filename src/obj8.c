@@ -58,7 +58,8 @@ typedef enum {
 	OBJ8_CMD_ANIM_ROTATE,
 	OBJ8_CMD_ATTR_LIGHT_LEVEL,
 	OBJ8_CMD_ATTR_DRAW_ENABLE,
-	OBJ8_CMD_ATTR_DRAW_DISABLE
+	OBJ8_CMD_ATTR_DRAW_DISABLE,
+	OBJ8_NUM_CMDS
 } obj8_cmd_type_t;
 
 typedef struct {
@@ -1145,18 +1146,10 @@ obj8_parse_worker(void *userinfo)
 			    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 			if (sscanf(line, "ATTR_light_level %f %f %255s",
 			    &min_val, &max_val, dr_name) == 3) {
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 				obj8_cmd_t *cmd = obj8_cmd_alloc(
 				    obj, OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
-=======
->>>>>>> 25a21aa (Add OBJ8 rendering support for better encapsulation in a background thread.)
-=======
-=======
-				obj8_cmd_t *cmd = obj8_cmd_alloc(
-				    obj, OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
->>>>>>> 702340c (changes for shared flight manip highlighting)
->>>>>>> 649f2c2 (changes for shared flight manip highlighting)
+
 				cmd->attr_light_level.min_val = min_val;
 				cmd->attr_light_level.max_val = max_val;
 				cmd->drset_idx = obj8_drset_add(
@@ -1175,11 +1168,7 @@ obj8_parse_worker(void *userinfo)
 			cur_manip = -1;
 		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
 			cur_manip = parse_ATTR_manip_axis_knob(line, obj);
-<<<<<<< HEAD
 		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
-=======
-		}else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
->>>>>>> a986655 (Added additional manipulators to obj8 parser)
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
@@ -1293,63 +1282,6 @@ obj8_parse_worker(void *userinfo)
 	obj->load_complete = B_TRUE;
 	cv_broadcast(&obj->cv);
 	mutex_exit(&obj->lock);
-
-	//logMsg("[DEBUG] Lets look through the obj cmd tree....");
-
-	//cunt obj->top
-
-	//obj8_debug_group_cmd(obj, obj->top);
-
-	/*
-	typedef enum {
-	OBJ8_CMD_GROUP,
-	OBJ8_CMD_TRIS,
-	OBJ8_CMD_ANIM_HIDE_SHOW,
-	OBJ8_CMD_ANIM_TRANS,
-	OBJ8_CMD_ANIM_ROTATE,
-	OBJ8_CMD_ATTR_LIGHT_LEVEL,
-	OBJ8_CMD_ATTR_DRAW_ENABLE,
-	OBJ8_CMD_ATTR_DRAW_DISABLE,
-	OBJ8_NUM_CMDS
-} obj8_cmd_type_t;
-
-typedef struct obj8_cmd_s {
-	obj8_cmd_type_t		type;
-	struct obj8_cmd_s	*parent;
-	unsigned		drset_idx;
-	union {
-		struct {
-			list_t	cmds;
-		} group;
-		struct {
-			double	val[2];
-			bool_t	set_val;
-		} hide_show;
-		struct {
-			size_t	n_pts;
-			size_t	n_pts_cap;
-			vect2_t	*pts;
-			vect3_t	axis;
-		} rotate;
-		struct {
-			size_t	n_pts;
-			size_t	n_pts_cap;
-			double	*values;
-			vect3_t	*pos;
-		} trans;
-		struct {
-			float	min_val;
-			float	max_val;
-		} attr_light_level;
-		obj8_geom_t	tris;
-	};
-	list_node_t	list_node;
-} obj8_cmd_t;
-	*/
-
-
-
-
 
 	return;
 errout:
@@ -2655,11 +2587,14 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
 >>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 
 >>>>>>> 3309201 (do not include noop manipulators)
+=======
+>>>>>>> 96b2f50 (cleanup crap code)
 int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
 {
 	drset_dr_t *dr;
@@ -2728,8 +2663,12 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 
 =======
 }
+<<<<<<< HEAD
 =======
 >>>>>>> 649f2c2 (changes for shared flight manip highlighting)
+=======
+
+>>>>>>> 96b2f50 (cleanup crap code)
 void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in)
 {
 	unsigned int counter = 0;
@@ -2840,6 +2779,7 @@ obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int 
 		}
 	}
 }
+<<<<<<< HEAD
 
 <<<<<<< HEAD
 LIBRAIN_EXPORT void
@@ -2854,3 +2794,5 @@ obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
 =======
 >>>>>>> 1b0a6d2 (changes for shared flight manip highlighting)
 >>>>>>> 649f2c2 (changes for shared flight manip highlighting)
+=======
+>>>>>>> 96b2f50 (cleanup crap code)
