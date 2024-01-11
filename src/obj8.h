@@ -39,6 +39,8 @@ extern "C" {
 
 typedef struct obj8_s obj8_t;
 
+typedef struct obj8_cmd_s obj8_cmd_t;
+
 typedef enum {
 	OBJ8_MANIP_AXIS_KNOB,
 	OBJ8_MANIP_COMMAND,
@@ -133,7 +135,8 @@ typedef struct {
 typedef enum {
 	OBJ8_RENDER_MODE_NORM,
 	OBJ8_RENDER_MODE_MANIP_ONLY,
-	OBJ8_RENDER_MODE_MANIP_ONLY_ONE
+	OBJ8_RENDER_MODE_MANIP_ONLY_ONE,
+	OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE
 } obj8_render_mode_t;
 
 typedef struct {
@@ -150,6 +153,10 @@ LIBRAIN_EXPORT bool obj8_is_load_complete(const obj8_t *obj);
 
 LIBRAIN_EXPORT void obj8_draw_group(obj8_t *obj, const char *groupname,
     GLuint prog, const mat4 mvp);
+
+LIBRAIN_EXPORT void obj8_draw_group_by_cmdidx(obj8_t *obj, unsigned idx, GLuint prog,
+    const mat4 pvm_in);
+
 LIBRAIN_EXPORT void obj8_set_matrix(obj8_t *obj, mat4 matrix);
 
 LIBRAIN_EXPORT obj8_render_mode_t obj8_get_render_mode(const obj8_t *obj);
@@ -160,6 +167,11 @@ LIBRAIN_EXPORT void obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode,
 LIBRAIN_EXPORT unsigned obj8_get_num_manips(const obj8_t *obj);
 LIBRAIN_EXPORT const obj8_manip_t *obj8_get_manip(const obj8_t *obj,
     unsigned idx);
+
+LIBRAIN_EXPORT unsigned obj8_get_num_cmd_t(const obj8_t *obj);
+LIBRAIN_EXPORT const obj8_cmd_t *obj8_get_cmd_t(const obj8_t *obj, unsigned idx);
+LIBRAIN_EXPORT unsigned obj8_get_cmd_drset_idx(const obj8_cmd_t *cmd);
+LIBRAIN_EXPORT unsigned obj8_get_cmd_idx(const obj8_cmd_t *cmd);
 
 LIBRAIN_EXPORT void obj8_set_light_level_override(obj8_t *obj, float value);
 LIBRAIN_EXPORT float obj8_get_light_level_override(const obj8_t *obj);
@@ -185,9 +197,18 @@ LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
 LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
 
+//CONCERN: Are these two needed?
 LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
-
 LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
+
+
+LIBRAIN_EXPORT void
+obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
+LIBRAIN_EXPORT unsigned
+obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd);
+
+void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in);
+
 
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)

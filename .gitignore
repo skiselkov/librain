@@ -19,3 +19,4 @@ plugin/qmake/Makefile.Debug
 plugin/qmake/Makefile.Release
 plugin/qmake/release
 plugin/qmake/Makefile
+.DS_Store
