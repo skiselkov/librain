@@ -56,7 +56,8 @@ typedef enum {
 	OBJ8_CMD_ANIM_ROTATE,
 	OBJ8_CMD_ATTR_LIGHT_LEVEL,
 	OBJ8_CMD_ATTR_DRAW_ENABLE,
-	OBJ8_CMD_ATTR_DRAW_DISABLE
+	OBJ8_CMD_ATTR_DRAW_DISABLE,
+	OBJ8_NUM_CMDS
 } obj8_cmd_type_t;
 
 typedef struct {
@@ -1056,63 +1057,6 @@ obj8_parse_worker(void *userinfo)
 	obj->load_complete = B_TRUE;
 	cv_broadcast(&obj->cv);
 	mutex_exit(&obj->lock);
-
-	//logMsg("[DEBUG] Lets look through the obj cmd tree....");
-
-	//cunt obj->top
-
-	//obj8_debug_group_cmd(obj, obj->top);
-
-	/*
-	typedef enum {
-	OBJ8_CMD_GROUP,
-	OBJ8_CMD_TRIS,
-	OBJ8_CMD_ANIM_HIDE_SHOW,
-	OBJ8_CMD_ANIM_TRANS,
-	OBJ8_CMD_ANIM_ROTATE,
-	OBJ8_CMD_ATTR_LIGHT_LEVEL,
-	OBJ8_CMD_ATTR_DRAW_ENABLE,
-	OBJ8_CMD_ATTR_DRAW_DISABLE,
-	OBJ8_NUM_CMDS
-} obj8_cmd_type_t;
-
-typedef struct obj8_cmd_s {
-	obj8_cmd_type_t		type;
-	struct obj8_cmd_s	*parent;
-	unsigned		drset_idx;
-	union {
-		struct {
-			list_t	cmds;
-		} group;
-		struct {
-			double	val[2];
-			bool_t	set_val;
-		} hide_show;
-		struct {
-			size_t	n_pts;
-			size_t	n_pts_cap;
-			vect2_t	*pts;
-			vect3_t	axis;
-		} rotate;
-		struct {
-			size_t	n_pts;
-			size_t	n_pts_cap;
-			double	*values;
-			vect3_t	*pos;
-		} trans;
-		struct {
-			float	min_val;
-			float	max_val;
-		} attr_light_level;
-		obj8_geom_t	tris;
-	};
-	list_node_t	list_node;
-} obj8_cmd_t;
-	*/
-
-
-
-
 
 	return;
 errout:
@@ -2131,8 +2075,6 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 	return (dr->dr_name);
 }
 
-<<<<<<< HEAD
-
 int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
 {
 	drset_dr_t *dr;
@@ -2190,7 +2132,7 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 			return "UNKONWN";
 	}
 }
-=======
+
 void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in)
 {
 	unsigned int counter = 0;
@@ -2294,5 +2236,3 @@ obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int 
 		}
 	}
 }
-
->>>>>>> 1b0a6d2 (changes for shared flight manip highlighting)
