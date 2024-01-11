@@ -217,6 +217,7 @@ LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 LIBRAIN_EXPORT unsigned obj8_drset_get_num_drs(const obj8_drset_t *drset);
 
 //CONCERN: Are these two needed?
@@ -242,11 +243,25 @@ void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pv
 LIBRAIN_EXPORT void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset);
 
 =======
+=======
+//CONCERN: Are these two needed?
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
-
 LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
 
+<<<<<<< HEAD
 >>>>>>> 3309201 (do not include noop manipulators)
+=======
+
+LIBRAIN_EXPORT void
+obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
+LIBRAIN_EXPORT unsigned
+obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd);
+
+void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in);
+
+
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
 {

@@ -58,8 +58,7 @@ typedef enum {
 	OBJ8_CMD_ANIM_ROTATE,
 	OBJ8_CMD_ATTR_LIGHT_LEVEL,
 	OBJ8_CMD_ATTR_DRAW_ENABLE,
-	OBJ8_CMD_ATTR_DRAW_DISABLE,
-	OBJ8_NUM_CMDS
+	OBJ8_CMD_ATTR_DRAW_DISABLE
 } obj8_cmd_type_t;
 
 typedef struct {
@@ -196,6 +195,10 @@ use_vaos(void)
 	return (GLEW_VERSION_3_0);
 }
 
+void obj8_debug_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd);
+void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int *counter,
+    unsigned int todraw, const mat4 pvm_in);
+
 static void
 obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
     unsigned manip_idx, unsigned off, unsigned len, GLuint vtx_cap,
@@ -225,6 +228,10 @@ obj8_cmd_alloc(obj8_t *obj, obj8_cmd_type_t type, obj8_cmd_t *parent)
 
 	if (obj->n_cmd_t == obj->cap_cmd_t) {
 		obj->cap_cmd_t += 32;
+<<<<<<< HEAD
+=======
+		logMsg("Will call safe_realloc here on obj->cmdsbyidx and new size of %d", obj->cap_cmd_t);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 		obj->cmdsbyidx = safe_realloc(obj->cmdsbyidx, obj->cap_cmd_t *
 		    sizeof (*obj->cmdsbyidx));
 	}
@@ -447,7 +454,11 @@ alloc_manip(obj8_t *obj, obj8_manip_type_t type, const char *cursor)
 static unsigned
 parse_ATTR_manip_command(const char *line, obj8_t *obj)
 {
+<<<<<<< HEAD
 	//logMsg("[DEBUG] Parsing ATTR_manip_command with line:\n%s", line);
+=======
+	logMsg("[DEBUG] Parsing ATTR_manip_command with line:\n%s", line);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 
 	obj8_manip_t *manip;
 	char cursor[32], cmdname[256];
@@ -462,7 +473,13 @@ parse_ATTR_manip_command(const char *line, obj8_t *obj)
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
 	if (manip->cmd == NULL) {
 		logMsg("[ERROR] Skipping ATTR_manip_command with cmdname %s because command not found!", cmdname);
+<<<<<<< HEAD
 		return (-1u);
+=======
+		//return (-1u);
+	} else {
+		logMsg("[DEBUG] Found ATTR_manip_command with cmdname %s", cmdname);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	}
 	return (obj->n_manips - 1);
 }
@@ -542,14 +559,20 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 	manip->manip_axis_knob.max = max;
 	manip->manip_axis_knob.d_click = d_click;
 	manip->manip_axis_knob.d_hold = d_hold;
+<<<<<<< HEAD
 
 	strcpy(dr_name_copy, dr_name);
 
 	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
 
 //	if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
+=======
+	/*if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 		return (-1u);
-	}
+	}*/
+
+	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
 
 	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
 
@@ -576,6 +599,7 @@ parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
 	}*/
+<<<<<<< HEAD
 	return (obj->n_manips - 1);
 }
 
@@ -662,6 +686,8 @@ parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
 	//if (manip->cmd == NULL)
 	//	return (-1u);
 
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	return (obj->n_manips - 1);
 }
 
@@ -681,10 +707,10 @@ parse_ATTR_manip_command_switch_lr(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR, cursor);
 	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
 	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
-	if (manip->cmd_knob.pos_cmd == NULL ||
+	/*if (manip->cmd_knob.pos_cmd == NULL ||
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
-	}
+	}*/
 	return (obj->n_manips - 1);
 }
 
@@ -704,10 +730,10 @@ parse_ATTR_manip_command_switch_ud(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD, cursor);
 	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
 	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
-	if (manip->cmd_knob.pos_cmd == NULL ||
+	/*if (manip->cmd_knob.pos_cmd == NULL ||
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
-	}
+	}*/
 	return (obj->n_manips - 1);
 }
 
@@ -725,8 +751,8 @@ parse_ATTR_manip_command_switch_lr2(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR2, cursor);
 	manip->cmd_sw2 = XPLMFindCommand(cmdname);
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
-	if (manip->cmd == NULL)
-		return (-1u);
+	//if (manip->cmd == NULL)
+	//	return (-1u);
 
 	return (obj->n_manips - 1);
 }
@@ -745,8 +771,8 @@ parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD2, cursor);
 	manip->cmd_sw2 = XPLMFindCommand(cmdname);
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
-	if (manip->cmd == NULL)
-		return (-1u);
+	//if (manip->cmd == NULL)
+	//	return (-1u);
 
 	return (obj->n_manips - 1);
 }
@@ -1120,10 +1146,17 @@ obj8_parse_worker(void *userinfo)
 			if (sscanf(line, "ATTR_light_level %f %f %255s",
 			    &min_val, &max_val, dr_name) == 3) {
 <<<<<<< HEAD
+<<<<<<< HEAD
 				obj8_cmd_t *cmd = obj8_cmd_alloc(
 				    obj, OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 =======
 >>>>>>> 25a21aa (Add OBJ8 rendering support for better encapsulation in a background thread.)
+=======
+=======
+				obj8_cmd_t *cmd = obj8_cmd_alloc(
+				    obj, OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
+>>>>>>> 702340c (changes for shared flight manip highlighting)
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 				cmd->attr_light_level.min_val = min_val;
 				cmd->attr_light_level.max_val = max_val;
 				cmd->drset_idx = obj8_drset_add(
@@ -1261,6 +1294,63 @@ obj8_parse_worker(void *userinfo)
 	cv_broadcast(&obj->cv);
 	mutex_exit(&obj->lock);
 
+	//logMsg("[DEBUG] Lets look through the obj cmd tree....");
+
+	//cunt obj->top
+
+	//obj8_debug_group_cmd(obj, obj->top);
+
+	/*
+	typedef enum {
+	OBJ8_CMD_GROUP,
+	OBJ8_CMD_TRIS,
+	OBJ8_CMD_ANIM_HIDE_SHOW,
+	OBJ8_CMD_ANIM_TRANS,
+	OBJ8_CMD_ANIM_ROTATE,
+	OBJ8_CMD_ATTR_LIGHT_LEVEL,
+	OBJ8_CMD_ATTR_DRAW_ENABLE,
+	OBJ8_CMD_ATTR_DRAW_DISABLE,
+	OBJ8_NUM_CMDS
+} obj8_cmd_type_t;
+
+typedef struct obj8_cmd_s {
+	obj8_cmd_type_t		type;
+	struct obj8_cmd_s	*parent;
+	unsigned		drset_idx;
+	union {
+		struct {
+			list_t	cmds;
+		} group;
+		struct {
+			double	val[2];
+			bool_t	set_val;
+		} hide_show;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			vect2_t	*pts;
+			vect3_t	axis;
+		} rotate;
+		struct {
+			size_t	n_pts;
+			size_t	n_pts_cap;
+			double	*values;
+			vect3_t	*pos;
+		} trans;
+		struct {
+			float	min_val;
+			float	max_val;
+		} attr_light_level;
+		obj8_geom_t	tris;
+	};
+	list_node_t	list_node;
+} obj8_cmd_t;
+	*/
+
+
+
+
+
 	return;
 errout:
 	free(vtx_table);
@@ -1309,6 +1399,7 @@ obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd)
 			break;
 	}
 
+<<<<<<< HEAD
 	// obj8_cmd_t *traversal = (obj8_cmd_t *) subcmd;
 
 	// while (traversal != NULL && traversal != obj->top) {
@@ -1324,6 +1415,14 @@ unsigned obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd)
 		return tris_geom->manip_idx;
 	}
 	return -1u;
+=======
+	obj8_cmd_t *traversal = (obj8_cmd_t *) subcmd;
+
+	while (traversal != NULL && traversal != obj->top) {
+		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+		traversal = traversal->parent;
+	}
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 }
 
 unsigned
@@ -1331,12 +1430,17 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 {
 	obj8_cmd_t *traversal = (obj8_cmd_t *) cmd;
 
+<<<<<<< HEAD
 	//logMsg("[DEBUG] Entering call to obj8_nearest_tris_for_cmd with cmdidx of %d", traversal->cmdidx);
 
 
 	while (traversal != NULL && traversal != obj->top) {
 		//logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
 		//obj8_debug_cmd(obj, obj8_get_cmd_t(obj, traversal->cmdidx));
+=======
+	while (traversal != NULL && traversal != obj->top) {
+		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 
 		if (traversal->type != OBJ8_CMD_GROUP) {
 			traversal = traversal->parent;
@@ -1350,7 +1454,10 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 				// We will check these later if don't find one at same level?
 				break;
 			case OBJ8_CMD_TRIS:
+<<<<<<< HEAD
 				//logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 				return subcmd->cmdidx;
 			default:
 				break;
@@ -1361,6 +1468,7 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 
 		for (obj8_cmd_t *subcmd = list_head(&traversal->group.cmds); subcmd != NULL;
 		    subcmd = list_next(&traversal->group.cmds, subcmd)) {
+<<<<<<< HEAD
 			
 			if (subcmd == cmd) {
 				//logMsg("[DEBUG] Found subcmd that was original cmd we were called with, skip...");
@@ -1372,6 +1480,11 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 					//logMsg("[DEBUG] Making recursive call to obj8_nearest_tris_for_cmd with cmdidx of %d", subcmd->cmdidx);
 					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
 					//logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
+=======
+			switch (subcmd->type) {
+				case OBJ8_CMD_GROUP:
+					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 					if (foundidx != -1u) {
 						return foundidx;
 					}
@@ -1408,6 +1521,7 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	obj->drset = obj8_drset_new();
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 	obj->n_manips = 0;
 	obj->cap_manips = 0;
 	obj->n_cmd_t = 0;
@@ -1415,12 +1529,25 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 
 	info = safe_calloc(1, sizeof (*info));
 =======
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	obj->pos_loc = -1;
 	obj->norm_loc = -1;
 	obj->tex0_loc = -1;
 
 	obj8_load_info_t *info = safe_calloc(1, sizeof (*info));
+<<<<<<< HEAD
 >>>>>>> 25a21aa (Add OBJ8 rendering support for better encapsulation in a background thread.)
+=======
+=======
+	obj->n_manips = 0;
+	obj->cap_manips = 0;
+	obj->n_cmd_t = 0;
+	obj->cap_cmd_t = 0;
+
+	info = safe_calloc(1, sizeof (*info));
+>>>>>>> 702340c (changes for shared flight manip highlighting)
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	info->fp = fp;
 	info->pos_offset = pos_offset;
 	info->obj = obj;
@@ -1825,15 +1952,19 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_GROUP:
 			if (hide || (!do_draw &&
 			    !render_mode_is_manip_only(obj->render_mode) && obj->render_mode != OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE)) {
+<<<<<<< HEAD
 				break;
+=======
+			//	break;
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 			}
 			obj8_draw_group_cmd(obj, subcmd, groupname, pvm,
 			    dr_values);
 			break;
 		case OBJ8_CMD_TRIS:
 			/* Don't draw if we're hidden */
-			if (hide)
-				break;
+			//if (hide)
+			//	break;
 			if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
 				/*
 				 * If we're in normal rendering mode, don't
@@ -1868,10 +1999,32 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			} else if (obj->render_mode == 
 				OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE) {
 				
+<<<<<<< HEAD
 				//logMsg("[DEBUG] Comparing subcmd->cmdidx of %d to %d", (int)subcmd->cmdidx, obj->render_mode_arg);
 
 				if ((int)subcmd->cmdidx != obj->render_mode_arg) {
 				  	break;
+=======
+				bool in_tree = false;
+
+				obj8_cmd_t *traversal = subcmd;
+
+				while (traversal != NULL) {
+					if ((int)traversal->cmdidx == obj->render_mode_arg) {
+						in_tree = true;
+						break;
+					} else {
+						logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+					}
+					traversal = traversal->parent;
+				}
+
+				if (!in_tree) {
+					logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+				 	break;
+				} else {
+					logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 				}
 
 				// bool in_tree = false;
@@ -2092,7 +2245,11 @@ obj8_draw_group_by_cmdidx(obj8_t *obj, unsigned idx, GLuint prog,
 	else
 		glUniform1f(obj->light_level_loc, 0);
 	glm_mat4_mul((vec4 *)pvm_in, *obj->matrix, pvm);
+<<<<<<< HEAD
 	//logMsg("[DEBUG] Calling obj8_draw_group_cmd with cmdsbydidx[%d]", idx);
+=======
+	logMsg("[DEBUG] Calling obj8_draw_group_cmd with cmdsbydidx[%d]", idx);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	obj8_draw_group_cmd(obj, obj->top, NULL, pvm);
 
 	gl_state_cleanup();
@@ -2144,12 +2301,18 @@ obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode, int32_t arg)
 	ASSERT(obj != NULL);
 	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
 <<<<<<< HEAD
+<<<<<<< HEAD
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY ||
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE 
 	    || mode == OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE);
 =======
 	    mode == OBJ8_RENDER_MODE_MANIP_ONLY || mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
 >>>>>>> 98b0890 (rebase to saso changes)
+=======
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY ||
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE 
+	    || mode == OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE);
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 	obj->render_mode = mode;
 	obj->render_mode_arg = arg;
 }
@@ -2491,7 +2654,10 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 
 >>>>>>> 3309201 (do not include noop manipulators)
 int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
@@ -2557,8 +2723,13 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 			return "UNKONWN";
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 }
 
+=======
+}
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in)
 {
 	unsigned int counter = 0;
@@ -2594,10 +2765,13 @@ void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pv
 
 }
 
+<<<<<<< HEAD
 void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset) {
 	obj->manip_paint_offset = paint_offset;
 }
 
+=======
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
 void
 obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int *counter,
     unsigned int todraw, const mat4 pvm_in)
@@ -2667,6 +2841,7 @@ obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int 
 	}
 }
 
+<<<<<<< HEAD
 LIBRAIN_EXPORT void
 obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
 {
@@ -2676,3 +2851,6 @@ obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
 =======
 >>>>>>> 3309201 (do not include noop manipulators)
 }
+=======
+>>>>>>> 1b0a6d2 (changes for shared flight manip highlighting)
+>>>>>>> 649f2c2 (changes for shared flight manip highlighting)
