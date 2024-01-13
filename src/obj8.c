@@ -1106,12 +1106,12 @@ obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd)
 			break;
 	}
 
-	obj8_cmd_t *traversal = (obj8_cmd_t *) subcmd;
+	// obj8_cmd_t *traversal = (obj8_cmd_t *) subcmd;
 
-	while (traversal != NULL && traversal != obj->top) {
-		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
-		traversal = traversal->parent;
-	}
+	// while (traversal != NULL && traversal != obj->top) {
+	// 	logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+	// 	traversal = traversal->parent;
+	// }
 }
 
 unsigned
@@ -1120,7 +1120,8 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 	obj8_cmd_t *traversal = (obj8_cmd_t *) cmd;
 
 	while (traversal != NULL && traversal != obj->top) {
-		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+		//logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+		//obj8_debug_cmd(obj, obj8_get_cmd_t(obj, traversal->cmdidx));
 
 		if (traversal->type != OBJ8_CMD_GROUP) {
 			traversal = traversal->parent;
@@ -1134,6 +1135,7 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 				// We will check these later if don't find one at same level?
 				break;
 			case OBJ8_CMD_TRIS:
+				//logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
 				return subcmd->cmdidx;
 			default:
 				break;
@@ -1147,6 +1149,7 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 			switch (subcmd->type) {
 				case OBJ8_CMD_GROUP:
 					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
+					//logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
 					if (foundidx != -1u) {
 						return foundidx;
 					}
@@ -1506,7 +1509,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 		case OBJ8_CMD_GROUP:
 			if (hide || (!do_draw &&
 			    !render_mode_is_manip_only(obj->render_mode) && obj->render_mode != OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE)) {
-			//	break;
+				break;
 			}
 			obj8_draw_group_cmd(obj, subcmd, groupname, pvm);
 			break;
@@ -1544,26 +1547,32 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			} else if (obj->render_mode == 
 				OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE) {
 				
-				bool in_tree = false;
+				//logMsg("[DEBUG] Comparing subcmd->cmdidx of %d to %d", (int)subcmd->cmdidx, obj->render_mode_arg);
 
-				obj8_cmd_t *traversal = subcmd;
-
-				while (traversal != NULL) {
-					if ((int)traversal->cmdidx == obj->render_mode_arg) {
-						in_tree = true;
-						break;
-					} else {
-						logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
-					}
-					traversal = traversal->parent;
+				if ((int)subcmd->cmdidx != obj->render_mode_arg) {
+				  	break;
 				}
 
-				if (!in_tree) {
-					logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
-				 	break;
-				} else {
-					logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
-				}
+				// bool in_tree = false;
+
+				// obj8_cmd_t *traversal = subcmd;
+
+				// while (traversal != NULL) {
+				// 	if ((int)traversal->cmdidx == obj->render_mode_arg) {
+				// 		in_tree = true;
+				// 		break;
+				// 	} else {
+				// 		logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+				// 	}
+				// 	traversal = traversal->parent;
+				// }
+
+				// if (!in_tree) {
+				// 	logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+				//  	break;
+				// } else {
+				// 	logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+				// }
 			}
 			if (groupname == NULL ||
 			    strcmp(subcmd->tris.group_id, groupname) == 0) {
@@ -1711,7 +1720,7 @@ obj8_draw_group_by_cmdidx(obj8_t *obj, unsigned idx, GLuint prog,
 	else
 		glUniform1f(obj->light_level_loc, 0);
 	glm_mat4_mul((vec4 *)pvm_in, *obj->matrix, pvm);
-	logMsg("[DEBUG] Calling obj8_draw_group_cmd with cmdsbydidx[%d]", idx);
+	//logMsg("[DEBUG] Calling obj8_draw_group_cmd with cmdsbydidx[%d]", idx);
 	obj8_draw_group_cmd(obj, obj->top, NULL, pvm);
 
 	gl_state_cleanup();
