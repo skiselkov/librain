@@ -233,6 +233,36 @@ obj8_cmd_alloc(obj8_t *obj, obj8_cmd_type_t type, obj8_cmd_t *parent)
 	return (cmd);
 }
 
+static bool
+find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+{
+	char *bracket;
+
+	char dr_name_cpy[255];
+
+	if (dr_find(dr, "%s", dr_name)) {
+		*offset = -1;
+		return (true);
+	}
+	bracket = strrchr(dr_name, '[');
+	if (bracket != NULL) {
+		int cap;
+
+		*bracket = 0; // Null terminate the string...
+		if (!dr_find(dr, "%s", dr_name))
+			return (false);
+		cap = dr_getvf32(dr, NULL, 0, 0);
+		if (cap == 0)
+			return (false);
+		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
+		return (true);
+	}
+
+	return (false);
+}
+
+
+
 static bool_t
 parse_hide_show(obj8_t *obj, bool_t set_val, const char *fmt,
     const char *line, const char *filename, int linenr, obj8_cmd_t *parent)
@@ -456,11 +486,13 @@ parse_ATTR_manip_noop(obj8_t *obj)
 static unsigned
 parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 {
+	logMsg("[DEBUG] Parsing ATTR_manip_axis_knob with line:\n%s", line);
+
 	obj8_manip_t *manip;
 	
 	float		min, max;
 	float		d_click, d_hold;
-	char cursor[32], dr_name[256];
+	char cursor[32], dr_name[256], dr_name_copy[256]; 
 
 	ASSERT(line != NULL);
 	ASSERT(obj != NULL);
@@ -475,13 +507,15 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 	manip->manip_axis_knob.max = max;
 	manip->manip_axis_knob.d_click = d_click;
 	manip->manip_axis_knob.d_hold = d_hold;
-	/*if (!dr_find(&manip->manip_axis_knob.dr, "%s", dr_name)) {
+
+	
+	strcpy(dr_name_copy, dr_name);
+
+	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
 		return (-1u);
-	}*/
+	}
 
-	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
-
-	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
+	logMsg("[DEBUG] Found dr_name of %s (%s[%d]) for index %d", dr_name, manip->manip_axis_knob.dr.name, manip->manip_axis_knob.dr_offset, obj->n_manips - 1);
 
 	return (obj->n_manips - 1);
 }		
@@ -967,7 +1001,7 @@ obj8_parse_worker(void *userinfo)
 			cur_manip = -1;
 		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
 			cur_manip = parse_ATTR_manip_axis_knob(line, obj);
-		}else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
@@ -1549,7 +1583,8 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 				
 				//logMsg("[DEBUG] Comparing subcmd->cmdidx of %d to %d", (int)subcmd->cmdidx, obj->render_mode_arg);
 
-				if ((int)subcmd->cmdidx != obj->render_mode_arg) {
+				if ((int)subcmd->cmdidx != obj->render_mode_arg && (int)subcmd->tris.manip_idx !=
+				      obj->render_mode_arg) {
 				  	break;
 				}
 
@@ -1979,32 +2014,6 @@ obj8_drset_mark_complete(obj8_drset_t *drset)
 	drset->complete = true;
 }
 
-static bool
-find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
-{
-	char *bracket;
-
-	if (dr_find(dr, "%s", dr_name)) {
-		*offset = -1;
-		return (true);
-	}
-	bracket = strrchr(dr_name, '[');
-	if (bracket != NULL) {
-		int cap;
-
-		*bracket = 0;
-		if (!dr_find(dr, "%s", dr_name))
-			return (false);
-		cap = dr_getvf32(dr, NULL, 0, 0);
-		if (cap == 0)
-			return (false);
-		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
-		return (true);
-	}
-
-	return (false);
-}
-
 static inline float
 drset_dr_updatef(drset_dr_t *dr)
 {
@@ -2061,6 +2070,11 @@ obj8_drset_update(obj8_drset_t *drset)
 		drset->values = vals;
 		return (true);
 	}
+}
+
+unsigned obj8_drset_get_num_drs(const obj8_drset_t *drset)
+{
+	return drset->n_drs;
 }
 
 dr_t *

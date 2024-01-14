@@ -89,6 +89,7 @@ typedef struct {
 			float		min, max;
 			float		d_click, d_hold;
 			dr_t		dr;
+			int         dr_offset;
 		} manip_axis_knob;
 		XPLMCommandRef		cmd;
 		struct {
@@ -196,6 +197,8 @@ LIBRAIN_EXPORT unsigned obj8_drset_add(obj8_drset_t *drset, const char *name);
 LIBRAIN_EXPORT bool obj8_drset_update(obj8_drset_t *drset);
 LIBRAIN_EXPORT const char *obj8_drset_get_dr_name(const obj8_drset_t *drset,
     unsigned idx);
+
+LIBRAIN_EXPORT unsigned obj8_drset_get_num_drs(const obj8_drset_t *drset);
 
 //CONCERN: Are these two needed?
 LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
