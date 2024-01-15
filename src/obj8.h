@@ -81,6 +81,7 @@ typedef enum {
 
 typedef struct {
 	unsigned		idx;
+	unsigned		cmdidx;
 	obj8_manip_type_t	type;
 	obj8_manip_cursor_t	cursor;
 	char			cmdname[128];
@@ -207,11 +208,17 @@ LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
 
 LIBRAIN_EXPORT void
 obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
+
+LIBRAIN_EXPORT unsigned 
+obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd);
+
 LIBRAIN_EXPORT unsigned
 obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd);
 
 void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in);
 
+
+LIBRAIN_EXPORT void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset);
 
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)

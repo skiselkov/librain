@@ -66,6 +66,7 @@ typedef struct {
 	char		group_id[32];	/* Contents of X-GROUP-ID attribute */
 	bool_t		double_sided;
 	unsigned	manip_idx;
+	unsigned    cmdidx;
 	list_node_t	node;
 } obj8_geom_t;
 
@@ -148,6 +149,8 @@ struct obj8_s {
 	bool_t			load_complete;
 	bool_t			load_error;
 	bool_t			load_stop;
+
+	unsigned        manip_paint_offset;
 };
 
 typedef struct {
@@ -856,6 +859,17 @@ obj8_parse_worker(void *userinfo)
 			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_TRIS, cur_cmd);
 			obj8_geom_init(&cmd->tris, group_id, double_sided,
 			    cur_manip, off, len, vtx_cap, idx_table, idx_cap);
+			// in obj8_cmd_alloc...
+			// cmd->cmdidx = obj->n_cmd_t++;
+			// so cmdidx = obj->n_cmd_t - 1 at this point...
+			
+			obj8_geom_t *tris_geom = &(cmd->tris);
+			tris_geom->cmdidx = obj->n_cmd_t - 1;
+
+			if (cur_manip != -1u) {
+				obj8_manip_t *manip_for_cmd = obj8_get_manip(obj, cur_manip);
+				manip_for_cmd->cmdidx = obj->n_cmd_t - 1;
+			}
 		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
 			cur_cmd = obj8_cmd_alloc(obj, OBJ8_CMD_GROUP, cur_cmd);
 		} else if (strncmp(line, "ANIM_end", 10) == 0) {
@@ -1148,6 +1162,15 @@ obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd)
 	// }
 }
 
+unsigned obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd)
+{
+	if (cmd->type == OBJ8_CMD_TRIS) {
+		obj8_geom_t *tris_geom = &(cmd->tris);
+		return tris_geom->manip_idx;
+	}
+	return -1u;
+}
+
 unsigned
 obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 {
@@ -1406,7 +1429,10 @@ static void
 geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
 	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
-	glUniform1f(obj->manip_idx_loc, geom->manip_idx);
+	
+	//obj8_manip_t *manip = obj8_get_manip(obj, geom->manip_idx);
+
+	glUniform1f(obj->manip_idx_loc, geom->cmdidx + obj->manip_paint_offset);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -1583,8 +1609,7 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 				
 				//logMsg("[DEBUG] Comparing subcmd->cmdidx of %d to %d", (int)subcmd->cmdidx, obj->render_mode_arg);
 
-				if ((int)subcmd->cmdidx != obj->render_mode_arg && (int)subcmd->tris.manip_idx !=
-				      obj->render_mode_arg) {
+				if ((int)subcmd->cmdidx != obj->render_mode_arg) {
 				  	break;
 				}
 
@@ -2189,6 +2214,10 @@ void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pv
 
 	GLUTILS_ASSERT_NO_ERROR();
 
+}
+
+void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset) {
+	obj->manip_paint_offset = paint_offset;
 }
 
 void
