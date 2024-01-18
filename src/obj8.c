@@ -68,6 +68,7 @@ typedef struct {
 	unsigned	manip_idx;
 	unsigned    cmdidx;
 	list_node_t	node;
+	bool hover_detectable;
 } obj8_geom_t;
 
 struct obj8_cmd_s {
@@ -1575,8 +1576,8 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 			break;
 		case OBJ8_CMD_TRIS:
 			/* Don't draw if we're hidden */
-			//if (hide)
-			//	break;
+			if (hide)
+				break;
 			if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
 				/*
 				 * If we're in normal rendering mode, don't
@@ -1590,7 +1591,11 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 				 * If we're in manipulator drawing mode,
 				 * don't draw if this isn't a manipulator.
 				 */
-				if (subcmd->tris.manip_idx == -1u)
+				//if (subcmd->tris.manip_idx == -1u)
+				//	break;
+
+				/* THIS IS A CHANGE FOR SHARED FLIGHT WE DRAW ONLY IF BOOL IS SET */
+				if (!subcmd->tris.hover_detectable)
 					break;
 			} else if (obj->render_mode == 
 				OBJ8_RENDER_MODE_MANIP_ONLY_ONE) {
@@ -2287,4 +2292,12 @@ obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int 
 			break;
 		}
 	}
+}
+
+LIBRAIN_EXPORT void
+obj8_set_cmd_tris_hover_detable(const obj8_cmd_t *cmd, bool detectable)
+{
+	assert(cmd->type == OBJ8_CMD_TRIS);
+	obj8_geom_t *tris = &(cmd->tris);
+	tris->hover_detectable = detectable;
 }

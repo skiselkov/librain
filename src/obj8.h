@@ -212,6 +212,9 @@ obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
 LIBRAIN_EXPORT unsigned 
 obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd);
 
+LIBRAIN_EXPORT void
+obj8_set_cmd_tris_hover_detable(const obj8_cmd_t *cmd, bool detectable);
+
 LIBRAIN_EXPORT unsigned
 obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd);
 
