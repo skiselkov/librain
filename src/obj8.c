@@ -212,7 +212,6 @@ obj8_cmd_alloc(obj8_t *obj, obj8_cmd_type_t type, obj8_cmd_t *parent)
 
 	if (obj->n_cmd_t == obj->cap_cmd_t) {
 		obj->cap_cmd_t += 32;
-		logMsg("Will call safe_realloc here on obj->cmdsbyidx and new size of %d", obj->cap_cmd_t);
 		obj->cmdsbyidx = safe_realloc(obj->cmdsbyidx, obj->cap_cmd_t *
 		    sizeof (*obj->cmdsbyidx));
 	}
@@ -450,9 +449,7 @@ parse_ATTR_manip_command(const char *line, obj8_t *obj)
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
 	if (manip->cmd == NULL) {
 		logMsg("[ERROR] Skipping ATTR_manip_command with cmdname %s because command not found!", cmdname);
-		//return (-1u);
-	} else {
-		logMsg("[DEBUG] Found ATTR_manip_command with cmdname %s", cmdname);
+		return (-1u);
 	}
 	return (obj->n_manips - 1);
 }
@@ -518,8 +515,6 @@ parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
 		return (-1u);
 	}
-
-	logMsg("[DEBUG] Found dr_name of %s (%s[%d]) for index %d", dr_name, manip->manip_axis_knob.dr.name, manip->manip_axis_knob.dr_offset, obj->n_manips - 1);
 
 	return (obj->n_manips - 1);
 }		
