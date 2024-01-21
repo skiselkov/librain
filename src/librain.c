@@ -96,8 +96,8 @@ typedef enum {
 	WORLD_RENDER_TYPE_INVALID = 6
 } world_render_type_t;
 
-static int			xp_ver, xplm_ver;
-static XPLMHostApplicationID	host_id;
+static int			xp_ver = 0, xplm_ver = 0;
+static XPLMHostApplicationID	host_id = 0;
 
 static bool_t		inited = B_FALSE;
 static bool_t		debug_draw = B_FALSE;
@@ -431,7 +431,8 @@ static struct {
 	dr_t	beta;
 	dr_t	gs;
 	dr_t	wind_dir;
-	dr_t	wind_spd;
+	dr_t	wind_spd_mps;	// used on XP12+
+	dr_t	wind_spd_kt;	// used on XP11
 	dr_t	rot_rate;
 	dr_t	le_temp;
 	dr_t	amb_temp;
@@ -456,7 +457,7 @@ static struct {
 
 	bool	modern_driver_avail;
 	dr_t	modern_driver;
-} drs;
+} drs = {};
 
 #define	RAIN_COMP_PHASE			xplm_Phase_Gauges
 #define	RAIN_COMP_BEFORE		1
@@ -554,8 +555,9 @@ check_librain_init(void)
 static void
 update_vectors(glass_info_t *gi)
 {
-	float rot_rate = dr_getf(&drs.rot_rate);
-	double wind_spd = KT2MPS(dr_getf(&drs.wind_spd));
+	float rot_rate = dr_getf_prot(&drs.rot_rate);
+	double wind_spd = (xp_ver >= 12000 ? dr_getf_prot(&drs.wind_spd_mps) :
+	    KT2MPS(dr_getf_prot(&drs.wind_spd_kt)));
 	double gs = dr_getf(&drs.gs);
 	vect2_t wind_comp = VECT2(0, wind_spd);
 	vect2_t gs_comp = VECT2(0, gs);
@@ -2468,17 +2470,36 @@ librain_init(const char *the_shaderpath, const librain_glass_t *glass,
 #endif	/* APL */
 	fdr_find(&drs.acf_matrix, "sim/graphics/view/acf_matrix");
 	fdr_find(&drs.viewport, "sim/graphics/view/viewport");
-	fdr_find(&drs.precip_rat,
-	    "sim/weather/precipitation_on_aircraft_ratio");
+	if (xp_ver >= 12000) {
+		fdr_find(&drs.precip_rat,
+		    "sim/weather/aircraft/precipitation_on_aircraft_ratio");
+	} else {
+		fdr_find(&drs.precip_rat,
+		    "sim/weather/precipitation_on_aircraft_ratio");
+	}
 	fdr_find(&drs.prop_thrust, "sim/flightmodel/engine/POINT_thrust");
 	fdr_find(&drs.hdg, "sim/flightmodel/position/psi");
 	fdr_find(&drs.beta, "sim/flightmodel/position/beta");
 	fdr_find(&drs.gs, "sim/flightmodel/position/groundspeed");
-	fdr_find(&drs.wind_dir, "sim/weather/wind_direction_degt");
-	fdr_find(&drs.wind_spd, "sim/weather/wind_speed_kt");
+	if (xp_ver >= 12000) {
+		fdr_find(&drs.wind_dir,
+		    "sim/weather/aircraft/wind_now_direction_degt");
+		fdr_find(&drs.wind_spd_mps,
+		    "sim/weather/aircraft/wind_now_speed_msc");
+	} else {
+		fdr_find(&drs.wind_dir, "sim/weather/wind_direction_degt");
+		fdr_find(&drs.wind_spd_kt, "sim/weather/wind_speed_kt");
+	}
 	fdr_find(&drs.rot_rate, "sim/flightmodel/position/R");
-	fdr_find(&drs.amb_temp, "sim/weather/temperature_ambient_c");
-	fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
+	if (xp_ver >= 12000) {
+		fdr_find(&drs.amb_temp,
+		    "sim/weather/aircraft/temperature_ambient_deg_c");
+		fdr_find(&drs.le_temp,
+		    "sim/weather/aircraft/temperature_leadingedge_deg_c");
+	} else {
+		fdr_find(&drs.amb_temp, "sim/weather/temperature_ambient_c");
+		fdr_find(&drs.le_temp, "sim/weather/temperature_le_c");
+	}
 	fdr_find(&drs.window_ice, "sim/flightmodel/failures/window_ice");
 	drs.VR_enabled_avail =
 	    dr_find(&drs.VR_enabled, "sim/graphics/VR/enabled");
