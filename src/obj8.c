@@ -434,7 +434,7 @@ alloc_manip(obj8_t *obj, obj8_manip_type_t type, const char *cursor)
 static unsigned
 parse_ATTR_manip_command(const char *line, obj8_t *obj)
 {
-	logMsg("[DEBUG] Parsing ATTR_manip_command with line:\n%s", line);
+	//logMsg("[DEBUG] Parsing ATTR_manip_command with line:\n%s", line);
 
 	obj8_manip_t *manip;
 	char cursor[32], cmdname[256];
@@ -509,7 +509,7 @@ parse_ATTR_manip_noop(obj8_t *obj)
 static unsigned
 parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
 {
-	logMsg("[DEBUG] Parsing ATTR_manip_axis_knob with line:\n%s", line);
+	//logMsg("[DEBUG] Parsing ATTR_manip_axis_knob with line:\n%s", line);
 
 	obj8_manip_t *manip;
 	
@@ -1198,11 +1198,11 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 {
 	obj8_cmd_t *traversal = (obj8_cmd_t *) cmd;
 
-	logMsg("[DEBUG] Entering call to obj8_nearest_tris_for_cmd with cmdidx of %d", traversal->cmdidx);
+	//logMsg("[DEBUG] Entering call to obj8_nearest_tris_for_cmd with cmdidx of %d", traversal->cmdidx);
 
 
 	while (traversal != NULL && traversal != obj->top) {
-		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+		//logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
 		//obj8_debug_cmd(obj, obj8_get_cmd_t(obj, traversal->cmdidx));
 
 		if (traversal->type != OBJ8_CMD_GROUP) {
@@ -1217,7 +1217,7 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 				// We will check these later if don't find one at same level?
 				break;
 			case OBJ8_CMD_TRIS:
-				logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
+				//logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
 				return subcmd->cmdidx;
 			default:
 				break;
@@ -1230,15 +1230,15 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 		    subcmd = list_next(&traversal->group.cmds, subcmd)) {
 			
 			if (subcmd == cmd) {
-				logMsg("[DEBUG] Found subcmd that was original cmd we were called with, skip...");
+				//logMsg("[DEBUG] Found subcmd that was original cmd we were called with, skip...");
 				continue;
 			}
 
 			switch (subcmd->type) {
 				case OBJ8_CMD_GROUP:
-					logMsg("[DEBUG] Making recursive call to obj8_nearest_tris_for_cmd with cmdidx of %d", subcmd->cmdidx);
+					//logMsg("[DEBUG] Making recursive call to obj8_nearest_tris_for_cmd with cmdidx of %d", subcmd->cmdidx);
 					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
-					logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
+					//logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
 					if (foundidx != -1u) {
 						return foundidx;
 					}
