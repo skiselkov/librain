@@ -477,6 +477,28 @@ parse_ATTR_manip_toggle(const char *line, obj8_t *obj)
 }
 
 static unsigned
+parse_ATTR_manip_push(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], dr_name[256];
+	float v1, v2;
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_push %31s %f %f %255s",
+	    cursor, &v1, &v2, dr_name) != 4) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_PUSH, cursor);
+	manip->toggle.drset_idx = obj8_drset_add(obj->drset, dr_name);
+	manip->toggle.v1 = v1;
+	manip->toggle.v2 = v2;
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
 parse_ATTR_manip_noop(obj8_t *obj)
 {
 	return 0;
@@ -1038,6 +1060,10 @@ obj8_parse_worker(void *userinfo)
 			//logMsg("[DEBUG] Found ATTR_manip_noop line of:\n%s", line);
 			//cur_manip = parse_ATTR_manip_noop(obj);
 			parse_ATTR_manip_noop(obj);
+		} else if (strncmp(line, "ATTR_manip_push", 15) == 0) {
+			cur_manip = parse_ATTR_manip_push(line, obj);
+		} else if (strncmp(line, "ATTR_manip_", 11) == 0) {
+			logMsg("[ERROR] Found unhandled manipulator line: %s", line);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -1172,8 +1198,11 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 {
 	obj8_cmd_t *traversal = (obj8_cmd_t *) cmd;
 
+	logMsg("[DEBUG] Entering call to obj8_nearest_tris_for_cmd with cmdidx of %d", traversal->cmdidx);
+
+
 	while (traversal != NULL && traversal != obj->top) {
-		//logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
+		logMsg("[DEBUG] traversal of tree found %d cmdidx in upward tree", traversal->cmdidx);
 		//obj8_debug_cmd(obj, obj8_get_cmd_t(obj, traversal->cmdidx));
 
 		if (traversal->type != OBJ8_CMD_GROUP) {
@@ -1188,7 +1217,7 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 				// We will check these later if don't find one at same level?
 				break;
 			case OBJ8_CMD_TRIS:
-				//logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
+				logMsg("[DEBUG] Found in loop an OBJ8_CMD_TRIS with cmdidx of %d, returning", subcmd->cmdidx);
 				return subcmd->cmdidx;
 			default:
 				break;
@@ -1199,10 +1228,17 @@ obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
 
 		for (obj8_cmd_t *subcmd = list_head(&traversal->group.cmds); subcmd != NULL;
 		    subcmd = list_next(&traversal->group.cmds, subcmd)) {
+			
+			if (subcmd == cmd) {
+				logMsg("[DEBUG] Found subcmd that was original cmd we were called with, skip...");
+				continue;
+			}
+
 			switch (subcmd->type) {
 				case OBJ8_CMD_GROUP:
+					logMsg("[DEBUG] Making recursive call to obj8_nearest_tris_for_cmd with cmdidx of %d", subcmd->cmdidx);
 					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
-					//logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
+					logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
 					if (foundidx != -1u) {
 						return foundidx;
 					}
@@ -2166,6 +2202,9 @@ obj8_manip_type_t_name(obj8_manip_type_t type_val)
 			break;
 		case OBJ8_MANIP_TOGGLE:
 			return "OBJ8_MANIP_TOGGLE";
+			break;
+		case OBJ8_MANIP_PUSH:
+			return "OBJ8_MANIP_PUSH";
 			break;
 		case OBJ8_MANIP_NOOP:
 			return "OBJ8_MANIP_NOOP";
