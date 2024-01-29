@@ -1062,6 +1062,23 @@ obj8_parse_worker(void *userinfo)
 			parse_ATTR_manip_noop(obj);
 		} else if (strncmp(line, "ATTR_manip_push", 15) == 0) {
 			cur_manip = parse_ATTR_manip_push(line, obj);
+		} else if (strncmp(line, "ATTR_manip_keyframe", 19) == 0) {
+			logMsg("[WARN] Found unhandled ATTR_manip_keyframe line, see notes below this line in the code");
+			// CONCERN: This is whats used in ANIM_rotate_key...
+			//if (!parse_rotate_key(line, cur_anim, filename, linenr))
+			// NEED TO MODIFY 
+			// 	struct {
+			// 	vect3_t		xyz;
+			// 	vect3_t		dir;
+			// 	float		angle1, angle2;
+			// 	float		lift;
+			// 	float		v1min, v1max;
+			// 	float		v2min, v2max;
+			// 	unsigned	drset_idx1, drset_idx2;
+			// } drag_rot;
+			// TO ALLOW FOR KEYFRAMES.....
+			// ALSO LOOKS LIKE NEED TO HANDLE detents??
+			//	goto errout;
 		} else if (strncmp(line, "ATTR_manip_", 11) == 0) {
 			logMsg("[ERROR] Found unhandled manipulator line: %s", line);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
