@@ -1436,44 +1436,31 @@ obj8_is_load_complete(const obj8_t *obj)
 void
 obj8_free(obj8_t *obj)
 {
-	logMsg("Here");
 	obj8_cmd_free(obj->top);
-	logMsg("Here");
 	obj->load_stop = B_TRUE;
 	thread_join(&obj->loader);
-	logMsg("Here");
 	mutex_destroy(&obj->lock);
-	logMsg("Here");
 	cv_destroy(&obj->cv);
-	logMsg("Here");
 	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
 		    obj->vtx_cap * sizeof (obj8_vtx_t)));
 	}
-	logMsg("Here");
 	free(obj->vtx_table);
-	logMsg("Here");
 	if (obj->idx_buf != 0) {
 		glDeleteBuffers(1, &obj->idx_buf);
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_idx_buf, obj,
 		    obj->idx_cap * sizeof (GLuint)));
 	}
-	logMsg("Here");
 	free(obj->idx_table);
 	free(obj->filename);
 	free(obj->tex_filename);
 	free(obj->norm_filename);
 	free(obj->lit_filename);
-	logMsg("Here");
 	free(obj->manips);
-	logMsg("Here");
 	obj8_drset_destroy(obj->drset);
-	logMsg("Here");
-	free(obj->matrix);
-	logMsg("Here");
+	aligned_free(obj->matrix);
 	free(obj);
-	logMsg("Here");
 }
 
 static inline float
