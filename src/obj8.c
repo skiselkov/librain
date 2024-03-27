@@ -2341,7 +2341,7 @@ obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int 
 }
 
 LIBRAIN_EXPORT void
-obj8_set_cmd_tris_hover_detable(const obj8_cmd_t *cmd, bool detectable)
+obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
 {
 	assert(cmd->type == OBJ8_CMD_TRIS);
 	obj8_geom_t *tris = &(cmd->tris);
