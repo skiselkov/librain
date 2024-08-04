@@ -254,8 +254,6 @@ find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
 {
 	char *bracket;
 
-	char dr_name_cpy[255];
-
 	if (dr_find(dr, "%s", dr_name)) {
 		*offset = -1;
 		return (true);
@@ -501,7 +499,7 @@ parse_ATTR_manip_push(const char *line, obj8_t *obj)
 		return (-1u);
 	}
 	manip = alloc_manip(obj, OBJ8_MANIP_PUSH, cursor);
-	manip->toggle.drset_idx = obj8_drset_add(obj->drset, dr_name);
+	manip->toggle.drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
 	manip->toggle.v1 = v1;
 	manip->toggle.v2 = v2;
 
@@ -573,7 +571,6 @@ parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
 	}*/
-<<<<<<< HEAD
 	return (obj->n_manips - 1);
 }
 
@@ -661,92 +658,6 @@ parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
 
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
 	
-	return (obj->n_manips - 1);
-}
-
-static unsigned
-parse_ATTR_manip_command_switch_lr(const char *line, obj8_t *obj)
-{
-	obj8_manip_t *manip;
-	char cursor[32], pos_cmdname[256], neg_cmdname[256];
-
-	ASSERT(line != NULL);
-	ASSERT(obj != NULL);
-
-	if (sscanf(line, "ATTR_manip_command_switch_left_right %31s %255s %255s",
-	    cursor, pos_cmdname, neg_cmdname) != 3) {
-		return (-1u);
-	}
-	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR, cursor);
-	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
-	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
-	/*if (manip->cmd_knob.pos_cmd == NULL ||
-	    manip->cmd_knob.neg_cmd == NULL) {
-		return (-1u);
-	}*/
-	return (obj->n_manips - 1);
-}
-
-static unsigned
-parse_ATTR_manip_command_switch_ud(const char *line, obj8_t *obj)
-{
-	obj8_manip_t *manip;
-	char cursor[32], pos_cmdname[256], neg_cmdname[256];
-
-	ASSERT(line != NULL);
-	ASSERT(obj != NULL);
-
-	if (sscanf(line, "ATTR_manip_command_switch_up_down %31s %255s %255s",
-	    cursor, pos_cmdname, neg_cmdname) != 3) {
-		return (-1u);
-	}
-	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD, cursor);
-	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
-	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
-	/*if (manip->cmd_knob.pos_cmd == NULL ||
-	    manip->cmd_knob.neg_cmd == NULL) {
-		return (-1u);
-	}*/
-	return (obj->n_manips - 1);
-}
-
-static unsigned
-parse_ATTR_manip_command_switch_lr2(const char *line, obj8_t *obj)
-{
-	obj8_manip_t *manip;
-	char cursor[32], cmdname[256];
-
-	ASSERT(line != NULL);
-	ASSERT(obj != NULL);
-
-	if (sscanf(line, "ATTR_manip_command_switch_left_right2 %31s %255s", cursor, cmdname) != 2)
-		return (-1u);
-	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR2, cursor);
-	manip->cmd_sw2 = XPLMFindCommand(cmdname);
-	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
-	//if (manip->cmd == NULL)
-	//	return (-1u);
-
-	return (obj->n_manips - 1);
-}
-
-static unsigned
-parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
-{
-	obj8_manip_t *manip;
-	char cursor[32], cmdname[256];
-
-	ASSERT(line != NULL);
-	ASSERT(obj != NULL);
-
-	if (sscanf(line, "ATTR_manip_command_switch_up_down2 %31s %255s", cursor, cmdname) != 2)
-		return (-1u);
-	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD2, cursor);
-	manip->cmd_sw2 = XPLMFindCommand(cmdname);
-	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
-	//if (manip->cmd == NULL)
-	//	return (-1u);
-
 	return (obj->n_manips - 1);
 }
 
@@ -1114,8 +1025,6 @@ obj8_parse_worker(void *userinfo)
 			 * The dataref name is optional, so skip creating
 			 * the command if it is empty.
 			 */
-			obj8_cmd_t *cmd = obj8_cmd_alloc(
-			    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 			if (sscanf(line, "ATTR_light_level %f %f %255s",
 			    &min_val, &max_val, dr_name) == 3) {
 
@@ -1127,6 +1036,8 @@ obj8_parse_worker(void *userinfo)
 				cmd->drset_idx = obj8_drset_add(
 				    obj->drset, dr_name, 0.02);
 			} else {
+				obj8_cmd_t *cmd = obj8_cmd_alloc( obj,
+			    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 				cmd->drset_idx = obj8_drset_add(
 				    obj->drset, NULL, 0);
 			}
@@ -1266,40 +1177,6 @@ errout:
 	obj->load_error = B_TRUE;
 	cv_broadcast(&obj->cv);
 	mutex_exit(&obj->lock);
-}
-
-void
-obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd)
-{
-	switch (subcmd->type) {
-		case OBJ8_CMD_GROUP:
-			logMsg("[DEBUG] Have OBJ8_CMD_GROUP with cmdidx of %d...", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_TRIS:
-			logMsg("[DEBUG] Have OBJ8_CMD_TRIS with cmdidx of %d, group id of %s and manip index %d", subcmd->cmdidx, subcmd->tris.group_id, subcmd->tris.manip_idx);
-			break;
-		case OBJ8_CMD_ANIM_HIDE_SHOW: 
-			logMsg("[DEBUG] Have OBJ8_CMD_ANIM_HIDE_SHOW with cmdidx of %d", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_ANIM_ROTATE:
-			logMsg("[DEBUG] Have OBJ8_CMD_ANIM_ROTATE with cmdidx of %d", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_ANIM_TRANS:
-			logMsg("[DEBUG] Have OBJ8_CMD_ANIM_TRANS with cmdidx of %d", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
-			logMsg("[DEBUG] Have OBJ8_CMD_ATTR_LIGHT_LEVEL with cmdidx of %d", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_ATTR_DRAW_ENABLE:
-			logMsg("[DEBUG] Have OBJ8_CMD_ATTR_DRAW_ENABLE with cmdidx of %d", subcmd->cmdidx);
-			break;
-		case OBJ8_CMD_ATTR_DRAW_DISABLE:
-			logMsg("[DEBUG] Have OBJ8_CMD_ATTR_DRAW_DISABLE with cmdidx of %d", subcmd->cmdidx);
-			break;
-		default:
-			break;
-	}
-
 }
 
 unsigned obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd)
@@ -1794,143 +1671,144 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
 		switch (subcmd->type) {
-		case OBJ8_CMD_GROUP:
-			if (hide || (!do_draw &&
-			    !render_mode_is_manip_only(obj->render_mode) && obj->render_mode != OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE)) {
+			case OBJ8_CMD_GROUP:
+				if (hide || (!do_draw &&
+				    !render_mode_is_manip_only(obj->render_mode) && obj->render_mode != OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE)) {
+					break;
+				}
+				obj8_draw_group_cmd(obj, subcmd, groupname, pvm,
+				    dr_values);
+				break;
+			case OBJ8_CMD_TRIS:
+				/* Don't draw if we're hidden */
+				//if (hide)
+				//	break;
+				if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
+					/*
+					 * If we're in normal rendering mode, don't
+					 * draw if ATTR_draw_disable is active.
+					 */
+					//if (!do_draw)
+					//	break;
+				} else if (obj->render_mode ==
+				    OBJ8_RENDER_MODE_MANIP_ONLY) {
+					/*
+					 * If we're in manipulator drawing mode,
+					 * don't draw if this isn't a manipulator.
+					 */
+					//if (subcmd->tris.manip_idx == -1u)
+					//	break;
+
+					/* THIS IS A CHANGE FOR SHARED FLIGHT WE DRAW ONLY IF BOOL IS SET */
+					if (!subcmd->tris.hover_detectable)
+						break;
+				} else if (obj->render_mode == 
+					OBJ8_RENDER_MODE_MANIP_ONLY_ONE) {
+					/*
+					 * If we're in single-manipulator drawing mode,
+					 * don't draw if this isn't a manipulator,
+					 * or the manipulator index doesn't match the
+					 * one manipulator we do want to draw.
+					 */
+					 if ((int)subcmd->tris.manip_idx !=
+					      obj->render_mode_arg) {
+					 	break;
+					 }
+				} else if (obj->render_mode == 
+					OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE) {
+					
+					if ((int)subcmd->cmdidx != obj->render_mode_arg) {
+					  	break;
+
+					bool in_tree = false;
+
+					obj8_cmd_t *traversal = subcmd;
+
+					while (traversal != NULL) {
+						if ((int)traversal->cmdidx == obj->render_mode_arg) {
+							in_tree = true;
+							break;
+						} else {
+							logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+						}
+						traversal = traversal->parent;
+					}
+
+					if (!in_tree) {
+						logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+					 	break;
+					} else {
+						logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+					}
+
+					// bool in_tree = false;
+
+					// obj8_cmd_t *traversal = subcmd;
+
+					// while (traversal != NULL) {
+					// 	if ((int)traversal->cmdidx == obj->render_mode_arg) {
+					// 		in_tree = true;
+					// 		break;
+					// 	} else {
+					// 		logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+					// 	}
+					// 	traversal = traversal->parent;
+					// }
+
+					// if (!in_tree) {
+					// 	logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+					//  	break;
+					// } else {
+					// 	logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+					// }
+				}
+				if (groupname == NULL ||
+				    strcmp(subcmd->tris.group_id, groupname) == 0) {
+					if (subcmd->tris.double_sided) {
+						glCullFace(GL_FRONT);
+						geom_draw(obj, &subcmd->tris, pvm);
+						glCullFace(GL_BACK);
+					}
+					geom_draw(obj, &subcmd->tris, pvm);
+				}
+				break;
+			case OBJ8_CMD_ANIM_HIDE_SHOW: {
+				double val = cmd_dr_read(subcmd, dr_values);
+
+				if (subcmd->hide_show.val[0] <= val &&
+				    subcmd->hide_show.val[1] >= val)
+					hide = !subcmd->hide_show.set_val;
 				break;
 			}
-			obj8_draw_group_cmd(obj, subcmd, groupname, pvm,
-			    dr_values);
-			break;
-		case OBJ8_CMD_TRIS:
-			/* Don't draw if we're hidden */
-			//if (hide)
-			//	break;
-			if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
-				/*
-				 * If we're in normal rendering mode, don't
-				 * draw if ATTR_draw_disable is active.
-				 */
-				//if (!do_draw)
-				//	break;
-			} else if (obj->render_mode ==
-			    OBJ8_RENDER_MODE_MANIP_ONLY) {
-				/*
-				 * If we're in manipulator drawing mode,
-				 * don't draw if this isn't a manipulator.
-				 */
-				//if (subcmd->tris.manip_idx == -1u)
-				//	break;
-
-				/* THIS IS A CHANGE FOR SHARED FLIGHT WE DRAW ONLY IF BOOL IS SET */
-				if (!subcmd->tris.hover_detectable)
-					break;
-			} else if (obj->render_mode == 
-				OBJ8_RENDER_MODE_MANIP_ONLY_ONE) {
-				/*
-				 * If we're in single-manipulator drawing mode,
-				 * don't draw if this isn't a manipulator,
-				 * or the manipulator index doesn't match the
-				 * one manipulator we do want to draw.
-				 */
-				 if ((int)subcmd->tris.manip_idx !=
-				      obj->render_mode_arg) {
-				 	break;
-				 }
-			} else if (obj->render_mode == 
-				OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE) {
-				
-				if ((int)subcmd->cmdidx != obj->render_mode_arg) {
-				  	break;
-
-				bool in_tree = false;
-
-				obj8_cmd_t *traversal = subcmd;
-
-				while (traversal != NULL) {
-					if ((int)traversal->cmdidx == obj->render_mode_arg) {
-						in_tree = true;
-						break;
-					} else {
-						logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+			case OBJ8_CMD_ANIM_ROTATE:
+				handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
+				break;
+			case OBJ8_CMD_ANIM_TRANS:
+				handle_cmd_anim_trans(subcmd, pvm, dr_values);
+				break;
+			case OBJ8_CMD_ATTR_LIGHT_LEVEL:
+				if (isnan(obj->light_level_override)) {
+					float raw = cmd_dr_read(subcmd, dr_values);
+					float value = 0;
+					if (subcmd->attr_light_level.min_val <
+					    subcmd->attr_light_level.max_val) {
+						value = iter_fract(raw,
+						    subcmd->attr_light_level.min_val,
+						    subcmd->attr_light_level.max_val,
+						    true);
 					}
-					traversal = traversal->parent;
+					glUniform1f(obj->light_level_loc, value);
 				}
-
-				if (!in_tree) {
-					logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
-				 	break;
-				} else {
-					logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
-				}
-
-				// bool in_tree = false;
-
-				// obj8_cmd_t *traversal = subcmd;
-
-				// while (traversal != NULL) {
-				// 	if ((int)traversal->cmdidx == obj->render_mode_arg) {
-				// 		in_tree = true;
-				// 		break;
-				// 	} else {
-				// 		logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
-				// 	}
-				// 	traversal = traversal->parent;
-				// }
-
-				// if (!in_tree) {
-				// 	logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
-				//  	break;
-				// } else {
-				// 	logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
-				// }
+				break;
+			case OBJ8_CMD_ATTR_DRAW_ENABLE:
+				do_draw = B_TRUE;
+				break;
+			case OBJ8_CMD_ATTR_DRAW_DISABLE:
+				do_draw = B_FALSE;
+				break;
+			default:
+				break;
 			}
-			if (groupname == NULL ||
-			    strcmp(subcmd->tris.group_id, groupname) == 0) {
-				if (subcmd->tris.double_sided) {
-					glCullFace(GL_FRONT);
-					geom_draw(obj, &subcmd->tris, pvm);
-					glCullFace(GL_BACK);
-				}
-				geom_draw(obj, &subcmd->tris, pvm);
-			}
-			break;
-		case OBJ8_CMD_ANIM_HIDE_SHOW: {
-			double val = cmd_dr_read(subcmd, dr_values);
-
-			if (subcmd->hide_show.val[0] <= val &&
-			    subcmd->hide_show.val[1] >= val)
-				hide = !subcmd->hide_show.set_val;
-			break;
-		}
-		case OBJ8_CMD_ANIM_ROTATE:
-			handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
-			break;
-		case OBJ8_CMD_ANIM_TRANS:
-			handle_cmd_anim_trans(subcmd, pvm, dr_values);
-			break;
-		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
-			if (isnan(obj->light_level_override)) {
-				float raw = cmd_dr_read(subcmd, dr_values);
-				float value = 0;
-				if (subcmd->attr_light_level.min_val <
-				    subcmd->attr_light_level.max_val) {
-					value = iter_fract(raw,
-					    subcmd->attr_light_level.min_val,
-					    subcmd->attr_light_level.max_val,
-					    true);
-				}
-				glUniform1f(obj->light_level_loc, value);
-			}
-			break;
-		case OBJ8_CMD_ATTR_DRAW_ENABLE:
-			do_draw = B_TRUE;
-			break;
-		case OBJ8_CMD_ATTR_DRAW_DISABLE:
-			do_draw = B_FALSE;
-			break;
-		default:
-			break;
 		}
 	}
 }
@@ -2104,7 +1982,7 @@ obj8_get_num_manips(const obj8_t *obj)
 	return (obj->n_manips);
 }
 
-const obj8_manip_t *
+obj8_manip_t *
 obj8_get_manip(const obj8_t *obj, unsigned idx)
 {
 	ASSERT(obj != NULL);
@@ -2551,6 +2429,24 @@ void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned
 	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
 	memcpy(pvm, pvm_in, sizeof (pvm));
 
+	if (!upload_data(obj))
+		return;
+
+	if (obj->drset_auto_update)
+		(void)obj8_drset_update(obj->drset);
+
+	enum { MAX_STACK_DRS = 128 };
+	float dr_values_stack[MAX_STACK_DRS];
+	size_t n_drs = obj8_drset_get_all(obj->drset, NULL, 0);
+	float *dr_values;
+	if (n_drs > ARRAY_NUM_ELEM(dr_values_stack)) {
+		dr_values = safe_malloc(n_drs * sizeof (*dr_values));
+	} else {
+		dr_values = dr_values_stack;
+	}
+	obj8_drset_get_all(obj->drset, dr_values, n_drs);
+
+
 	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
 		switch (subcmd->type) {
@@ -2573,7 +2469,7 @@ void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned
 			break;
 		}
 		case OBJ8_CMD_ANIM_ROTATE:
-			handle_cmd_anim_rotate(obj, subcmd, pvm);
+			handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
 			break;
 		case OBJ8_CMD_ANIM_TRANS:
 			handle_cmd_anim_trans(obj, subcmd, pvm);

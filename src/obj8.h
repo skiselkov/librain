@@ -180,7 +180,7 @@ LIBRAIN_EXPORT void obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode,
     int32_t arg);
 
 LIBRAIN_EXPORT unsigned obj8_get_num_manips(const obj8_t *obj);
-LIBRAIN_EXPORT const obj8_manip_t *obj8_get_manip(const obj8_t *obj,
+LIBRAIN_EXPORT obj8_manip_t *obj8_get_manip(const obj8_t *obj,
     unsigned idx);
 
 LIBRAIN_EXPORT unsigned obj8_get_num_cmd_t(const obj8_t *obj);
@@ -219,10 +219,6 @@ LIBRAIN_EXPORT unsigned obj8_drset_get_num_drs(const obj8_drset_t *drset);
 LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
 LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
 
-
-LIBRAIN_EXPORT void
-obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
-
 LIBRAIN_EXPORT unsigned 
 obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd);
 
@@ -236,17 +232,6 @@ void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pv
 
 
 LIBRAIN_EXPORT void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset);
-
-LIBRAIN_EXPORT int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx);
-LIBRAIN_EXPORT const char *obj8_manip_type_t_name(obj8_manip_type_t type_val);
-
-LIBRAIN_EXPORT void
-obj8_debug_cmd(const obj8_t *obj, const obj8_cmd_t *subcmd);
-LIBRAIN_EXPORT unsigned
-obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd);
-
-void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in);
-
 
 static inline float
 obj8_drset_getf(const obj8_drset_t *drset, unsigned idx)
