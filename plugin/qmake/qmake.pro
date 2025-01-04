@@ -24,7 +24,7 @@ INCLUDEPATH += $$[LIBACFUTILS]/SDK/CHeaders/XPLM
 INCLUDEPATH += $$[LIBACFUTILS]/SDK/CHeaders/Widgets
 INCLUDEPATH += $$[LIBACFUTILS]/glew
 INCLUDEPATH += $$[LIBACFUTILS]/cglm/cglm-0.4.1/include
-QMAKE_CFLAGS += -std=c99 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
+QMAKE_CFLAGS += -std=c11 -O2 -g -W -Wall -Wextra -Werror -fvisibility=hidden
 QMAKE_CFLAGS += -Wunused-result
 
 # _GNU_SOURCE needed on Linux for getline()

@@ -156,10 +156,10 @@ load_obj_cb(dr_t *dr, void *value_p)
 	obj_data_t *od;
 
 	ASSERT(dr != NULL);
-	ASSERT(dr->cb_userinfo != NULL);
 	ASSERT(value_p != NULL);
 
-	od = dr->cb_userinfo;
+	od = dr_get_cb_userinfo(dr);
+	ASSERT(od != NULL);
 	value = *(int *)value_p;
 
 	if (od->obj != NULL) {
@@ -342,11 +342,14 @@ obj_data_init(obj_data_t *od, const char *prefix)
 	    "%s/pos_offset/y", prefix);
 	dr_create_f64(&od->drs.pos_offset[2], &od->pos_offset.z, B_TRUE,
 	    "%s/pos_offset/z", prefix);
-	dr_create_i(&od->drs.load, (int *)&od->load, B_TRUE, "%s/load", prefix);
+	dr_create_i_cfg(&od->drs.load, (int *)&od->load,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = load_obj_cb,
+	        .cb_userinfo = od,
+	    }, "%s/load", prefix);
 	dr_create_i(&od->drs.loaded, (int *)&od->loaded, B_FALSE,
 	    "%s/loaded", prefix);
-	od->drs.load.write_cb = load_obj_cb;
-	od->drs.load.cb_userinfo = od;
 }
 
 static void
@@ -390,9 +393,11 @@ glass_data_init(unsigned glass_i)
 	    "librain/glass_%d/thrust_point/y", glass_i);
 	dr_create_f64(&gd->drs.thrust_factor, &glass->thrust_factor, B_TRUE,
 	    "librain/glass_%d/thrust_factor", glass_i);
-	dr_create_f64(&gd->drs.max_thrust, &glass->max_thrust, B_TRUE,
-	    "librain/glass_%d/max_thrust", glass_i);
-	gd->drs.max_thrust.write_cb = max_thrust_validator;
+	dr_create_f64_cfg(&gd->drs.max_thrust, &glass->max_thrust,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = max_thrust_validator,
+	    }, "librain/glass_%d/max_thrust", glass_i);
 
 	dr_create_f64(&gd->drs.gravity_point_x, &glass->gravity_point.x, B_TRUE,
 	    "librain/glass_%d/gravity_point/x", glass_i);
@@ -410,13 +415,17 @@ glass_data_init(unsigned glass_i)
 	dr_create_f64(&gd->drs.wind_normal, &glass->wind_normal, B_TRUE,
 	    "librain/glass_%d/wind_normal", glass_i);
 
-	dr_create_f64(&gd->drs.max_tas, &glass->max_tas, B_TRUE,
-	    "librain/glass_%d/max_tas", glass_i);
-	gd->drs.max_tas.write_cb = max_tas_validator;
+	dr_create_f64_cfg(&gd->drs.max_tas, &glass->max_tas,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = max_tas_validator,
+	    }, "librain/glass_%d/max_tas", glass_i);
 
-	dr_create_f(&gd->drs.therm_inertia, &glass->therm_inertia, B_TRUE,
-	    "librain/glass_%d/therm_inertia", glass_i);
-	gd->drs.therm_inertia.write_cb = therm_inertia_validator;
+	dr_create_f_cfg(&gd->drs.therm_inertia, &glass->therm_inertia,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = therm_inertia_validator,
+	    }, "librain/glass_%d/therm_inertia", glass_i);
 
 	dr_create_vf(&gd->drs.heat_zones, glass->heat_zones,
 	    sizeof (glass->heat_zones) / sizeof (float), B_TRUE,
@@ -424,9 +433,11 @@ glass_data_init(unsigned glass_i)
 	dr_create_vf(&gd->drs.heat_tgt_temps, glass->heat_tgt_temps,
 	    sizeof (glass->heat_tgt_temps) / sizeof (float), B_TRUE,
 	    "librain/glass_%d/heat_tgt_temps", glass_i);
-	dr_create_f(&gd->drs.cabin_temp, &glass->cabin_temp, B_TRUE,
-	    "librain/glass_%d/cabin_temp", glass_i);
-	gd->drs.cabin_temp.write_cb = cabin_temp_validator;
+	dr_create_f(&gd->drs.cabin_temp, &glass->cabin_temp,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = cabin_temp_validator,
+	    }, "librain/glass_%d/cabin_temp", glass_i);
 
 	dr_create_vf(&gd->drs.hot_air_src, glass->hot_air_src,
 	    sizeof (glass->hot_air_src) / sizeof (float), B_TRUE,
@@ -456,10 +467,12 @@ glass_data_init(unsigned glass_i)
 		dr_create_f64(&gd->drs.wiper_radius_inner[i],
 		    &glass->wiper_radius_inner[i], B_TRUE,
 		    "librain/glass_%d/wiper_%d/radius_inner", glass_i, i);
-		dr_create_f64(&gd->drs.wiper_angle[i],
-		    &gd->wiper_angle[i], B_TRUE,
-		    "librain/glass_%d/wiper_%d/angle", glass_i, i);
-		gd->drs.wiper_angle[i].write_cb = angle_validator;
+		dr_create_f64_cfg(&gd->drs.wiper_angle[i],
+		    &gd->wiper_angle[i],
+		    (dr_cfg_t){
+		        .writable = true,
+		        .write_cb = angle_validator,
+		    }, "librain/glass_%d/wiper_%d/angle", glass_i, i);
 		dr_create_i(&gd->drs.wiper_moving[i],
 		    (int *)&gd->wiper_moving[i], B_TRUE,
 		    "librain/glass_%d/wiper_%d/moving", glass_i, i);
@@ -642,21 +655,29 @@ XPluginStart(char *name, char *sig, char *desc)
 		obj_data_init(&z_depth_objs[i], prefix);
 	}
 
-	dr_create_i(&drs.librain_do_init, (int *)&librain_do_init, B_TRUE,
-	    "librain/initialize");
-	drs.librain_do_init.write_cb = librain_init_cb;
+	dr_create_i_cfg(&drs.librain_do_init, (int *)&librain_do_init,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = librain_init_cb,
+	    }, "librain/initialize");
 	dr_create_i(&drs.librain_inited, (int *)&librain_inited, B_FALSE,
 	    "librain/init_success");
-	dr_create_i(&drs.num_glass_use, &num_glass_use, B_TRUE,
-	    "librain/num_glass_use");
-	drs.num_glass_use.write_cb = num_glass_write_cb;
+	dr_create_i_cfg(&drs.num_glass_use, &num_glass_use,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = num_glass_write_cb,
+	    }, "librain/num_glass_use");
 	dr_create_i(&drs.verbose, (int *)&verbose, B_TRUE, "librain/verbose");
-	dr_create_i(&drs.debug_draw, (int *)&debug_draw, B_TRUE,
-	    "librain/debug_draw");
-	drs.debug_draw.write_cb = debug_draw_cb;
-	dr_create_i(&drs.wipers_visible, (int *)&wipers_visible, B_TRUE,
-	    "librain/wipers_visible");
-	drs.wipers_visible.write_cb = wiper_cb;
+	dr_create_i_cfg(&drs.debug_draw, (int *)&debug_draw,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = debug_draw_cb,
+	    }, "librain/debug_draw");
+	dr_create_i_cfg(&drs.wipers_visible, (int *)&wipers_visible,
+	    (dr_cfg_t){
+	        .writable = true,
+	        .write_cb = wiper_cb,
+	    }, "librain/wipers_visible");
 
 	return (1);
 errout:
