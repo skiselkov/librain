@@ -68,12 +68,15 @@ typedef struct {
 	char		group_id[32];	/* Contents of X-GROUP-ID attribute */
 	bool_t		double_sided;
 	unsigned	manip_idx;
+	unsigned    cmdidx;
 	list_node_t	node;
+	bool hover_detectable;
 } obj8_geom_t;
 
-typedef struct obj8_cmd_s {
+struct obj8_cmd_s {
 	obj8_cmd_type_t		type;
 	struct obj8_cmd_s	*parent;
+	unsigned 		cmdidx;
 	unsigned		drset_idx;
 	union {
 		struct {
@@ -102,7 +105,7 @@ typedef struct obj8_cmd_s {
 		obj8_geom_t	tris;
 	};
 	list_node_t	list_node;
-} obj8_cmd_t;
+};
 
 struct obj8_s {
 	char			*filename;
@@ -118,6 +121,9 @@ struct obj8_s {
 	obj8_manip_t		*manips;
 	unsigned		n_manips;
 	unsigned		cap_manips;
+	unsigned  		n_cmd_t;
+	unsigned        cap_cmd_t;
+	obj8_cmd_t		**cmdsbyidx;
 	obj8_render_mode_t	render_mode;
 	int32_t			render_mode_arg;
 	float			light_level_override;
@@ -156,6 +162,8 @@ struct obj8_s {
 	bool_t			load_complete;
 	bool_t			load_error;
 	bool_t			load_stop;
+
+	unsigned        manip_paint_offset;
 };
 
 typedef struct {
@@ -177,6 +185,10 @@ typedef struct {
 	avl_node_t	tree_node;
 	list_node_t	list_node;
 } drset_dr_t;
+
+void obj8_debug_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd);
+void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int *counter,
+    unsigned int todraw, const mat4 pvm_in);
 
 static inline bool
 use_vaos(void)
@@ -204,13 +216,25 @@ obj8_geom_init(obj8_geom_t *geom, const char *group_id, bool_t double_sided,
 	}
 }
 
+
+
 static obj8_cmd_t *
-obj8_cmd_alloc(obj8_cmd_type_t type, obj8_cmd_t *parent)
+obj8_cmd_alloc(obj8_t *obj, obj8_cmd_type_t type, obj8_cmd_t *parent)
 {
 	obj8_cmd_t *cmd = safe_calloc(1, sizeof (*cmd));
 
+	if (obj->n_cmd_t == obj->cap_cmd_t) {
+		obj->cap_cmd_t += 32;
+		obj->cmdsbyidx = safe_realloc(obj->cmdsbyidx, obj->cap_cmd_t *
+		    sizeof (*obj->cmdsbyidx));
+	}
+
+	cmd->cmdidx = obj->n_cmd_t++;
 	cmd->type = type;
 	cmd->parent = parent;
+
+	obj->cmdsbyidx[obj->n_cmd_t-1] = cmd;
+
 	if (parent != NULL) {
 		ASSERT3U(parent->type, ==, OBJ8_CMD_GROUP);
 		list_insert_tail(&parent->group.cmds, cmd);
@@ -225,12 +249,40 @@ obj8_cmd_alloc(obj8_cmd_type_t type, obj8_cmd_t *parent)
 	return (cmd);
 }
 
+static bool
+find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
+{
+	char *bracket;
+
+	if (dr_find(dr, "%s", dr_name)) {
+		*offset = -1;
+		return (true);
+	}
+	bracket = strrchr(dr_name, '[');
+	if (bracket != NULL) {
+		int cap;
+
+		*bracket = 0; // Null terminate the string...
+		if (!dr_find(dr, "%s", dr_name))
+			return (false);
+		cap = dr_getvf32(dr, NULL, 0, 0);
+		if (cap == 0)
+			return (false);
+		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
+		return (true);
+	}
+
+	return (false);
+}
+
+
+
 static bool_t
 parse_hide_show(obj8_t *obj, bool_t set_val, const char *fmt,
     const char *line, const char *filename, int linenr, obj8_cmd_t *parent)
 {
 	char dr_name[256] = { 0 };
-	obj8_cmd_t *cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_HIDE_SHOW, parent);
+	obj8_cmd_t *cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_HIDE_SHOW, parent);
 	int n = sscanf(line, fmt, &cmd->hide_show.val[0],
 	    &cmd->hide_show.val[1], dr_name);
 
@@ -404,9 +456,9 @@ parse_ATTR_manip_command(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND, cursor);
 	manip->cmd = XPLMFindCommand(cmdname);
 	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
-	if (manip->cmd == NULL)
+	if (manip->cmd == NULL) {
 		return (-1u);
-
+	}
 	return (obj->n_manips - 1);
 }
 
@@ -433,11 +485,71 @@ parse_ATTR_manip_toggle(const char *line, obj8_t *obj)
 }
 
 static unsigned
+parse_ATTR_manip_push(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], dr_name[256];
+	float v1, v2;
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_push %31s %f %f %255s",
+	    cursor, &v1, &v2, dr_name) != 4) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_PUSH, cursor);
+	manip->toggle.drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
+	manip->toggle.v1 = v1;
+	manip->toggle.v2 = v2;
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
 parse_ATTR_manip_noop(obj8_t *obj)
 {
+	return 0;
 	(void)alloc_manip(obj, OBJ8_MANIP_NOOP, "arrow");
 	return (obj->n_manips - 1);
 }
+
+static unsigned
+parse_ATTR_manip_axis_knob(const char *line, obj8_t *obj)
+{
+
+	obj8_manip_t *manip;
+	
+	float		min, max;
+	float		d_click, d_hold;
+	char cursor[32], dr_name[256], dr_name_copy[256]; 
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_axis_knob %31s %f %f %f %f %255s",
+	    cursor, &min, &max, &d_click, &d_hold, dr_name) != 6) {
+		return (-1u);
+	}
+
+	manip = alloc_manip(obj, OBJ8_MANIP_AXIS_KNOB, cursor);
+	manip->manip_axis_knob.min = min;
+	manip->manip_axis_knob.max = max;
+	manip->manip_axis_knob.d_click = d_click;
+	manip->manip_axis_knob.d_hold = d_hold;
+
+	strcpy(dr_name_copy, dr_name);
+
+	if (!find_dr_with_offset(dr_name_copy, &manip->manip_axis_knob.dr, &manip->manip_axis_knob.dr_offset)) {
+		return (-1u);
+	}
+
+	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
+
+	logMsg("Found dr_name of %s (%s) for index %d", dr_name, manip->manip_axis_knob.dr.name, obj->n_manips - 1);
+
+	return (obj->n_manips - 1);
+}		
 
 static unsigned
 parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
@@ -455,10 +567,97 @@ parse_ATTR_manip_command_knob(const char *line, obj8_t *obj)
 	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_KNOB, cursor);
 	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
 	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
-	if (manip->cmd_knob.pos_cmd == NULL ||
+	/*if (manip->cmd_knob.pos_cmd == NULL ||
 	    manip->cmd_knob.neg_cmd == NULL) {
 		return (-1u);
+	}*/
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
 	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	/*if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}*/
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], pos_cmdname[256], neg_cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down %31s %255s %255s",
+	    cursor, pos_cmdname, neg_cmdname) != 3) {
+		return (-1u);
+	}
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD, cursor);
+	manip->cmd_knob.pos_cmd = XPLMFindCommand(pos_cmdname);
+	manip->cmd_knob.neg_cmd = XPLMFindCommand(neg_cmdname);
+	/*if (manip->cmd_knob.pos_cmd == NULL ||
+	    manip->cmd_knob.neg_cmd == NULL) {
+		return (-1u);
+	}*/
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_lr2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_left_right2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_LR2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	//if (manip->cmd == NULL)
+	//	return (-1u);
+
+	return (obj->n_manips - 1);
+}
+
+static unsigned
+parse_ATTR_manip_command_switch_ud2(const char *line, obj8_t *obj)
+{
+	obj8_manip_t *manip;
+	char cursor[32], cmdname[256];
+
+	ASSERT(line != NULL);
+	ASSERT(obj != NULL);
+
+	if (sscanf(line, "ATTR_manip_command_switch_up_down2 %31s %255s", cursor, cmdname) != 2)
+		return (-1u);
+	manip = alloc_manip(obj, OBJ8_MANIP_COMMAND_SWITCH_UD2, cursor);
+	manip->cmd_sw2 = XPLMFindCommand(cmdname);
+	if (manip->cmd_sw2 == NULL)
+		return (-1u);
+
+	strlcpy(manip->cmdname, cmdname, sizeof (manip->cmdname));
+	
 	return (obj->n_manips - 1);
 }
 
@@ -480,10 +679,10 @@ parse_ATTR_manip_command_axis(const char *line, obj8_t *obj)
 	manip->cmd_axis.d = d;
 	manip->cmd_axis.pos_cmd = XPLMFindCommand(pos_cmdname);
 	manip->cmd_axis.neg_cmd = XPLMFindCommand(neg_cmdname);
-	if (manip->cmd_axis.pos_cmd == NULL ||
+	/*if (manip->cmd_axis.pos_cmd == NULL ||
 	    manip->cmd_axis.neg_cmd == NULL) {
 		return (-1u);
-	}
+	}*/
 	return (obj->n_manips - 1);
 }
 
@@ -604,7 +803,7 @@ obj8_parse_worker(void *userinfo)
 	filename = obj->filename;
 	pos_offset = info->pos_offset;
 
-	obj->top = cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, NULL);
+	obj->top = cur_cmd = obj8_cmd_alloc(obj, OBJ8_CMD_GROUP, NULL);
 
 	offset = vect3_add(pos_offset, info->cg_offset);
 	glm_translate_make(*obj->matrix, (vec3){offset.x, offset.y, offset.z});
@@ -686,11 +885,22 @@ obj8_parse_worker(void *userinfo)
 				    filename, linenr);
 				goto errout;
 			}
-			cmd = obj8_cmd_alloc(OBJ8_CMD_TRIS, cur_cmd);
+			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_TRIS, cur_cmd);
 			obj8_geom_init(&cmd->tris, group_id, double_sided,
 			    cur_manip, off, len, vtx_cap, idx_table, idx_cap);
+			// in obj8_cmd_alloc...
+			// cmd->cmdidx = obj->n_cmd_t++;
+			// so cmdidx = obj->n_cmd_t - 1 at this point...
+			
+			obj8_geom_t *tris_geom = &(cmd->tris);
+			tris_geom->cmdidx = obj->n_cmd_t - 1;
+
+			if (cur_manip != -1u) {
+				obj8_manip_t *manip_for_cmd = obj8_get_manip(obj, cur_manip);
+				manip_for_cmd->cmdidx = obj->n_cmd_t - 1;
+			}
 		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
-			cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, cur_cmd);
+			cur_cmd = obj8_cmd_alloc(obj, OBJ8_CMD_GROUP, cur_cmd);
 		} else if (strncmp(line, "ANIM_end", 10) == 0) {
 			if (cur_cmd->parent == NULL) {
 				logMsg("%s:%d: invalid ANIM_end, not inside "
@@ -724,7 +934,7 @@ obj8_parse_worker(void *userinfo)
 				    "ANIM_trans_begin", filename, linenr);
 				goto errout;
 			}
-			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
+			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_TRANS, cur_cmd);
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
 			cur_anim = cmd;
 		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
@@ -737,7 +947,7 @@ obj8_parse_worker(void *userinfo)
 				    "anim group", filename, linenr);
 				goto errout;
 			}
-			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_ROTATE, cur_cmd);
+			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_ROTATE, cur_cmd);
 			if (sscanf(line, "ANIM_rotate_begin %lf %lf %lf %255s",
 			    &cmd->rotate.axis.x, &cmd->rotate.axis.y,
 			    &cmd->rotate.axis.z, dr_name) != 4) {
@@ -767,7 +977,7 @@ obj8_parse_worker(void *userinfo)
 			obj8_cmd_t *cmd;
 			int l;
 
-			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
+			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_TRANS, cur_cmd);
 			cmd->trans.n_pts = 2;
 			cmd->trans.n_pts_cap = 2;
 			cmd->trans.values =
@@ -791,7 +1001,7 @@ obj8_parse_worker(void *userinfo)
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
 
-			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_ROTATE, cur_cmd);
+			cmd = obj8_cmd_alloc(obj, OBJ8_CMD_ANIM_ROTATE, cur_cmd);
 			cmd->rotate.n_pts = 2;
 			cmd->rotate.n_pts_cap = 2;
 			cmd->rotate.pts = safe_calloc(sizeof (*cmd->rotate.pts),
@@ -815,30 +1025,44 @@ obj8_parse_worker(void *userinfo)
 			 * The dataref name is optional, so skip creating
 			 * the command if it is empty.
 			 */
-			obj8_cmd_t *cmd = obj8_cmd_alloc(
-			    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 			if (sscanf(line, "ATTR_light_level %f %f %255s",
 			    &min_val, &max_val, dr_name) == 3) {
+
+				obj8_cmd_t *cmd = obj8_cmd_alloc(
+				    obj, OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
+
 				cmd->attr_light_level.min_val = min_val;
 				cmd->attr_light_level.max_val = max_val;
 				cmd->drset_idx = obj8_drset_add(
 				    obj->drset, dr_name, 0.02);
 			} else {
+				obj8_cmd_t *cmd = obj8_cmd_alloc( obj,
+			    OBJ8_CMD_ATTR_LIGHT_LEVEL, cur_cmd);
 				cmd->drset_idx = obj8_drset_add(
 				    obj->drset, NULL, 0);
 			}
 		} else if (strncmp(line, "ATTR_draw_enable", 16) == 0) {
-			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_ENABLE,
+			(void)obj8_cmd_alloc(obj, OBJ8_CMD_ATTR_DRAW_ENABLE,
 			    cur_cmd);
 		} else if (strncmp(line, "ATTR_draw_disable", 17) == 0) {
-			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_DISABLE,
+			(void)obj8_cmd_alloc(obj, OBJ8_CMD_ATTR_DRAW_DISABLE,
 			    cur_cmd);
 		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
 			cur_manip = -1;
+		} else if (strncmp(line, "ATTR_manip_axis_knob", 20) == 0) {
+			cur_manip = parse_ATTR_manip_axis_knob(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_left_right2", 37) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_lr2(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_up_down2", 34) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_ud2(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_left_right", 36) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_lr(line, obj);
+		} else if (strncmp(line, "ATTR_manip_command_switch_up_down", 33) == 0) {
+			cur_manip = parse_ATTR_manip_command_switch_ud(line, obj);
 		} else if (strncmp(line, "ATTR_manip_command", 18) == 0) {
 			cur_manip = parse_ATTR_manip_command(line, obj);
 		} else if (strncmp(line, "ATTR_manip_drag_rotate", 22) == 0) {
@@ -851,7 +1075,30 @@ obj8_parse_worker(void *userinfo)
 		} else if (strncmp(line, "ATTR_manip_toggle", 17) == 0) {
 			cur_manip = parse_ATTR_manip_toggle(line, obj);
 		} else if (strncmp(line, "ATTR_manip_noop", 15) == 0) {
-			cur_manip = parse_ATTR_manip_noop(obj);
+			//logMsg("[DEBUG] Found ATTR_manip_noop line of:\n%s", line);
+			//cur_manip = parse_ATTR_manip_noop(obj);
+			parse_ATTR_manip_noop(obj);
+		} else if (strncmp(line, "ATTR_manip_push", 15) == 0) {
+			cur_manip = parse_ATTR_manip_push(line, obj);
+		} else if (strncmp(line, "ATTR_manip_keyframe", 19) == 0) {
+			logMsg("[WARN] Found unhandled ATTR_manip_keyframe line, see notes below this line in the code");
+			// CONCERN: This is whats used in ANIM_rotate_key...
+			//if (!parse_rotate_key(line, cur_anim, filename, linenr))
+			// NEED TO MODIFY 
+			// 	struct {
+			// 	vect3_t		xyz;
+			// 	vect3_t		dir;
+			// 	float		angle1, angle2;
+			// 	float		lift;
+			// 	float		v1min, v1max;
+			// 	float		v2min, v2max;
+			// 	unsigned	drset_idx1, drset_idx2;
+			// } drag_rot;
+			// TO ALLOW FOR KEYFRAMES.....
+			// ALSO LOOKS LIKE NEED TO HANDLE detents??
+			//	goto errout;
+		} else if (strncmp(line, "ATTR_manip_", 11) == 0) {
+			logMsg("[ERROR] Found unhandled manipulator line: %s", line);
 		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
 			unsigned lines, lites;
 
@@ -909,6 +1156,8 @@ obj8_parse_worker(void *userinfo)
 
 	obj8_drset_mark_complete(obj->drset);
 
+
+
 	mutex_enter(&obj->lock);
 	obj->load_complete = B_TRUE;
 	cv_broadcast(&obj->cv);
@@ -930,6 +1179,71 @@ errout:
 	mutex_exit(&obj->lock);
 }
 
+unsigned obj8_get_manip_idx_from_cmd_tris(const obj8_cmd_t *cmd)
+{
+	if (cmd->type == OBJ8_CMD_TRIS) {
+		obj8_geom_t *tris_geom = &(cmd->tris);
+		return tris_geom->manip_idx;
+	}
+	return -1u;
+}
+
+unsigned
+obj8_nearest_tris_for_cmd(const obj8_t *obj, const obj8_cmd_t *cmd)
+{
+	obj8_cmd_t *traversal = (obj8_cmd_t *) cmd;
+
+	while (traversal != NULL && traversal != obj->top) {
+
+		if (traversal->type != OBJ8_CMD_GROUP) {
+			traversal = traversal->parent;
+			continue;
+		}
+
+		for (obj8_cmd_t *subcmd = list_head(&traversal->group.cmds); subcmd != NULL;
+		    subcmd = list_next(&traversal->group.cmds, subcmd)) {
+			switch (subcmd->type) {
+			case OBJ8_CMD_GROUP:
+				// We will check these later if don't find one at same level?
+				break;
+			case OBJ8_CMD_TRIS:
+				return subcmd->cmdidx;
+			default:
+				break;
+			}
+		}
+
+		unsigned foundidx = -1u;
+
+		for (obj8_cmd_t *subcmd = list_head(&traversal->group.cmds); subcmd != NULL;
+		    subcmd = list_next(&traversal->group.cmds, subcmd)) {
+			
+			if (subcmd == cmd) {
+				//logMsg("[DEBUG] Found subcmd that was original cmd we were called with, skip...");
+				continue;
+			}
+
+			switch (subcmd->type) {
+				case OBJ8_CMD_GROUP:
+					//logMsg("[DEBUG] Making recursive call to obj8_nearest_tris_for_cmd with cmdidx of %d", subcmd->cmdidx);
+					foundidx = obj8_nearest_tris_for_cmd(obj, subcmd);
+					//logMsg("[DEBUG] Found recursive call to obj8_nearest_tris_for_cmd returned %d, returning", foundidx);
+					if (foundidx != -1u) {
+						return foundidx;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+
+		traversal = traversal->parent;
+
+	}
+
+	return -1u;
+}
+
 static obj8_t *
 obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 {
@@ -949,11 +1263,13 @@ obj8_parse_fp(FILE *fp, const char *filename, vect3_t pos_offset)
 	obj->drset_auto_update = true;
 	obj->drset = obj8_drset_new();
 
-	obj->pos_loc = -1;
-	obj->norm_loc = -1;
-	obj->tex0_loc = -1;
-
 	obj8_load_info_t *info = safe_calloc(1, sizeof (*info));
+
+	obj->n_manips = 0;
+	obj->cap_manips = 0;
+	obj->n_cmd_t = 0;
+	obj->cap_cmd_t = 0;
+
 	info->fp = fp;
 	info->pos_offset = pos_offset;
 	info->obj = obj;
@@ -1177,12 +1493,10 @@ obj8_free(obj8_t *obj)
 	ASSERT(obj != NULL);
 
 	obj8_cmd_free(obj->top);
-
 	obj->load_stop = B_TRUE;
 	thread_join(&obj->loader);
 	mutex_destroy(&obj->lock);
 	cv_destroy(&obj->cv);
-
 	if (obj->vtx_buf != 0) {
 		glDeleteBuffers(1, &obj->vtx_buf);
 		IF_TEXSZ(TEXSZ_FREE_BYTES_INSTANCE(obj8_vtx_buf, obj,
@@ -1202,11 +1516,8 @@ obj8_free(obj8_t *obj)
 	free(obj->tex_filename);
 	free(obj->norm_filename);
 	free(obj->lit_filename);
-
 	free(obj->manips);
-
 	obj8_drset_destroy(obj->drset);
-
 	aligned_free(obj->matrix);
 	ZERO_FREE(obj);
 }
@@ -1225,7 +1536,10 @@ static void
 geom_draw(const obj8_t *obj, const obj8_geom_t *geom, const mat4 pvm)
 {
 	glUniformMatrix4fv(obj->pvm_loc, 1, GL_FALSE, (void *)pvm);
-	glUniform1f(obj->manip_idx_loc, geom->manip_idx);
+	
+	//obj8_manip_t *manip = obj8_get_manip(obj, geom->manip_idx);
+
+	glUniform1f(obj->manip_idx_loc, geom->cmdidx + obj->manip_paint_offset);
 	glDrawElements(GL_TRIANGLES, geom->n_vtx, GL_UNSIGNED_INT,
 	    (void *)(geom->vtx_off * sizeof (GLuint)));
 }
@@ -1345,6 +1659,10 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	bool_t hide = B_FALSE, do_draw = B_TRUE;
 	mat4 pvm;
 
+	if (hide) {
+		;
+	}
+
 	ASSERT(obj != NULL);
 	ASSERT(cmd != NULL);
 	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
@@ -1353,94 +1671,144 @@ obj8_draw_group_cmd(const obj8_t *obj, obj8_cmd_t *cmd, const char *groupname,
 	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
 	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
 		switch (subcmd->type) {
-		case OBJ8_CMD_GROUP:
-			if (hide || (!do_draw &&
-			    !render_mode_is_manip_only(obj->render_mode))) {
-				break;
-			}
-			obj8_draw_group_cmd(obj, subcmd, groupname, pvm,
-			    dr_values);
-			break;
-		case OBJ8_CMD_TRIS:
-			/* Don't draw if we're hidden */
-			if (hide)
-				break;
-			if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
-				/*
-				 * If we're in normal rendering mode, don't
-				 * draw if ATTR_draw_disable is active.
-				 */
-				if (!do_draw)
-					break;
-			} else if (obj->render_mode ==
-			    OBJ8_RENDER_MODE_MANIP_ONLY) {
-				/*
-				 * If we're in manipulator drawing mode,
-				 * don't draw if this isn't a manipulator.
-				 */
-				if (subcmd->tris.manip_idx == -1u)
-					break;
-			} else {
-				ASSERT3U(obj->render_mode, ==,
-				    OBJ8_RENDER_MODE_MANIP_ONLY_ONE);
-				/*
-				 * If we're in single-manipulator drawing mode,
-				 * don't draw if this isn't a manipulator,
-				 * or the manipulator index doesn't match the
-				 * one manipulator we do want to draw.
-				 */
-				if (subcmd->tris.manip_idx == -1u ||
-				    (int)subcmd->tris.manip_idx !=
-				    obj->render_mode_arg) {
+			case OBJ8_CMD_GROUP:
+				if (hide || (!do_draw &&
+				    !render_mode_is_manip_only(obj->render_mode) && obj->render_mode != OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE)) {
 					break;
 				}
-			}
-			if (groupname == NULL ||
-			    strcmp(subcmd->tris.group_id, groupname) == 0) {
-				if (subcmd->tris.double_sided) {
-					glCullFace(GL_FRONT);
-					geom_draw(obj, &subcmd->tris, pvm);
-					glCullFace(GL_BACK);
-				}
-				geom_draw(obj, &subcmd->tris, pvm);
-			}
-			break;
-		case OBJ8_CMD_ANIM_HIDE_SHOW: {
-			double val = cmd_dr_read(subcmd, dr_values);
+				obj8_draw_group_cmd(obj, subcmd, groupname, pvm,
+				    dr_values);
+				break;
+			case OBJ8_CMD_TRIS:
+				/* Don't draw if we're hidden */
+				//if (hide)
+				//	break;
+				if (obj->render_mode == OBJ8_RENDER_MODE_NORM) {
+					/*
+					 * If we're in normal rendering mode, don't
+					 * draw if ATTR_draw_disable is active.
+					 */
+					//if (!do_draw)
+					//	break;
+				} else if (obj->render_mode ==
+				    OBJ8_RENDER_MODE_MANIP_ONLY) {
+					/*
+					 * If we're in manipulator drawing mode,
+					 * don't draw if this isn't a manipulator.
+					 */
+					//if (subcmd->tris.manip_idx == -1u)
+					//	break;
 
-			if (subcmd->hide_show.val[0] <= val &&
-			    subcmd->hide_show.val[1] >= val)
-				hide = !subcmd->hide_show.set_val;
-			break;
-		}
-		case OBJ8_CMD_ANIM_ROTATE:
-			handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
-			break;
-		case OBJ8_CMD_ANIM_TRANS:
-			handle_cmd_anim_trans(subcmd, pvm, dr_values);
-			break;
-		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
-			if (isnan(obj->light_level_override)) {
-				float raw = cmd_dr_read(subcmd, dr_values);
-				float value = 0;
-				if (subcmd->attr_light_level.min_val <
-				    subcmd->attr_light_level.max_val) {
-					value = iter_fract(raw,
-					    subcmd->attr_light_level.min_val,
-					    subcmd->attr_light_level.max_val,
-					    true);
+					/* THIS IS A CHANGE FOR SHARED FLIGHT WE DRAW ONLY IF BOOL IS SET */
+					if (!subcmd->tris.hover_detectable)
+						break;
+				} else if (obj->render_mode == 
+					OBJ8_RENDER_MODE_MANIP_ONLY_ONE) {
+					/*
+					 * If we're in single-manipulator drawing mode,
+					 * don't draw if this isn't a manipulator,
+					 * or the manipulator index doesn't match the
+					 * one manipulator we do want to draw.
+					 */
+					 if ((int)subcmd->tris.manip_idx !=
+					      obj->render_mode_arg) {
+					 	break;
+					 }
+				} else if (obj->render_mode == 
+					OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE) {
+					
+					if ((int)subcmd->cmdidx != obj->render_mode_arg) {
+					  	break;
+
+					bool in_tree = false;
+
+					obj8_cmd_t *traversal = subcmd;
+
+					while (traversal != NULL) {
+						if ((int)traversal->cmdidx == obj->render_mode_arg) {
+							in_tree = true;
+							break;
+						} else {
+							logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+						}
+						traversal = traversal->parent;
+					}
+
+					if (!in_tree) {
+						logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+					 	break;
+					} else {
+						logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+					}
+
+					// bool in_tree = false;
+
+					// obj8_cmd_t *traversal = subcmd;
+
+					// while (traversal != NULL) {
+					// 	if ((int)traversal->cmdidx == obj->render_mode_arg) {
+					// 		in_tree = true;
+					// 		break;
+					// 	} else {
+					// 		logMsg("[DEBUG] traversal of tree found %d cmdidx", traversal->cmdidx);
+					// 	}
+					// 	traversal = traversal->parent;
+					// }
+
+					// if (!in_tree) {
+					// 	logMsg("[DEBUG] Found cmdidx of %d NOT IN tree containing %d cmdidx", subcmd->cmdidx, obj->render_mode_arg);
+					//  	break;
+					// } else {
+					// 	logMsg("[DEBUG] Found cmdidx of %d with tree containing %d cmdidx and drset_idx of %d", subcmd->cmdidx, obj->render_mode_arg, subcmd->drset_idx);
+					// }
 				}
-				glUniform1f(obj->light_level_loc, value);
+				if (groupname == NULL ||
+				    strcmp(subcmd->tris.group_id, groupname) == 0) {
+					if (subcmd->tris.double_sided) {
+						glCullFace(GL_FRONT);
+						geom_draw(obj, &subcmd->tris, pvm);
+						glCullFace(GL_BACK);
+					}
+					geom_draw(obj, &subcmd->tris, pvm);
+				}
+				break;
+			case OBJ8_CMD_ANIM_HIDE_SHOW: {
+				double val = cmd_dr_read(subcmd, dr_values);
+
+				if (subcmd->hide_show.val[0] <= val &&
+				    subcmd->hide_show.val[1] >= val)
+					hide = !subcmd->hide_show.set_val;
+				break;
 			}
-			break;
-		case OBJ8_CMD_ATTR_DRAW_ENABLE:
-			do_draw = B_TRUE;
-			break;
-		case OBJ8_CMD_ATTR_DRAW_DISABLE:
-			do_draw = B_FALSE;
-			break;
-		default:
-			break;
+			case OBJ8_CMD_ANIM_ROTATE:
+				handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
+				break;
+			case OBJ8_CMD_ANIM_TRANS:
+				handle_cmd_anim_trans(subcmd, pvm, dr_values);
+				break;
+			case OBJ8_CMD_ATTR_LIGHT_LEVEL:
+				if (isnan(obj->light_level_override)) {
+					float raw = cmd_dr_read(subcmd, dr_values);
+					float value = 0;
+					if (subcmd->attr_light_level.min_val <
+					    subcmd->attr_light_level.max_val) {
+						value = iter_fract(raw,
+						    subcmd->attr_light_level.min_val,
+						    subcmd->attr_light_level.max_val,
+						    true);
+					}
+					glUniform1f(obj->light_level_loc, value);
+				}
+				break;
+			case OBJ8_CMD_ATTR_DRAW_ENABLE:
+				do_draw = B_TRUE;
+				break;
+			case OBJ8_CMD_ATTR_DRAW_DISABLE:
+				do_draw = B_FALSE;
+				break;
+			default:
+				break;
+			}
 		}
 	}
 }
@@ -1529,7 +1897,8 @@ obj8_draw_group(obj8_t *obj, const char *groupname, GLuint prog,
 	if (obj->vao != 0) {
 		ASSERT(thread_equal(curthread_id, obj->upload_thread_id));
 		glBindVertexArray(obj->vao);
-	}
+	}	
+
 	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
 
@@ -1597,7 +1966,9 @@ obj8_set_render_mode2(obj8_t *obj, obj8_render_mode_t mode, int32_t arg)
 {
 	ASSERT(obj != NULL);
 	ASSERT(mode == OBJ8_RENDER_MODE_NORM ||
-	    mode == OBJ8_RENDER_MODE_MANIP_ONLY);
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY ||
+	    mode == OBJ8_RENDER_MODE_MANIP_ONLY_ONE 
+	    || mode == OBJ8_RENDER_MODE_NONMANIP_ONLY_ONE);
 	obj->render_mode = mode;
 	obj->render_mode_arg = arg;
 }
@@ -1611,12 +1982,47 @@ obj8_get_num_manips(const obj8_t *obj)
 	return (obj->n_manips);
 }
 
-const obj8_manip_t *
+obj8_manip_t *
 obj8_get_manip(const obj8_t *obj, unsigned idx)
 {
 	ASSERT(obj != NULL);
 	ASSERT3U(idx, <, obj->n_manips);
 	return (&obj->manips[idx]);
+}
+
+unsigned obj8_get_num_cmd_t(const obj8_t *obj)
+{
+	ASSERT(obj != NULL);
+	if (!obj->load_complete)
+		return (0);
+	
+	return (obj->n_cmd_t);
+}
+
+const obj8_cmd_t * 
+obj8_get_cmd_t(const obj8_t *obj, unsigned idx)
+{
+	ASSERT(obj != NULL);
+	if (!obj->load_complete)
+		return NULL;
+
+	if (idx < obj->n_cmd_t) {
+		return obj->cmdsbyidx[idx];
+	}
+
+	return NULL;
+}
+
+unsigned 
+obj8_get_cmd_drset_idx(const obj8_cmd_t *cmd)
+{
+	return cmd->drset_idx;
+}
+
+unsigned 
+obj8_get_cmd_idx(const obj8_cmd_t *cmd)
+{
+	return cmd->cmdidx;
 }
 
 const char *
@@ -1779,32 +2185,6 @@ obj8_drset_mark_complete(obj8_drset_t *drset)
 	drset->complete = true;
 }
 
-static bool
-find_dr_with_offset(char *dr_name, dr_t *dr, int *offset)
-{
-	char *bracket;
-
-	if (dr_find(dr, "%s", dr_name)) {
-		*offset = -1;
-		return (true);
-	}
-	bracket = strrchr(dr_name, '[');
-	if (bracket != NULL) {
-		int cap;
-
-		*bracket = 0;
-		if (!dr_find(dr, "%s", dr_name))
-			return (false);
-		cap = dr_getvf32(dr, NULL, 0, 0);
-		if (cap == 0)
-			return (false);
-		*offset = clampi(atoi(&bracket[1]), 0, cap - 1);
-		return (true);
-	}
-
-	return (false);
-}
-
 static inline float
 drset_dr_updatef(drset_dr_t *dr)
 {
@@ -1882,6 +2262,11 @@ obj8_drset_update(obj8_drset_t *drset)
 	}
 }
 
+unsigned obj8_drset_get_num_drs(const obj8_drset_t *drset)
+{
+	return drset->n_drs;
+}
+
 size_t
 obj8_drset_get_all(const obj8_drset_t *drset, float *out_values, size_t cap)
 {
@@ -1920,5 +2305,200 @@ obj8_drset_get_dr_name(const obj8_drset_t *drset, unsigned idx)
 	}
 	ASSERT3U(idx, <, drset->n_drs);
 	dr = list_get_i(&drset->list, idx);
+	//logMsg("[DEBUG] obj8_drset_get_dr_name called for index %d and name of %s is found", idx, dr->dr_name);
 	return (dr->dr_name);
+}
+
+int obj8_drset_get_dr_offset(const obj8_drset_t *drset, unsigned idx)
+{
+	drset_dr_t *dr;
+	ASSERT(drset != NULL);
+	ASSERT3U(idx, <, drset->n_drs);
+	dr = list_get_i(&drset->list, idx);
+	//logMsg("[DEBUG] obj8_drset_get_dr_offset called for index %d and dr_offset of %d is found", idx, dr->dr_offset);
+	return (dr->dr_offset);
+}
+
+const char *
+obj8_manip_type_t_name(obj8_manip_type_t type_val)
+{
+	switch(type_val) {
+		case OBJ8_MANIP_AXIS_KNOB:
+			return "OBJ8_MANIP_AXIS_KNOB";
+			break;
+		case OBJ8_MANIP_COMMAND:
+			return "OBJ8_MANIP_COMMAND";
+			break;
+		case OBJ8_MANIP_COMMAND_AXIS:
+			return "OBJ8_MANIP_COMMAND_AXIS";
+			break;
+		case OBJ8_MANIP_COMMAND_KNOB:
+			return "OBJ8_MANIP_COMMAND_KNOB";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_LR:
+			return "OBJ8_MANIP_COMMAND_SWITCH_LR";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_UD:
+			return "OBJ8_MANIP_COMMAND_SWITCH_UD";
+			break;
+		case OBJ8_MANIP_DRAG_AXIS:
+			return "OBJ8_MANIP_DRAG_AXIS";
+			break;
+		case OBJ8_MANIP_DRAG_ROTATE:
+			return "OBJ8_MANIP_DRAG_ROTATE";
+			break;
+		case OBJ8_MANIP_DRAG_XY:
+			return "OBJ8_MANIP_DRAG_XY";
+			break;
+		case OBJ8_MANIP_TOGGLE:
+			return "OBJ8_MANIP_TOGGLE";
+			break;
+		case OBJ8_MANIP_PUSH:
+			return "OBJ8_MANIP_PUSH";
+			break;
+		case OBJ8_MANIP_NOOP:
+			return "OBJ8_MANIP_NOOP";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_LR2:
+			return "OBJ8_MANIP_COMMAND_SWITCH_LR2";
+			break;
+		case OBJ8_MANIP_COMMAND_SWITCH_UD2:
+			return "OBJ8_MANIP_COMMAND_SWITCH_UD2";
+			break;
+		default:
+			return "UNKONWN";
+	}
+}
+
+void obj8_draw_by_counter(obj8_t *obj, GLuint prog, unsigned int todraw, mat4 pvm_in)
+{
+	unsigned int counter = 0;
+	
+	#if	APL
+	/*
+	 * Leaving this on on MacOS breaks glDrawElements and makes it
+	 * perform horribly.
+	 */
+	glDisableClientState(GL_VERTEX_ARRAY);
+#endif	/* APL */
+	glBindBuffer(GL_ARRAY_BUFFER, obj->vtx_buf);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->idx_buf);
+
+	setup_arrays(obj, prog);
+
+	if (!isnan(obj->light_level_override))
+		glUniform1f(obj->light_level_loc, obj->light_level_override);
+	else
+		glUniform1f(obj->light_level_loc, 0);
+	glm_mat4_mul((vec4 *)pvm_in, *obj->matrix, pvm_in);
+	
+	obj8_draw_group_cmd_by_counter(obj, obj->top, &counter, todraw, pvm_in);
+
+	gl_state_cleanup();
+	glutils_disable_vtx_attr_ptr(obj->pos_loc);
+	glutils_disable_vtx_attr_ptr(obj->norm_loc);
+	glutils_disable_vtx_attr_ptr(obj->tex0_loc);
+
+	glutils_debug_pop();
+
+	GLUTILS_ASSERT_NO_ERROR();
+
+}
+
+void obj8_set_manip_paint_offset(obj8_t *obj, unsigned paint_offset) {
+	obj->manip_paint_offset = paint_offset;
+}
+
+void obj8_draw_group_cmd_by_counter(const obj8_t *obj, obj8_cmd_t *cmd, unsigned int *counter,
+    unsigned int todraw, const mat4 pvm_in)
+{
+	
+	bool_t hide = B_FALSE, do_draw = B_TRUE;
+	mat4 pvm;
+
+	if (hide) {
+		;
+	}
+
+	if (do_draw) {
+		;
+	}
+
+	ASSERT(obj != NULL);
+	ASSERT(cmd != NULL);
+	ASSERT3U(cmd->type, ==, OBJ8_CMD_GROUP);
+	memcpy(pvm, pvm_in, sizeof (pvm));
+
+	if (!upload_data(obj))
+		return;
+
+	if (obj->drset_auto_update)
+		(void)obj8_drset_update(obj->drset);
+
+	enum { MAX_STACK_DRS = 128 };
+	float dr_values_stack[MAX_STACK_DRS];
+	size_t n_drs = obj8_drset_get_all(obj->drset, NULL, 0);
+	float *dr_values;
+	if (n_drs > ARRAY_NUM_ELEM(dr_values_stack)) {
+		dr_values = safe_malloc(n_drs * sizeof (*dr_values));
+	} else {
+		dr_values = dr_values_stack;
+	}
+	obj8_drset_get_all(obj->drset, dr_values, n_drs);
+
+
+	for (obj8_cmd_t *subcmd = list_head(&cmd->group.cmds); subcmd != NULL;
+	    subcmd = list_next(&cmd->group.cmds, subcmd)) {
+		switch (subcmd->type) {
+		case OBJ8_CMD_GROUP:
+			*counter = *counter + 1;
+			obj8_draw_group_cmd_by_counter(obj, subcmd, counter, todraw, pvm);
+			break;
+		case OBJ8_CMD_TRIS:
+			*counter = *counter + 1;
+			if (*counter == todraw) {
+				geom_draw(obj, &subcmd->tris, pvm);
+			}
+			break;
+		case OBJ8_CMD_ANIM_HIDE_SHOW: {
+			double val = cmd_dr_read(obj, subcmd);
+
+			if (subcmd->hide_show.val[0] <= val &&
+			    subcmd->hide_show.val[1] >= val)
+				hide = !subcmd->hide_show.set_val;
+			break;
+		}
+		case OBJ8_CMD_ANIM_ROTATE:
+			handle_cmd_anim_rotate(obj, subcmd, pvm, dr_values);
+			break;
+		case OBJ8_CMD_ANIM_TRANS:
+			handle_cmd_anim_trans(obj, subcmd, pvm);
+			break;
+		case OBJ8_CMD_ATTR_LIGHT_LEVEL:
+			if (isnan(obj->light_level_override)) {
+				float raw = cmd_dr_read(obj, subcmd);
+				float value = iter_fract(raw,
+				    subcmd->attr_light_level.min_val,
+				    subcmd->attr_light_level.max_val, true);
+				glUniform1f(obj->light_level_loc, value);
+			}
+			break;
+		case OBJ8_CMD_ATTR_DRAW_ENABLE:
+			do_draw = B_TRUE;
+			break;
+		case OBJ8_CMD_ATTR_DRAW_DISABLE:
+			do_draw = B_FALSE;
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+LIBRAIN_EXPORT void
+obj8_set_cmd_tris_hover_detectable(const obj8_cmd_t *cmd, bool detectable)
+{
+	assert(cmd->type == OBJ8_CMD_TRIS);
+	obj8_geom_t *tris = &(cmd->tris);
+	tris->hover_detectable = detectable;
 }
