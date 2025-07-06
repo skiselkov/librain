@@ -573,6 +573,16 @@ parse_ATTR_manip_drag_xy(const char *line, obj8_t *obj)
 	return (obj->n_manips - 1);
 }
 
+static inline bool
+check_line_prefix(const char *line, const char *prefix)
+{
+	ASSERT(line != NULL);
+	ASSERT(prefix != NULL);
+	unsigned prefix_len = strlen(prefix);
+	return (strncmp(line, prefix, prefix_len) == 0 &&
+	    (line[prefix_len] == '\0' || isspace(line[prefix_len])));
+}
+
 static void
 obj8_parse_worker(void *userinfo)
 {
@@ -613,7 +623,7 @@ obj8_parse_worker(void *userinfo)
 	    !obj->load_stop; linenr++) {
 		strip_space(line);
 
-		if (strncmp(line, "VT", 2) == 0) {
+		if (check_line_prefix(line, "VT")) {
 			obj8_vtx_t *vtx;
 			if (cur_vtx >= vtx_cap) {
 				logMsg("%s:%d: too many VT lines found",
@@ -630,7 +640,7 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			cur_vtx++;
-		} else if (strncmp(line, "IDX10", 5) == 0) {
+		} else if (check_line_prefix(line, "IDX10")) {
 			if (cur_idx + 10 > idx_cap) {
 				logMsg("%s:%d: too many IDX10 lines found",
 				    filename, linenr);
@@ -656,7 +666,7 @@ obj8_parse_worker(void *userinfo)
 				}
 			}
 			cur_idx += 10;
-		} else if (strncmp(line, "IDX", 3) == 0) {
+		} else if (check_line_prefix(line, "IDX")) {
 			if (cur_idx >= idx_cap) {
 				logMsg("%s:%d: too many IDX lines found",
 				    filename, linenr);
@@ -672,7 +682,7 @@ obj8_parse_worker(void *userinfo)
 				    "vertex table", filename, linenr);
 			}
 			cur_idx++;
-		} else if (strncmp(line, "TRIS", 4) == 0) {
+		} else if (check_line_prefix(line, "TRIS")) {
 			obj8_cmd_t *cmd;
 			unsigned off, len;
 
@@ -689,26 +699,26 @@ obj8_parse_worker(void *userinfo)
 			cmd = obj8_cmd_alloc(OBJ8_CMD_TRIS, cur_cmd);
 			obj8_geom_init(&cmd->tris, group_id, double_sided,
 			    cur_manip, off, len, vtx_cap, idx_table, idx_cap);
-		} else if (strncmp(line, "ANIM_begin", 10) == 0) {
+		} else if (check_line_prefix(line, "ANIM_begin")) {
 			cur_cmd = obj8_cmd_alloc(OBJ8_CMD_GROUP, cur_cmd);
-		} else if (strncmp(line, "ANIM_end", 10) == 0) {
+		} else if (check_line_prefix(line, "ANIM_end")) {
 			if (cur_cmd->parent == NULL) {
 				logMsg("%s:%d: invalid ANIM_end, not inside "
 				    "an animation group.", filename, linenr);
 				goto errout;
 			}
 			cur_cmd = cur_cmd->parent;
-		} else if (strncmp(line, "ANIM_show", 9) == 0) {
+		} else if (check_line_prefix(line, "ANIM_show")) {
 			if (!parse_hide_show(obj, B_TRUE,
 			    "ANIM_show %lf %lf %255s",
 			    line, filename, linenr, cur_cmd))
 				goto errout;
-		} else if (strncmp(line, "ANIM_hide", 9) == 0) {
+		} else if (check_line_prefix(line, "ANIM_hide")) {
 			if (!parse_hide_show(obj, B_FALSE,
 			    "ANIM_hide %lf %lf %255s",
 			    line, filename, linenr, cur_cmd))
 				goto errout;
-		} else if (strncmp(line, "ANIM_trans_begin", 16) == 0) {
+		} else if (check_line_prefix(line, "ANIM_trans_begin")) {
 			char dr_name[256];
 			obj8_cmd_t *cmd;
 
@@ -727,7 +737,7 @@ obj8_parse_worker(void *userinfo)
 			cmd = obj8_cmd_alloc(OBJ8_CMD_ANIM_TRANS, cur_cmd);
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
 			cur_anim = cmd;
-		} else if (strncmp(line, "ANIM_rotate_begin", 17) == 0) {
+		} else if (check_line_prefix(line, "ANIM_rotate_begin")) {
 			char dr_name[256];
 			obj8_cmd_t *cmd;
 
@@ -747,8 +757,8 @@ obj8_parse_worker(void *userinfo)
 			}
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
 			cur_anim = cmd;
-		} else if (strncmp(line, "ANIM_trans_end", 14) == 0 ||
-		    strncmp(line, "ANIM_rotate_end", 15) == 0) {
+		} else if (check_line_prefix(line, "ANIM_trans_end") ||
+		    check_line_prefix(line, "ANIM_rotate_end")) {
 			if (cur_anim == NULL) {
 				logMsg("%s:%d: failed to parse "
 				    "ANIM_{rotate,trans}_end, NOT inside "
@@ -756,13 +766,13 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			cur_anim = NULL;
-		} else if (strncmp(line, "ANIM_trans_key", 14) == 0) {
+		} else if (check_line_prefix(line, "ANIM_trans_key")) {
 			if (!parse_trans_key(line, cur_anim, filename, linenr))
 				goto errout;
-		} else if (strncmp(line, "ANIM_rotate_key", 15) == 0) {
+		} else if (check_line_prefix(line, "ANIM_rotate_key")) {
 			if (!parse_rotate_key(line, cur_anim, filename, linenr))
 				goto errout;
-		} else if (strncmp(line, "ANIM_trans", 10) == 0) {
+		} else if (check_line_prefix(line, "ANIM_trans")) {
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
 			int l;
@@ -787,7 +797,7 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
-		} else if (strncmp(line, "ANIM_rotate", 11) == 0) {
+		} else if (check_line_prefix(line, "ANIM_rotate")) {
 			char dr_name[256] = { 0 };
 			obj8_cmd_t *cmd;
 
@@ -808,7 +818,7 @@ obj8_parse_worker(void *userinfo)
 				goto errout;
 			}
 			cmd->drset_idx = obj8_drset_add(obj->drset, dr_name, 0);
-		} else if (strncmp(line, "ATTR_light_level", 16) == 0) {
+		} else if (check_line_prefix(line, "ATTR_light_level")) {
 			char dr_name[256] = { 0 };
 			float min_val, max_val;
 			/*
@@ -827,32 +837,32 @@ obj8_parse_worker(void *userinfo)
 				cmd->drset_idx = obj8_drset_add(
 				    obj->drset, NULL, 0);
 			}
-		} else if (strncmp(line, "ATTR_draw_enable", 16) == 0) {
+		} else if (check_line_prefix(line, "ATTR_draw_enable")) {
 			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_ENABLE,
 			    cur_cmd);
-		} else if (strncmp(line, "ATTR_draw_disable", 17) == 0) {
+		} else if (check_line_prefix(line, "ATTR_draw_disable")) {
 			(void)obj8_cmd_alloc(OBJ8_CMD_ATTR_DRAW_DISABLE,
 			    cur_cmd);
-		} else if (strncmp(line, "ATTR_manip_none", 15) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_none")) {
 			cur_manip = -1;
-		} else if (strncmp(line, "ATTR_manip_command_axis", 23) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_command_axis")) {
 			cur_manip = parse_ATTR_manip_command_axis(line, obj);
-		} else if (strncmp(line, "ATTR_manip_command_knob", 23) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_command_knob")) {
 			cur_manip = parse_ATTR_manip_command_knob(line, obj);
-		} else if (strncmp(line, "ATTR_manip_command", 18) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_command")) {
 			cur_manip = parse_ATTR_manip_command(line, obj);
-		} else if (strncmp(line, "ATTR_manip_drag_rotate", 22) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_drag_rotate")) {
 			cur_manip = parse_ATTR_manip_drag_rotate(line, obj,
 			    offset);
-		} else if (strncmp(line, "ATTR_manip_drag_axis", 20) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_drag_axis")) {
 			cur_manip = parse_ATTR_manip_drag_axis(line, obj);
-		} else if (strncmp(line, "ATTR_manip_drag_xy", 18) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_drag_xy")) {
 			cur_manip = parse_ATTR_manip_drag_xy(line, obj);
-		} else if (strncmp(line, "ATTR_manip_toggle", 17) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_toggle")) {
 			cur_manip = parse_ATTR_manip_toggle(line, obj);
-		} else if (strncmp(line, "ATTR_manip_noop", 15) == 0) {
+		} else if (check_line_prefix(line, "ATTR_manip_noop")) {
 			cur_manip = parse_ATTR_manip_noop(obj);
-		} else if (strncmp(line, "POINT_COUNTS", 12) == 0) {
+		} else if (check_line_prefix(line, "POINT_COUNTS")) {
 			unsigned lines, lites;
 
 			if (vtx_table != NULL) {
@@ -868,26 +878,26 @@ obj8_parse_worker(void *userinfo)
 			}
 			vtx_table = safe_calloc(vtx_cap, sizeof (*vtx_table));
 			idx_table = safe_calloc(idx_cap, sizeof (*idx_table));
-		} else if (strncmp(line, "X-GROUP-ID", 10) == 0) {
+		} else if (check_line_prefix(line, "X-GROUP-ID")) {
 			if (sscanf(line, "X-GROUP-ID %31s", group_id) != 1)
 				*group_id = 0;
-		} else if (strncmp(line, "X-DOUBLE-SIDED", 14) == 0) {
+		} else if (check_line_prefix(line, "X-DOUBLE-SIDED")) {
 			double_sided = B_TRUE;
-		} else if (strncmp(line, "X-SINGLE-SIDED", 14) == 0) {
+		} else if (check_line_prefix(line, "X-SINGLE-SIDED")) {
 			double_sided = B_FALSE;
-		} else if (strncmp(line, "TEXTURE_NORMAL", 14) == 0) {
+		} else if (check_line_prefix(line, "TEXTURE_NORMAL")) {
 			char buf[128];
 			if (sscanf(line, "TEXTURE_NORMAL %127s", buf) == 1) {
 				obj->norm_filename = path_last_comp_subst(
 				    obj->filename, buf);
 			}
-		} else if (strncmp(line, "TEXTURE_LIT", 11) == 0) {
+		} else if (check_line_prefix(line, "TEXTURE_LIT")) {
 			char buf[128];
 			if (sscanf(line, "TEXTURE_LIT %127s", buf) == 1) {
 				obj->lit_filename = path_last_comp_subst(
 				    obj->filename, buf);
 			}
-		} else if (strncmp(line, "TEXTURE", 7) == 0) {
+		} else if (check_line_prefix(line, "TEXTURE")) {
 			char buf[128];
 			if (sscanf(line, "TEXTURE %127s", buf) == 1) {
 				obj->tex_filename = path_last_comp_subst(
